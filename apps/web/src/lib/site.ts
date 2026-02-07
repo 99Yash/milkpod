@@ -1,15 +1,15 @@
 export const siteConfig = {
-  name: 'pnpm turborepo template',
-  url: 'https://your-app.com',
-  ogImage: 'https://your-app.com/og.png',
+  name: 'Milkpod',
+  url: 'https://milkpod.ai',
+  ogImage: 'https://milkpod.ai/og.png',
   description:
-    'A minimal and lovely monorepo template made by Yash. Next.js frontend, Elysia.js server. Better-auth authentication. Drizzle ORM database. TailwindCSS for styling. Shadcn/ui for components. TypeScript for type safety. Pnpm for package management. Turborepo for building and development. ',
+    'Milkpod is an AI video transcription and Q&A workspace that turns meetings, lectures, and interviews into searchable transcripts, highlights, and timestamped answers.',
   links: {
-    x: 'https://x.com/YashGouravKar1',
-    github: 'https://git.new/ygkr',
-    githubAccount: 'https://github.com/99Yash',
-    web: 'https://dub.sh/yashk',
-    linkedin: 'https://dub.sh/lnkedin',
-    mail: 'yashgouravkar@gmail.com',
+    x: 'https://x.com/milkpodai',
+    github: 'https://github.com/milkpod',
+    githubAccount: 'https://github.com/milkpod',
+    web: 'https://milkpod.ai',
+    linkedin: 'https://www.linkedin.com/company/milkpod',
+    mail: 'hello@milkpod.ai',
   },
 } as const;

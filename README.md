@@ -1,90 +1,51 @@
+# Milkpod
 
+Milkpod is an AI video transcription and Q&A workspace. Drop in a link or
+upload a file and get clean transcripts, highlights, and timestamped answers
+you can share with your team.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+## Product highlights
 
-A modern, production-ready TypeScript monorepo template that combines Next.js, Elysia, Eden, and more for building full-stack applications with end-to-end type safety.
+- Transcribe meetings, lectures, and interviews with timestamps and speaker
+  labels.
+- Ask questions and get answers with citations back to the source moments.
+- Generate highlights, summaries, and action items for quick sharing.
+- Search across your video library and export notes or clips.
 
-> **📝 Using this as a template?** Check out the [Template Setup Guide](./TEMPLATE_SETUP.md) for step-by-step customization instructions.
+## Tech stack
 
-## Features
+- Next.js 16 App Router (`apps/web`)
+- Elysia + Eden (`apps/server`, `packages/api`)
+- Better Auth (`packages/auth`)
+- Drizzle ORM + PostgreSQL (`packages/db`)
+- Tailwind CSS + shadcn/ui
+- Turborepo + pnpm
 
-- **TypeScript** - Full type safety across the entire stack
-- **Next.js 16** - Latest React framework with App Router
-- **TailwindCSS** - Utility-first CSS for rapid UI development
-- **shadcn/ui** - Beautiful, accessible UI components
-- **Elysia** - Type-safe, high-performance backend framework
-- **Eden** - End-to-end type safety between Elysia and the frontend
-- **Drizzle ORM** - TypeScript-first database toolkit
-- **PostgreSQL** - Robust, scalable database
-- **Better-Auth** - Modern authentication solution
-- **Turborepo** - High-performance monorepo build system
-- **pnpm** - Fast, disk space efficient package manager
+## Local development
 
-## Quick Start
+1. Install dependencies: `pnpm install`
+2. Configure environment files:
+   - `cp apps/server/.env.example apps/server/.env`
+   - `cp apps/web/.env.example apps/web/.env`
+3. Update values in the env files (`DATABASE_URL`, `BETTER_AUTH_SECRET`, etc.)
+4. Push the schema: `pnpm db:push`
+5. Start the dev stack: `pnpm dev`
 
-### 1. Clone and Install
+More details live in `SETUP.md`.
 
-```bash
-# Clone this template
-git clone <your-repo-url>
-cd <your-project-name>
+## Scripts
 
-# Install dependencies
-pnpm install
-```
+- `pnpm dev` - Start all apps in development mode
+- `pnpm dev:web` - Start only the web application
+- `pnpm dev:server` - Start only the API server
+- `pnpm build` - Build all applications for production
+- `pnpm check-types` - Type-check all packages
+- `pnpm db:push` - Push schema changes to database
+- `pnpm db:studio` - Open Drizzle Studio (database GUI)
+- `pnpm db:generate` - Generate migrations
+- `pnpm db:migrate` - Run migrations
 
-### 2. Customize Your App
-
-Update the site configuration in `apps/web/src/lib/site.ts`:
-
-```typescript
-export const siteConfig = {
-  name: 'Your App Name',
-  url: 'https://your-app.com',
-  ogImage: 'https://your-app.com/og.png',
-  description: 'Your app description',
-  links: {
-    twitter: 'https://x.com/yourusername',
-    github: 'https://github.com/yourusername/your-repo',
-    website: 'https://your-website.com',
-  },
-};
-```
-
-**Optional but recommended:** Update the package namespace from `@milkpod` to your own:
-
-- Find and replace `@milkpod` with `@your-app-name` across:
-  - `package.json` files in `apps/` and `packages/`
-  - Import statements in your code
-- Update the root `package.json` name field
-
-### 3. Database Setup
-
-This project uses PostgreSQL with Drizzle ORM.
-
-1. Make sure you have PostgreSQL installed and running
-2. Create a `.env` file in `apps/server/` with your database URL:
-
-```bash
-DATABASE_URL="postgresql://user:password@localhost:5432/dbname"
-```
-
-3. Push the schema to your database:
-
-```bash
-pnpm run db:push
-```
-
-### 4. Run Development Server
-
-```bash
-pnpm run dev
-```
-
-- **Web app**: [http://localhost:3000](http://localhost:3000)
-- **API server**: [http://localhost:3001](http://localhost:3001)
-
-## Project Structure
+## Project structure
 
 ```
 milkpod/
@@ -93,85 +54,24 @@ milkpod/
 │   └── server/      # Elysia backend
 ├── packages/
 │   ├── api/         # Elysia routes + Eden types
-│   ├── auth/        # Better-Auth configuration
+│   ├── auth/        # Better Auth configuration
 │   ├── db/          # Drizzle schema and database utilities
 │   └── config/      # Shared TypeScript configs
 ```
-
-## Available Scripts
-
-### Development
-
-- `pnpm run dev` - Start all apps in development mode
-- `pnpm run dev:web` - Start only the web application
-- `pnpm run dev:server` - Start only the API server
-
-### Building
-
-- `pnpm run build` - Build all applications for production
-- `pnpm run check-types` - Type-check all packages
-
-### Database
-
-- `pnpm run db:push` - Push schema changes to database
-- `pnpm run db:studio` - Open Drizzle Studio (database GUI)
-- `pnpm run db:generate` - Generate migrations
-- `pnpm run db:migrate` - Run migrations
-
-## Tech Stack Details
-
-### Frontend (`apps/web`)
-
-- **Framework**: Next.js 16 with App Router
-- **Styling**: TailwindCSS 4 + shadcn/ui components
-- **State Management**: TanStack Query + Eden
-- **Forms**: React Hook Form + Zod validation
-- **Auth**: Better-Auth client
-
-### Backend (`apps/server`)
-
-- **Framework**: Elysia
-- **API**: Elysia routes with Eden treaty client
-- **Database**: Drizzle ORM + PostgreSQL
-- **Auth**: Better-Auth server
-
-### Shared Packages
-
-- **`@milkpod/api`**: Elysia routes + App type
-- **`@milkpod/auth`**: Authentication configuration
-- **`@milkpod/db`**: Database schema and queries
-- **`@milkpod/config`**: Shared TypeScript configurations
 
 ## Deployment
 
 ### Vercel (Web App)
 
 1. Push your code to GitHub
-2. Import project in Vercel
-3. Set root directory to `apps/web`
+2. Import the project in Vercel
+3. Set the root directory to `apps/web`
 4. Add environment variables
 5. Deploy
 
 ### Railway/Render (API Server)
 
 1. Connect your repository
-2. Set root directory to `apps/server`
-3. Add `DATABASE_URL` environment variable
+2. Set the root directory to `apps/server`
+3. Add the `DATABASE_URL` environment variable
 4. Deploy
-
-## Learn More
-
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Eden Documentation](https://elysiajs.com/eden/overview)
-- [Drizzle Documentation](https://orm.drizzle.team/docs)
-- [Better-Auth Documentation](https://better-auth.com/docs)
-- [Elysia Documentation](https://elysiajs.com/introduction)
-- [Turborepo Documentation](https://turbo.build/repo/docs)
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.
-
-## License
-
-MIT

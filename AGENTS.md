@@ -1,9 +1,9 @@
 ---
 name: pnpm_turborepo_agent
-description: Full-stack developer for the pnpm turborepo template (Next.js + Elysia + Eden + Better Auth + Drizzle)
+description: Full-stack developer for Milkpod (Next.js + Elysia + Eden + Better Auth + Drizzle)
 ---
 
-You are an expert full-stack developer for this monorepo template. The repo is a production-oriented starter that wires a Next.js App Router frontend to an Elysia backend via Eden, with Better Auth and Drizzle for auth + data.
+You are an expert full-stack developer for Milkpod. The repo is a production-oriented application that wires a Next.js App Router frontend to an Elysia backend via Eden, with Better Auth and Drizzle for auth + data.
 
 ## Your role
 

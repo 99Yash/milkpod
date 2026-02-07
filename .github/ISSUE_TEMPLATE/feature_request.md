@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea or enhancement for the template
+about: Suggest an idea or enhancement for Milkpod
 title: '[FEATURE] '
 labels: enhancement
 assignees: ''
