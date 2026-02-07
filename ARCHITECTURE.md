@@ -8,7 +8,9 @@ Milkpod transcription and Q&A workspace.
 - Real-time, streaming UX for tool calls, progress, and answers.
 - Durable workflows that resume after timeouts and retries.
 - Evidence-gated Q&A that only answers with cited transcript segments.
-- No media storage for link sources unless the user explicitly uploads media.
+- Personalized podcast filtering with private RSS and Plex support.
+- Read-only sharing with ask-AI under stricter rate limits.
+- No raw media storage for link sources unless the user explicitly uploads media.
 
 ## Core Decisions
 - Frontend: Next.js App Router in `apps/web`.
@@ -20,7 +22,8 @@ Milkpod transcription and Q&A workspace.
 - Streaming: Vercel AI SDK for LLM responses with SSE.
 - Realtime: Ably for workflow and batch progress, optional AI Transport for tool
   call streaming and citations.
-- No clip export and no link-based media storage.
+- No clip export; no raw link-based media storage. Edited podcast renders may be
+  stored for private RSS and Plex playback.
 
 ## System Components
 - `apps/web`: App Router UI, server components for data, leaf client components
@@ -48,6 +51,15 @@ No link-based media is stored long-term. We only keep derived artifacts.
 - Videos are converted to audio for transcription; the derived transcript and
   embeddings are the primary artifacts.
 
+### Podcast personalization (filtered RSS + Plex)
+1. Ingest RSS feed or episode link and store feed/episode metadata.
+2. Fetch episode audio to temporary storage.
+3. Transcribe and segment, then label segments (ads, sports, etc.).
+4. Apply user rules and generate an edit decision list (EDL).
+5. Render filtered audio (keep/skip/mute) and store only the edited output.
+6. Publish to private RSS and optionally refresh Plex libraries.
+7. Delete raw audio artifacts.
+
 ## Durable Workflow Design (Restate)
 
 Each asset runs as a durable workflow with explicit state and idempotency.
@@ -65,6 +77,8 @@ Durability rules:
 - Chunk audio to keep per-request duration bounded (example: 2-5 minute chunks).
 - Resume from the last completed chunk on retry.
 - Exponential backoff with jitter; failed jobs land in a retryable state.
+- Podcast workflows add `labeling`, `editing`, and `publishing` steps before
+  `ready`.
 
 ## Realtime and Streaming UX
 
@@ -75,6 +89,7 @@ Durability rules:
 ### Workflow progress
 - Ably channels publish workflow events and batch progress.
 - Client uses a small `use client` subscriber component to update local state.
+- Episode rendering streams `labeling`, `editing`, and `publishing` steps.
 
 ### Optional Ably AI Transport
 - If we unify tool-call streaming, use Ably AI Transport with
@@ -112,6 +127,14 @@ Durability rules:
   `media_type` (audio, video).
 - Users can create collections and add multiple assets.
 - Q&A can target a single asset or a collection scope.
+- Podcast feeds can map to collections for scoped Q&A and filtering rules.
+
+## Sharing and Read-only Q&A
+- Share links are tokenized and scoped to an asset or collection.
+- Shared views are read-only: no edits, no rule changes, no metadata updates.
+- Ask-AI is available with stricter rate limits per share token.
+- Share-session questions are not appended to the owner's Q&A threads.
+- Links can be revoked and optionally expire.
 
 ## Data Model (conceptual)
 - `media_assets`: source metadata, status, duration, source type.
@@ -121,12 +144,20 @@ Durability rules:
 - `collections`, `collection_items`: user-defined scopes.
 - `qa_threads`, `qa_messages`, `qa_evidence`: questions, answers, citations.
 - `batches`: bulk uploads and link ingestion batches.
+- `podcast_feeds`: RSS metadata and refresh cadence.
+- `podcast_episodes`: source URLs, publish dates, durations, and status.
+- `episode_edits`: EDL segments with keep/skip/mute actions and reasons.
+- `episode_renders`: edited audio output metadata and storage keys.
+- `filter_rules`: user topic preferences and exclusion rules.
+- `share_links`: token, scope, expiry, revoke metadata, and `can_query`.
+- `share_queries` (optional): audit/log of share-session questions.
 
 ## Bulk Processing and Rate Limits
 - Batches aggregate many assets; each asset reports step status and retries.
 - Token bucket per provider plus global concurrency cap.
 - Queue position and ETA are displayed in the UI.
 - Backpressure is visible ("waiting for capacity" vs "stuck").
+- Share links have tighter per-token rate limits and lower concurrency caps.
 
 ## Safety and Abuse Resistance
 - Treat transcript content as untrusted data, never instructions.
@@ -142,6 +173,8 @@ Durability rules:
 - pgvector for early scale; migrate to Qdrant/Pinecone/Weaviate if needed.
 - Client caching (SWR or React Query) for instant UI updates.
 - Prefetch and optimistic UI where safe.
+- Audio editing and rendering are CPU-heavy; isolate FFmpeg workers and throttle
+  concurrent renders.
 
 ## Theming and Dark Mode
 - `next-themes` drives class-based theming using shadcn CSS variables.
@@ -152,3 +185,4 @@ Durability rules:
 - Record per-step durations, retries, and provider latency.
 - Track queue depth, concurrency utilization, and failure rates.
 - Store workflow and AI events for audit and debugging.
+- Track episode edit outcomes (percent removed, reasons, and render times).

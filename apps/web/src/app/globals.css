@@ -261,6 +261,28 @@
     animation: shimmer 8s linear infinite;
   }
 
+  @keyframes dragon-drift {
+    0% {
+      transform: translate3d(0, 0, 0);
+    }
+    50% {
+      transform: translate3d(-24px, 14px, 0);
+    }
+    100% {
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  .dragon-drift {
+    animation: dragon-drift 16s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dragon-drift {
+      animation: none;
+    }
+  }
+
   /* Better focus states */
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-ring;

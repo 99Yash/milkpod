@@ -1,18 +1,18 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { toast } from 'sonner';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
+import { useLastAuthMethod } from '~/hooks/use-last-auth-method';
 import { authClient } from '~/lib/auth/client';
 import type { AuthOptionsType, OAuthProviderId } from '~/lib/constants';
-import { getProviderById, OAUTH_PROVIDERS } from '~/lib/constants';
 import {
-  getErrorMessage,
-  getLocalStorageItem,
-  setLocalStorageItem,
-} from '~/lib/utils';
+  getProviderById,
+  LAST_AUTH_METHOD_KEY,
+  OAUTH_PROVIDERS,
+} from '~/lib/constants';
+import { cn, getErrorMessage, setLocalStorageItem } from '~/lib/utils';
 
 interface OAuthButtonProps {
   providerId: OAuthProviderId;
@@ -20,19 +20,11 @@ interface OAuthButtonProps {
 }
 
 const OAuthButton: React.FC<OAuthButtonProps> = ({ providerId, className }) => {
-  const router = useRouter();
-  const [lastAuthMethod, setLastAuthMethod] =
-    React.useState<AuthOptionsType | null>(null);
+  const lastAuthMethod = useLastAuthMethod();
   const [isLoading, setIsLoading] = React.useState(false);
 
   const provider = getProviderById(providerId);
-
-  React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const lastAuthMethod = getLocalStorageItem('LAST_AUTH_METHOD');
-      setLastAuthMethod(lastAuthMethod ?? null);
-    }
-  }, []);
+  const authMethod = providerId.toUpperCase() as AuthOptionsType;
 
   const handleOAuthSignIn = React.useCallback(async () => {
     if (!provider) {
@@ -42,49 +34,41 @@ const OAuthButton: React.FC<OAuthButtonProps> = ({ providerId, className }) => {
 
     setIsLoading(true);
     try {
+      const callbackURL =
+        typeof window === 'undefined' ? '/' : `${window.location.origin}/`;
+      setLocalStorageItem(LAST_AUTH_METHOD_KEY, authMethod);
       await authClient.signIn.social({
         provider: providerId,
-        callbackURL: '/',
+        callbackURL,
       });
-
-      setLocalStorageItem(
-        'LAST_AUTH_METHOD',
-        providerId.toUpperCase() as AuthOptionsType
-      );
     } catch (error) {
       toast.error(getErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
-  }, [provider, providerId, router]);
+  }, [authMethod, provider, providerId]);
 
   if (!provider) {
     return null;
   }
 
-  const renderIcon = () => {
-    if (provider.icon) {
-      const IconComponent = provider.icon;
-      return <IconComponent className="size-5" />;
-    }
-    return null;
-  };
+  const IconComponent = provider.icon;
 
   return (
     <Button
       variant="outline"
-      className={`w-full relative ${className}`}
+      className={cn('w-full relative', className)}
       onClick={handleOAuthSignIn}
       disabled={isLoading}
     >
-      {renderIcon()}
+      {IconComponent ? <IconComponent className="size-5" /> : null}
       <span className="text-sm">
-        {isLoading ? 'Signing in…' : `Continue with ${provider.name}`}
+        {isLoading ? 'Signing in...' : `Continue with ${provider.name}`}
       </span>
       {isLoading ? (
         <Spinner className="mr-2 bg-background" />
       ) : (
-        lastAuthMethod === (provider.id.toUpperCase() as AuthOptionsType) && (
+        lastAuthMethod === authMethod && (
           <i className="text-xs absolute right-4 text-muted-foreground text-center">
             Last used
           </i>
@@ -98,7 +82,7 @@ export const OAuthButtons: React.FC<{
   className?: React.ComponentProps<typeof Button>['className'];
 }> = ({ className }) => {
   return (
-    <div className={`space-y-1 ${className}`}>
+    <div className={cn('space-y-1', className)}>
       {Object.values(OAUTH_PROVIDERS).map((provider) => (
         <OAuthButton
           key={provider.id}

@@ -10,6 +10,15 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export const unknownError = 'Something went wrong. Please try again.';
+export const LOCAL_STORAGE_CHANGE_EVENT = 'local-storage';
+
+function emitLocalStorageChange() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.dispatchEvent(new Event(LOCAL_STORAGE_CHANGE_EVENT));
+}
 
 /**
  * Enhanced error message extraction that handles AppError instances
@@ -109,6 +118,7 @@ export function setLocalStorageItem<K extends LocalStorageKey>(
     }
 
     localStorage.setItem(key, JSON.stringify(validationResult.data));
+    emitLocalStorageChange();
   } catch (error) {
     console.error(
       `[LocalStorageError] Failed to set item for key "${key}":`,
@@ -163,6 +173,7 @@ export function getLocalStorageItem<K extends LocalStorageKey>(
 export function removeLocalStorageItem(key: LocalStorageKey): void {
   try {
     localStorage.removeItem(key);
+    emitLocalStorageChange();
   } catch (error) {
     console.error(
       `[LocalStorageError] Failed to remove item for key "${key}":`,
