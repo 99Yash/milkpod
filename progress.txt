@@ -8,11 +8,11 @@
 - [x] Task 5: Discriminated union for asset status (included in Task 2)
 
 ### Phase 2: Critical Fixes
-- [ ] Task 6: Fix convertToModelMessages async
-- [ ] Task 7: Wire assetId/collectionId into chat context
-- [ ] Task 8: Resource authorization
-- [ ] Task 9: Handle reasoning tokens
-- [ ] Task 10: Input guardrails
+- [x] Task 6: Fix convertToModelMessages async (already awaited in stream.ts)
+- [x] Task 7: Wire assetId/collectionId into chat context
+- [x] Task 8: Resource authorization
+- [x] Task 9: Handle reasoning tokens (Option A: collapsible Thinking section in message.tsx + sendReasoning: true)
+- [x] Task 10: Input guardrails (gpt-4o-mini pre-check in guardrails.ts, static refusal via createUIMessageStream)
 
 ### Phase 3: Data & Persistence
 - [ ] Task 11: Normalize message persistence

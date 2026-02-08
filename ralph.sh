@@ -3,9 +3,8 @@
 claude --permission-mode acceptEdits "@PRD.md @progress.txt \
 1. Read the PRD and progress file. \
 2. Find the next incomplete task and implement it. \
-3. Commit your changes. \
-4. Update progress.txt with what you did. \
-ONLY DO ONE TASK AT A TIME. \
+3. Update progress.txt with what you did. \
+ONLY DO ONE TASK AT A TIME. Do not add or commit files. Just tick off the issues.  \
 \
 Reference these for patterns and solutions: \
 - ../../tutorials/total-ts/ (problem/solution pairs — read .solution.ts files) \

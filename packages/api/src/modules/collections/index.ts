@@ -2,6 +2,7 @@ import { Elysia } from 'elysia';
 import { authMiddleware } from '../../middleware/auth';
 import { CollectionModel } from './model';
 import { CollectionService } from './service';
+import { AssetService } from '../assets/service';
 
 export const collections = new Elysia({ prefix: '/api/collections' })
   .use(authMiddleware)
@@ -77,6 +78,23 @@ export const collections = new Elysia({ prefix: '/api/collections' })
         set.status = 401;
         return { message: 'Authentication required' };
       }
+
+      const userId = session.user.id;
+
+      // Verify user owns the collection
+      const collection = await CollectionService.getById(params.id, userId);
+      if (!collection) {
+        set.status = 403;
+        return { message: 'Access denied to collection' };
+      }
+
+      // Verify user owns the asset being added
+      const asset = await AssetService.getById(body.assetId, userId);
+      if (!asset) {
+        set.status = 403;
+        return { message: 'Access denied to asset' };
+      }
+
       return CollectionService.addItem(params.id, body);
     },
     { body: CollectionModel.addItem }
@@ -86,6 +104,17 @@ export const collections = new Elysia({ prefix: '/api/collections' })
       set.status = 401;
       return { message: 'Authentication required' };
     }
+
+    // Verify user owns the collection
+    const collection = await CollectionService.getById(
+      params.id,
+      session.user.id
+    );
+    if (!collection) {
+      set.status = 403;
+      return { message: 'Access denied to collection' };
+    }
+
     const deleted = await CollectionService.removeItem(params.id, params.itemId);
     if (!deleted) {
       set.status = 404;

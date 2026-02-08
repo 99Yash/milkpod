@@ -4,6 +4,8 @@ import { authMiddleware } from '../../middleware/auth';
 import { ChatModel } from './model';
 import { ChatService } from './service';
 import { ThreadService } from '../threads/service';
+import { AssetService } from '../assets/service';
+import { CollectionService } from '../collections/service';
 
 export const chat = new Elysia({ prefix: '/api/chat' })
   .use(authMiddleware)
@@ -15,10 +17,40 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         return { message: 'Authentication required' };
       }
 
+      const userId = session.user.id;
+
+      // Verify ownership of referenced resources
+      if (body.threadId) {
+        const thread = await ThreadService.getById(body.threadId, userId);
+        if (!thread) {
+          set.status = 403;
+          return { message: 'Access denied to thread' };
+        }
+      }
+
+      if (body.assetId) {
+        const asset = await AssetService.getById(body.assetId, userId);
+        if (!asset) {
+          set.status = 403;
+          return { message: 'Access denied to asset' };
+        }
+      }
+
+      if (body.collectionId) {
+        const collection = await CollectionService.getById(
+          body.collectionId,
+          userId
+        );
+        if (!collection) {
+          set.status = 403;
+          return { message: 'Access denied to collection' };
+        }
+      }
+
       // Auto-create thread if none provided
       let threadId = body.threadId;
       if (!threadId) {
-        const thread = await ThreadService.create(session.user.id, {
+        const thread = await ThreadService.create(userId, {
           assetId: body.assetId,
           collectionId: body.collectionId,
         });

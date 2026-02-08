@@ -33,10 +33,15 @@ export { createChatStream } from './stream';
 export type { ChatRequest } from './stream';
 
 // System prompt
-export { QA_SYSTEM_PROMPT } from './system-prompt';
+export { buildSystemPrompt, QA_SYSTEM_PROMPT } from './system-prompt';
+export type { SystemPromptContext } from './system-prompt';
 
 // Schemas
 export { chatMetadataSchema } from './schemas';
+
+// Guardrails
+export { checkInput, createRefusalResponse } from './guardrails';
+export type { GuardrailResult } from './guardrails';
 
 // Errors
 export { AIError, EmbeddingError, RetrievalError, StreamingError } from './errors';
