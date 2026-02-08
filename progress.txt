@@ -2,10 +2,10 @@
 
 ### Phase 1: Type Safety & Foundations
 - [x] Task 1: Branded ID types
-- [ ] Task 2: Shared API response types
+- [x] Task 2: Shared API response types
 - [ ] Task 3: Replace t.Any() message validation
 - [ ] Task 4: Shared tool output types
-- [ ] Task 5: Discriminated union for asset status
+- [x] Task 5: Discriminated union for asset status (included in Task 2)
 
 ### Phase 2: Critical Fixes
 - [ ] Task 6: Fix convertToModelMessages async
