@@ -25,6 +25,7 @@ export type CollectionId = Brand<string, 'CollectionId'>;
 export type CollectionItemId = Brand<string, 'CollectionItemId'>;
 export type ThreadId = Brand<string, 'ThreadId'>;
 export type MessageId = Brand<string, 'MessageId'>;
+export type MessagePartId = Brand<string, 'MessagePartId'>;
 export type EvidenceId = Brand<string, 'EvidenceId'>;
 
 // ---------------------------------------------------------------------------

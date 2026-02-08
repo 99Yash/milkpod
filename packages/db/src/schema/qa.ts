@@ -1,9 +1,10 @@
-import { index, jsonb, pgTable, real, text } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, pgTable, real, text } from 'drizzle-orm/pg-core';
 import {
   createId,
   lifecycle_dates,
   type ThreadId,
   type MessageId,
+  type MessagePartId,
   type EvidenceId,
   type UserId,
   type AssetId,
@@ -46,10 +47,32 @@ export const qaMessages = pgTable(
       .notNull()
       .references(() => qaThreads.id, { onDelete: 'cascade' }),
     role: text('role').notNull(),
-    parts: jsonb('parts').notNull(),
     ...lifecycle_dates,
   },
   (t) => [index('qa_message_thread_id_idx').on(t.threadId)],
+);
+
+export const qaMessageParts = pgTable(
+  'qa_message_part',
+  {
+    id: text('id')
+      .$type<MessagePartId>()
+      .primaryKey()
+      .$defaultFn(() => createId<MessagePartId>('mpt')),
+    messageId: text('message_id')
+      .$type<MessageId>()
+      .notNull()
+      .references(() => qaMessages.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(),
+    textContent: text('text_content'),
+    toolCallId: text('tool_call_id'),
+    toolName: text('tool_name'),
+    toolState: text('tool_state'),
+    toolInput: jsonb('tool_input'),
+    toolOutput: jsonb('tool_output'),
+    sortOrder: integer('sort_order').notNull(),
+  },
+  (t) => [index('qa_message_part_message_id_idx').on(t.messageId)],
 );
 
 export const qaEvidence = pgTable('qa_evidence', {
