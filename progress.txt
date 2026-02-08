@@ -1,0 +1,37 @@
+## Progress Tracker
+
+### Phase 1: Type Safety & Foundations
+- [x] Task 1: Branded ID types
+- [ ] Task 2: Shared API response types
+- [ ] Task 3: Replace t.Any() message validation
+- [ ] Task 4: Shared tool output types
+- [ ] Task 5: Discriminated union for asset status
+
+### Phase 2: Critical Fixes
+- [ ] Task 6: Fix convertToModelMessages async
+- [ ] Task 7: Wire assetId/collectionId into chat context
+- [ ] Task 8: Resource authorization
+- [ ] Task 9: Handle reasoning tokens
+- [ ] Task 10: Input guardrails
+
+### Phase 3: Data & Persistence
+- [ ] Task 11: Normalize message persistence
+- [ ] Task 12: Embedding model versioning
+- [ ] Task 13: Pipeline error handling & retry
+
+### Phase 4: UX Improvements
+- [ ] Task 14: Asset detail view
+- [ ] Task 15: Collection management UI
+- [ ] Task 16: Streaming progress indicators
+- [ ] Task 17: Search and filter
+
+### Phase 5: Sharing & Access Control
+- [ ] Task 18: Share link schema & API
+- [ ] Task 19: Share link UI
+- [ ] Task 20: Rate-limited shared Q&A
+
+### Phase 6: Production Hardening
+- [ ] Task 21: Request logging middleware
+- [ ] Task 22: Rate limiting
+- [ ] Task 23: Health checks & graceful shutdown
+- [ ] Task 24: Error boundaries & offline handling

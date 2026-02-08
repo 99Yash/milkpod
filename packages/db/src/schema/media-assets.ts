@@ -1,5 +1,5 @@
 import { integer, pgEnum, pgTable, text, unique } from 'drizzle-orm/pg-core';
-import { createId, lifecycle_dates } from '../helpers';
+import { createId, lifecycle_dates, type AssetId, type UserId } from '../helpers';
 import { user } from './auth';
 
 export const sourceTypeEnum = pgEnum('source_type', [
@@ -24,9 +24,11 @@ export const mediaAssets = pgTable(
   'media_asset',
   {
     id: text('id')
+      .$type<AssetId>()
       .primaryKey()
-      .$defaultFn(() => createId('asset')),
+      .$defaultFn(() => createId<AssetId>('asset')),
     userId: text('user_id')
+      .$type<UserId>()
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
