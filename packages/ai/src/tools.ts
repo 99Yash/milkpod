@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod';
+import type { TranscriptId } from '@milkpod/db/helpers';
 import { findRelevantSegments, getTranscriptContext } from './retrieval';
 import type {
   ToolContext,
@@ -79,7 +80,7 @@ export function createQAToolSet(context: ToolContext = {}) {
       };
 
       const segments = await getTranscriptContext(
-        transcriptId,
+        transcriptId as TranscriptId,
         startTime,
         endTime,
         windowSeconds

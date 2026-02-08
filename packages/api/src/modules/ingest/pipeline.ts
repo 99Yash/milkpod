@@ -1,4 +1,4 @@
-import { chunkSegmentText, generateEmbeddings } from '@milkpod/ai/embeddings';
+import { chunkSegmentText, generateEmbeddings, EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSIONS } from '@milkpod/ai/embeddings';
 import { resolveAudioUrl } from './ytdlp';
 import { transcribeAudio } from './elevenlabs';
 import { groupWordsIntoSegments } from './segments';
@@ -29,6 +29,8 @@ export async function orchestratePipeline(
       segmentId: string;
       content: string;
       embedding: number[];
+      model: string;
+      dimensions: number;
     }[] = [];
 
     for (const seg of storedSegments) {
@@ -41,6 +43,8 @@ export async function orchestratePipeline(
           segmentId: seg.id,
           content: chunks[i]!,
           embedding: vectors[i]!,
+          model: EMBEDDING_MODEL_NAME,
+          dimensions: EMBEDDING_DIMENSIONS,
         });
       }
     }

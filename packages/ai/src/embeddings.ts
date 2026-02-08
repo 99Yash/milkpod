@@ -1,5 +1,7 @@
 import { embed, embedMany } from 'ai';
-import { embeddingModel } from './provider';
+import { embeddingModel, EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSIONS } from './provider';
+
+export { EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSIONS };
 
 export async function generateEmbedding(text: string): Promise<number[]> {
   const input = text.replaceAll('\n', ' ');

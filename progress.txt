@@ -15,8 +15,8 @@
 - [x] Task 10: Input guardrails (gpt-4o-mini pre-check in guardrails.ts, static refusal via createUIMessageStream)
 
 ### Phase 3: Data & Persistence
-- [ ] Task 11: Normalize message persistence
-- [ ] Task 12: Embedding model versioning
+- [x] Task 11: Normalize message persistence (qa_message_parts table, saveMessages/getMessages in ChatService, migration 0002)
+- [x] Task 12: Embedding model versioning (added model + dimensions columns to embeddings table, constants in provider.ts, pipeline stores model info, retrieval warns on mismatch, migration 0003). Also fixed branded type mismatches in retrieval.ts, tools.ts, stream.ts, types.ts, and chat/index.ts
 - [ ] Task 13: Pipeline error handling & retry
 
 ### Phase 4: UX Improvements

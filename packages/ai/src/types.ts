@@ -1,4 +1,5 @@
 import type { InferUITools, UIMessage } from 'ai';
+import type { AssetId, CollectionId } from '@milkpod/db/helpers';
 import type { QAToolSet } from './tools';
 import type { RelevantSegment } from './retrieval';
 
@@ -28,8 +29,8 @@ export type MilkpodMessage = UIMessage<
 // --- Tool context ---
 
 export interface ToolContext {
-  assetId?: string;
-  collectionId?: string;
+  assetId?: AssetId;
+  collectionId?: CollectionId;
 }
 
 // --- Tool output types ---

@@ -1,12 +1,13 @@
-import { and, cosineDistance, desc, eq, gt, sql } from 'drizzle-orm';
+import { and, cosineDistance, desc, eq, gt, ne, sql } from 'drizzle-orm';
 import { db } from '@milkpod/db';
+import type { AssetId, CollectionId, TranscriptId } from '@milkpod/db/helpers';
 import {
   embeddings,
   transcriptSegments,
   transcripts,
   collectionItems,
 } from '@milkpod/db/schemas';
-import { generateEmbedding } from './embeddings';
+import { generateEmbedding, EMBEDDING_MODEL_NAME } from './embeddings';
 
 export interface RelevantSegment {
   segmentId: string;
@@ -19,8 +20,8 @@ export interface RelevantSegment {
 }
 
 export interface RetrievalOptions {
-  assetId?: string;
-  collectionId?: string;
+  assetId?: AssetId;
+  collectionId?: CollectionId;
   limit?: number;
   minSimilarity?: number;
 }
@@ -74,11 +75,26 @@ export async function findRelevantSegments(
     .orderBy(desc(similarity))
     .limit(limit);
 
+  // Warn if any stored embeddings were generated with a different model
+  if (results.length > 0) {
+    const [mismatch] = await db
+      .select({ model: embeddings.model })
+      .from(embeddings)
+      .where(ne(embeddings.model, EMBEDDING_MODEL_NAME))
+      .limit(1);
+
+    if (mismatch) {
+      console.warn(
+        `[retrieval] Embedding model mismatch: query uses "${EMBEDDING_MODEL_NAME}" but stored embeddings include "${mismatch.model}". Results may be degraded.`
+      );
+    }
+  }
+
   return results;
 }
 
 export async function getTranscriptContext(
-  transcriptId: string,
+  transcriptId: TranscriptId,
   startTime: number,
   endTime: number,
   windowSeconds = 30

@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { createChatStream } from '@milkpod/ai';
+import type { AssetId, CollectionId } from '@milkpod/db/helpers';
 import { authMiddleware } from '../../middleware/auth';
 import { ChatModel } from './model';
 import { ChatService } from './service';
@@ -66,8 +67,8 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       return createChatStream({
         messages: body.messages,
         threadId,
-        assetId: body.assetId,
-        collectionId: body.collectionId,
+        assetId: body.assetId as AssetId | undefined,
+        collectionId: body.collectionId as CollectionId | undefined,
         headers: { 'X-Thread-Id': threadId },
         onFinish: async ({ messages }) => {
           // Save all assistant messages from the finished conversation

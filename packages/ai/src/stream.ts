@@ -5,6 +5,7 @@ import {
   validateUIMessages,
   RetryError,
 } from 'ai';
+import type { AssetId, CollectionId } from '@milkpod/db/helpers';
 import type { MilkpodMessage } from './types';
 import { chatModel } from './provider';
 import { createQAToolSet } from './tools';
@@ -16,8 +17,8 @@ import { checkInput, createRefusalResponse } from './guardrails';
 export interface ChatRequest {
   messages: MilkpodMessage[];
   threadId?: string;
-  assetId?: string;
-  collectionId?: string;
+  assetId?: AssetId;
+  collectionId?: CollectionId;
   onFinish?: (params: { messages: MilkpodMessage[] }) => Promise<void>;
   headers?: Record<string, string>;
 }

@@ -67,7 +67,7 @@ export abstract class IngestService {
   }
 
   static async storeEmbeddings(
-    items: { segmentId: string; content: string; embedding: number[] }[]
+    items: { segmentId: string; content: string; embedding: number[]; model: string; dimensions: number }[]
   ) {
     const BATCH_SIZE = 100;
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
