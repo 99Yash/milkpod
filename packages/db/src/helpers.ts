@@ -7,11 +7,9 @@ import { customAlphabet } from 'nanoid';
 // See: tutorials/total-ts/advanced-patterns-workshop/src/01-branded-types
 // ---------------------------------------------------------------------------
 
-declare const brand: unique symbol;
-
 /** Nominal/branded type utility. `Brand<string, "AssetId">` is incompatible
  *  with `Brand<string, "ThreadId">` even though both are strings at runtime. */
-export type Brand<T, TBrand> = T & { [brand]: TBrand };
+export type Brand<T, TBrand extends string> = T & { readonly __brand: TBrand };
 
 export type UserId = Brand<string, 'UserId'>;
 export type SessionId = Brand<string, 'SessionId'>;

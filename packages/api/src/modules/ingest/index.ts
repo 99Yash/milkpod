@@ -1,4 +1,5 @@
 import { Elysia } from 'elysia';
+import type { UserId } from '@milkpod/db/helpers';
 import { authMiddleware } from '../../middleware/auth';
 import { IngestModel } from './model';
 import { IngestService } from './service';
@@ -16,6 +17,8 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
         return { message: 'Authentication required' };
       }
 
+      const userId = session.user.id as UserId;
+
       // Resolve metadata synchronously — fail fast on bad URLs
       let metadata;
       try {
@@ -28,14 +31,14 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       // Idempotency: check if this video was already ingested
       const existing = await IngestService.findBySourceId(
         metadata.id,
-        session.user.id
+        userId
       );
       if (existing) {
         return existing;
       }
 
       // Create asset
-      const asset = await AssetService.create(session.user.id, {
+      const asset = await AssetService.create(userId, {
         title: metadata.title,
         sourceUrl: metadata.webpage_url,
         sourceType: 'youtube',

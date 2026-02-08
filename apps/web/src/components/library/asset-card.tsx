@@ -1,18 +1,22 @@
 'use client';
 
+import { useState } from 'react';
 import { Badge } from '~/components/ui/badge';
+import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
 import {
   DashboardPanel,
   DashboardPanelContent,
 } from '~/components/dashboard/dashboard-panel';
 import { cn } from '~/lib/utils';
+import { api } from '~/lib/api';
 import type { Asset, AssetStatus } from '@milkpod/api/types';
 import { isProcessingStatus } from '@milkpod/api/types';
 
 interface AssetCardProps {
   asset: Asset;
   onSelect?: (assetId: string) => void;
+  onRetry?: () => void;
 }
 
 const statusLabels: Record<AssetStatus, string> = {
@@ -30,11 +34,23 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function AssetCard({ asset, onSelect }: AssetCardProps) {
+export function AssetCard({ asset, onSelect, onRetry }: AssetCardProps) {
+  const [retrying, setRetrying] = useState(false);
   const { status } = asset;
   const isReady = status === 'ready';
   const isFailed = status === 'failed';
   const inProgress = isProcessingStatus(status);
+
+  const handleRetry = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRetrying(true);
+    try {
+      await api.api.assets({ id: asset.id }).retry.post();
+      onRetry?.();
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   return (
     <DashboardPanel
@@ -68,16 +84,29 @@ export function AssetCard({ asset, onSelect }: AssetCardProps) {
             {asset.channelName && asset.duration ? ' · ' : ''}
             {asset.duration ? formatDuration(asset.duration) : ''}
           </span>
-          <Badge
-            variant={isFailed ? 'destructive' : 'outline'}
-            className={cn(
-              'text-xs shrink-0',
-              !isFailed && 'border-border/60'
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isFailed && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 px-1.5 text-xs"
+                onClick={handleRetry}
+                disabled={retrying}
+              >
+                {retrying ? <Spinner className="size-3" /> : 'Retry'}
+              </Button>
             )}
-          >
-            {inProgress && <Spinner className="size-3 mr-1" />}
-            {statusLabels[status] ?? status}
-          </Badge>
+            <Badge
+              variant={isFailed ? 'destructive' : 'outline'}
+              className={cn(
+                'text-xs',
+                !isFailed && 'border-border/60'
+              )}
+            >
+              {inProgress && <Spinner className="size-3 mr-1" />}
+              {statusLabels[status] ?? status}
+            </Badge>
+          </div>
         </div>
       </DashboardPanelContent>
     </DashboardPanel>

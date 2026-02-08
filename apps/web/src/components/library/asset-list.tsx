@@ -63,7 +63,7 @@ export function AssetList({ onSelectAsset, refreshKey }: AssetListProps) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {assets.map((asset) => (
-        <AssetCard key={asset.id} asset={asset} onSelect={onSelectAsset} />
+        <AssetCard key={asset.id} asset={asset} onSelect={onSelectAsset} onRetry={fetchAssets} />
       ))}
     </div>
   );

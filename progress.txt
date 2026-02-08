@@ -17,7 +17,7 @@
 ### Phase 3: Data & Persistence
 - [x] Task 11: Normalize message persistence (qa_message_parts table, saveMessages/getMessages in ChatService, migration 0002)
 - [x] Task 12: Embedding model versioning (added model + dimensions columns to embeddings table, constants in provider.ts, pipeline stores model info, retrieval warns on mismatch, migration 0003). Also fixed branded type mismatches in retrieval.ts, tools.ts, stream.ts, types.ts, and chat/index.ts
-- [ ] Task 13: Pipeline error handling & retry
+- [x] Task 13: Pipeline error handling & retry (withRetry utility with exponential backoff + jitter, 3 retries per stage, attempts/lastError tracked in DB, POST /api/assets/:id/retry endpoint, retry button in asset-card.tsx). Also fixed branded type system: switched from unique symbol to phantom __brand pattern, exported brand from helpers.ts, updated all services + routes to use branded ID types with casts at route boundaries.
 
 ### Phase 4: UX Improvements
 - [ ] Task 14: Asset detail view

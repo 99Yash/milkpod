@@ -1,4 +1,5 @@
 import { Elysia } from 'elysia';
+import type { ThreadId, UserId } from '@milkpod/db/helpers';
 import { authMiddleware } from '../../middleware/auth';
 import { ThreadModel } from './model';
 import { ThreadService } from './service';
@@ -12,7 +13,7 @@ export const threads = new Elysia({ prefix: '/api/threads' })
         set.status = 401;
         return { message: 'Authentication required' };
       }
-      return ThreadService.create(session.user.id, body);
+      return ThreadService.create(session.user.id as UserId, body);
     },
     { body: ThreadModel.create }
   )
@@ -21,7 +22,7 @@ export const threads = new Elysia({ prefix: '/api/threads' })
       set.status = 401;
       return { message: 'Authentication required' };
     }
-    return ThreadService.list(session.user.id);
+    return ThreadService.list(session.user.id as UserId);
   })
   .get('/:id', async ({ params, session, set }) => {
     if (!session) {
@@ -29,8 +30,8 @@ export const threads = new Elysia({ prefix: '/api/threads' })
       return { message: 'Authentication required' };
     }
     const thread = await ThreadService.getWithMessages(
-      params.id,
-      session.user.id
+      params.id as ThreadId,
+      session.user.id as UserId
     );
     if (!thread) {
       set.status = 404;
@@ -46,8 +47,8 @@ export const threads = new Elysia({ prefix: '/api/threads' })
         return { message: 'Authentication required' };
       }
       const updated = await ThreadService.update(
-        params.id,
-        session.user.id,
+        params.id as ThreadId,
+        session.user.id as UserId,
         body
       );
       if (!updated) {
@@ -63,7 +64,7 @@ export const threads = new Elysia({ prefix: '/api/threads' })
       set.status = 401;
       return { message: 'Authentication required' };
     }
-    const deleted = await ThreadService.remove(params.id, session.user.id);
+    const deleted = await ThreadService.remove(params.id as ThreadId, session.user.id as UserId);
     if (!deleted) {
       set.status = 404;
       return { message: 'Thread not found' };

@@ -1,16 +1,17 @@
 import { db } from '@milkpod/db';
+import type { AssetId, SegmentId, UserId } from '@milkpod/db/helpers';
 import {
   mediaAssets,
   transcripts,
   transcriptSegments,
   embeddings as embeddingsTable,
 } from '@milkpod/db/schemas';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { Segment } from './segments';
 
 export abstract class IngestService {
   static async updateStatus(
-    assetId: string,
+    assetId: AssetId,
     status: 'queued' | 'fetching' | 'transcribing' | 'embedding' | 'ready' | 'failed',
     opts?: { lastError?: string; duration?: number }
   ) {
@@ -24,8 +25,29 @@ export abstract class IngestService {
       .where(eq(mediaAssets.id, assetId));
   }
 
+  static async incrementAttempts(assetId: AssetId, lastError: string) {
+    await db
+      .update(mediaAssets)
+      .set({
+        attempts: sql`${mediaAssets.attempts} + 1`,
+        lastError,
+      })
+      .where(eq(mediaAssets.id, assetId));
+  }
+
+  static async resetForRetry(assetId: AssetId) {
+    await db
+      .update(mediaAssets)
+      .set({
+        status: 'queued',
+        lastError: null,
+        attempts: 0,
+      })
+      .where(eq(mediaAssets.id, assetId));
+  }
+
   static async storeTranscript(
-    assetId: string,
+    assetId: AssetId,
     language: string,
     segments: Segment[]
   ) {
@@ -67,7 +89,7 @@ export abstract class IngestService {
   }
 
   static async storeEmbeddings(
-    items: { segmentId: string; content: string; embedding: number[]; model: string; dimensions: number }[]
+    items: { segmentId: SegmentId; content: string; embedding: number[]; model: string; dimensions: number; }[]
   ) {
     const BATCH_SIZE = 100;
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
@@ -76,7 +98,7 @@ export abstract class IngestService {
     }
   }
 
-  static async findBySourceId(sourceId: string, userId: string) {
+  static async findBySourceId(sourceId: string, userId: UserId) {
     const [existing] = await db
       .select()
       .from(mediaAssets)
