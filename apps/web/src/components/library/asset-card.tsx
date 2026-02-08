@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Badge } from '~/components/ui/badge';
+import { route } from '~/lib/routes';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
 import {
@@ -52,18 +54,12 @@ export function AssetCard({ asset, onSelect, onRetry }: AssetCardProps) {
     }
   };
 
-  return (
+  const card = (
     <DashboardPanel
       className={cn(
         'transition',
         isReady && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md'
       )}
-      {...(isReady && {
-        'data-tab-target': 'agent',
-        role: 'button',
-        tabIndex: 0,
-        onClick: () => onSelect?.(asset.id),
-      })}
     >
       {asset.thumbnailUrl && (
         <div className="aspect-video w-full overflow-hidden rounded-t-xl bg-muted">
@@ -111,4 +107,10 @@ export function AssetCard({ asset, onSelect, onRetry }: AssetCardProps) {
       </DashboardPanelContent>
     </DashboardPanel>
   );
+
+  if (isReady) {
+    return <Link href={route(`/asset/${asset.id}`)}>{card}</Link>;
+  }
+
+  return card;
 }

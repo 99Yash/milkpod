@@ -20,7 +20,7 @@
 - [x] Task 13: Pipeline error handling & retry (withRetry utility with exponential backoff + jitter, 3 retries per stage, attempts/lastError tracked in DB, POST /api/assets/:id/retry endpoint, retry button in asset-card.tsx). Also fixed branded type system: switched from unique symbol to phantom __brand pattern, exported brand from helpers.ts, updated all services + routes to use branded ID types with casts at route boundaries.
 
 ### Phase 4: UX Improvements
-- [ ] Task 14: Asset detail view
+- [x] Task 14: Asset detail view (new /asset/[id] route with DashboardLayout, AssetDetail client component fetches asset+transcript+segments via Eden, TranscriptViewer shows timestamped segments with speaker labels, ChatPanel reused as side panel, status polling while processing, back nav to library. Asset cards now link to detail page when ready.)
 - [ ] Task 15: Collection management UI
 - [ ] Task 16: Streaming progress indicators
 - [ ] Task 17: Search and filter
