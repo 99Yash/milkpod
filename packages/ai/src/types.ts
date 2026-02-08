@@ -1,9 +1,11 @@
-import type { UIMessage } from 'ai';
+import type { InferUITools, UIMessage } from 'ai';
+import type { QAToolSet } from './tools';
 
 export type ChatMetadata = {
   threadId?: string;
   assetId?: string;
   collectionId?: string;
+  durationMs?: number;
 };
 
 export type ChatDataParts = {
@@ -14,4 +16,8 @@ export type ChatDataParts = {
   };
 };
 
-export type MilkpodMessage = UIMessage<ChatMetadata, ChatDataParts>;
+export type MilkpodMessage = UIMessage<
+  ChatMetadata,
+  ChatDataParts,
+  InferUITools<QAToolSet>
+>;

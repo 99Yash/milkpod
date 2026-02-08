@@ -1,9 +1,9 @@
 'use client';
 
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import type { UIMessage } from 'ai';
+import { chatMetadataSchema, type MilkpodMessage } from '@milkpod/ai';
 
 const SERVER_URL =
   process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3001';
@@ -17,9 +17,13 @@ export function useMilkpodChat({
   threadId?: string;
   assetId?: string;
   collectionId?: string;
-  initialMessages?: UIMessage[];
+  initialMessages?: MilkpodMessage[];
 } = {}) {
   const threadIdRef = useRef<string | undefined>(threadId);
+
+  useEffect(() => {
+    threadIdRef.current = threadId;
+  }, [threadId]);
 
   const customFetch: typeof globalThis.fetch = useCallback(
     async (input, init) => {
@@ -33,18 +37,24 @@ export function useMilkpodChat({
     []
   );
 
-  const chat = useChat({
+  const body = useCallback(
+    () => ({
+      threadId: threadIdRef.current,
+      assetId,
+      collectionId,
+    }),
+    [assetId, collectionId]
+  );
+
+  const chat = useChat<MilkpodMessage>({
     id: threadId,
     messages: initialMessages,
+    messageMetadataSchema: chatMetadataSchema,
     transport: new DefaultChatTransport({
       api: `${SERVER_URL}/api/chat`,
       credentials: 'include',
       fetch: customFetch,
-      body: {
-        threadId,
-        assetId,
-        collectionId,
-      },
+      body,
     }),
   });
 

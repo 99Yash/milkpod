@@ -4,6 +4,7 @@ import {
   embeddings,
   transcriptSegments,
   transcripts,
+  collectionItems,
 } from '@milkpod/db/schemas';
 import { generateEmbedding } from './embeddings';
 
@@ -28,7 +29,7 @@ export async function findRelevantSegments(
   query: string,
   options: RetrievalOptions = {}
 ): Promise<RelevantSegment[]> {
-  const { assetId, limit = 10, minSimilarity = 0.3 } = options;
+  const { assetId, collectionId, limit = 10, minSimilarity = 0.3 } = options;
 
   const queryEmbedding = await generateEmbedding(query);
 
@@ -40,7 +41,7 @@ export async function findRelevantSegments(
     conditions.push(eq(transcripts.assetId, assetId));
   }
 
-  const results = await db
+  let queryBuilder = db
     .select({
       segmentId: transcriptSegments.id,
       text: transcriptSegments.text,
@@ -58,7 +59,17 @@ export async function findRelevantSegments(
     .innerJoin(
       transcripts,
       eq(transcriptSegments.transcriptId, transcripts.id)
-    )
+    );
+
+  if (collectionId) {
+    queryBuilder = queryBuilder.innerJoin(
+      collectionItems,
+      eq(collectionItems.assetId, transcripts.assetId)
+    );
+    conditions.push(eq(collectionItems.collectionId, collectionId));
+  }
+
+  const results = await queryBuilder
     .where(and(...conditions))
     .orderBy(desc(similarity))
     .limit(limit);

@@ -25,7 +25,9 @@ export const qaThreads = pgTable('qa_thread', {
 export const qaMessages = pgTable(
   'qa_message',
   {
-    id: text('id').primaryKey(),
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId('msg')),
     threadId: text('thread_id')
       .notNull()
       .references(() => qaThreads.id, { onDelete: 'cascade' }),
@@ -33,7 +35,7 @@ export const qaMessages = pgTable(
     parts: jsonb('parts').notNull(),
     ...lifecycle_dates,
   },
-  (t) => [index('qa_message_thread_id_idx').on(t.threadId)]
+  (t) => [index('qa_message_thread_id_idx').on(t.threadId)],
 );
 
 export const qaEvidence = pgTable('qa_evidence', {

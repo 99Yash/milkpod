@@ -122,3 +122,5 @@ export function createQAToolSet(context: ToolContext = {}) {
     get_transcript_context: getTranscriptContextTool,
   } as const;
 }
+
+export type QAToolSet = ReturnType<typeof createQAToolSet>;

@@ -1,8 +1,10 @@
 import { boolean, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
-import { lifecycle_dates } from '../helpers';
+import { createId, lifecycle_dates } from '../helpers';
 
 export const user = pgTable('user', {
-  id: text('id').primaryKey(),
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId('usr')),
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').default(false).notNull(),
@@ -11,7 +13,9 @@ export const user = pgTable('user', {
 });
 
 export const session = pgTable('session', {
-  id: text('id').primaryKey(),
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId('ses')),
   expiresAt: timestamp('expires_at').notNull(),
   token: text('token').notNull().unique(),
   ipAddress: text('ip_address'),
@@ -23,7 +27,9 @@ export const session = pgTable('session', {
 });
 
 export const account = pgTable('account', {
-  id: text('id').primaryKey(),
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId('acc')),
   accountId: text('account_id').notNull(),
   providerId: text('provider_id').notNull(),
   userId: text('user_id')
@@ -40,7 +46,9 @@ export const account = pgTable('account', {
 });
 
 export const verification = pgTable('verification', {
-  id: text('id').primaryKey(),
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => createId('ver')),
   identifier: text('identifier').notNull(),
   value: text('value').notNull(),
   expiresAt: timestamp('expires_at').notNull(),

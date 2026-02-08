@@ -1,10 +1,10 @@
 import { db } from '@milkpod/db';
 import { qaMessages } from '@milkpod/db/schemas';
 import { eq, asc } from 'drizzle-orm';
-import type { UIMessage } from 'ai';
+import type { MilkpodMessage } from '@milkpod/ai';
 
 export abstract class ChatService {
-  static async saveMessages(threadId: string, messages: UIMessage[]) {
+  static async saveMessages(threadId: string, messages: MilkpodMessage[]) {
     if (messages.length === 0) return;
 
     await db
@@ -20,7 +20,7 @@ export abstract class ChatService {
       .onConflictDoNothing();
   }
 
-  static async getMessages(threadId: string): Promise<UIMessage[]> {
+  static async getMessages(threadId: string): Promise<MilkpodMessage[]> {
     const rows = await db
       .select()
       .from(qaMessages)
@@ -30,7 +30,7 @@ export abstract class ChatService {
     return rows.map((row) => ({
       id: row.id,
       role: row.role as 'user' | 'assistant',
-      parts: row.parts as UIMessage['parts'],
+      parts: row.parts as MilkpodMessage['parts'],
     }));
   }
 }

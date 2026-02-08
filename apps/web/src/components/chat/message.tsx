@@ -1,18 +1,17 @@
 'use client';
 
-import type { UIMessage } from 'ai';
 import { isToolOrDynamicToolUIPart } from 'ai';
-import type { ContextResult, RetrieveResult } from '@milkpod/ai';
+import type { ContextResult, RetrieveResult, MilkpodMessage } from '@milkpod/ai';
 import { cn } from '~/lib/utils';
 import { ToolResult } from './tool-result';
 
 interface ChatMessageProps {
-  message: UIMessage;
+  message: MilkpodMessage;
 }
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
-  const fallbackOutput: RetrieveResult = {
+  const fallbackOutput: RetrieveResult | ContextResult = {
     status: 'searching',
     query: '',
     segments: [],

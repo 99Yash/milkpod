@@ -1,8 +1,6 @@
-CREATE EXTENSION IF NOT EXISTS vector;--> statement-breakpoint
 CREATE TYPE "public"."asset_status" AS ENUM('queued', 'fetching', 'transcribing', 'embedding', 'ready', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."media_type" AS ENUM('audio', 'video');--> statement-breakpoint
 CREATE TYPE "public"."source_type" AS ENUM('youtube', 'podcast', 'upload', 'external');--> statement-breakpoint
-CREATE TYPE "public"."message_role" AS ENUM('user', 'assistant', 'tool');--> statement-breakpoint
 CREATE TABLE "account" (
 	"id" text PRIMARY KEY NOT NULL,
 	"account_id" text NOT NULL,
@@ -111,11 +109,8 @@ CREATE TABLE "qa_evidence" (
 CREATE TABLE "qa_message" (
 	"id" text PRIMARY KEY NOT NULL,
 	"thread_id" text NOT NULL,
-	"role" "message_role" NOT NULL,
-	"content" text,
-	"tool_name" text,
-	"tool_input" jsonb,
-	"tool_output" jsonb,
+	"role" text NOT NULL,
+	"parts" jsonb NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT current_timestamp
 );

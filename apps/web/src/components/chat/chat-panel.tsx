@@ -8,7 +8,7 @@ import { Spinner } from '~/components/ui/spinner';
 import { toast } from 'sonner';
 import { useMilkpodChat } from '~/hooks/use-milkpod-chat';
 import { ChatMessage } from './message';
-import type { UIMessage } from 'ai';
+import type { MilkpodMessage } from '@milkpod/ai';
 import { api } from '~/lib/api';
 
 interface ChatPanelProps {
@@ -18,7 +18,9 @@ interface ChatPanelProps {
 }
 
 function usePersistedMessages(threadId?: string) {
-  const [messages, setMessages] = useState<UIMessage[] | undefined>(undefined);
+  const [messages, setMessages] = useState<MilkpodMessage[] | undefined>(
+    undefined
+  );
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -29,7 +31,7 @@ function usePersistedMessages(threadId?: string) {
       .get()
       .then(({ data }) => {
         if (data && 'messages' in data) {
-          setMessages(data.messages as UIMessage[]);
+          setMessages(data.messages as MilkpodMessage[]);
         }
       })
       .catch(() => {
