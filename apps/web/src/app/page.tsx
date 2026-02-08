@@ -1,14 +1,12 @@
+import { ArrowRight, Clock, FileText, MessageCircle, Sparkles } from 'lucide-react';
 import Link from 'next/link';
-import {
-  ArrowRight,
-  Clock,
-  FileText,
-  MessageCircle,
-  Sparkles,
-} from 'lucide-react';
+import { redirect } from 'next/navigation';
 import { Button } from '~/components/ui/button';
 import { GitHub, LinkedIn, Mail, X } from '~/components/ui/icons';
+import { getServerSession } from '~/lib/auth/session';
 import { siteConfig } from '~/lib/site';
+
+export const dynamic = 'force-dynamic';
 
 const highlights = [
   {
@@ -31,7 +29,13 @@ const highlights = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const session = await getServerSession();
+
+  if (session?.user) {
+    redirect('/dashboard');
+  }
+
   return (
     <div className="relative min-h-svh bg-background text-foreground">
       <main className="mx-auto flex w-full max-w-5xl flex-col gap-24 px-6 pb-20 pt-10">
@@ -57,11 +61,7 @@ export default function Home() {
             >
               Features
             </a>
-            <Button
-              asChild
-              size="sm"
-              className="rounded-full px-5"
-            >
+            <Button asChild size="sm" className="rounded-full px-5">
               <Link href="/signin">Start free</Link>
             </Button>
           </div>
@@ -238,7 +238,7 @@ export default function Home() {
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-4 sm:col-span-2 lg:col-span-1">
               <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[color:var(--milkpod-ocean)] text-[10px] font-semibold uppercase tracking-[0.2em] text-white">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-(--milkpod-ocean) text-[10px] font-semibold uppercase tracking-[0.2em] text-white">
                   MP
                 </div>
                 <p className="font-semibold tracking-tight">

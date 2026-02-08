@@ -24,17 +24,9 @@ export const auth = betterAuth<BetterAuthOptions>({
   },
   advanced: {
     defaultCookieAttributes: {
-      sameSite: 'none',
-      secure: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
       httpOnly: true,
     },
   },
 });
-
-// Auth client for Next.js Server Components/API routes
-// This makes HTTP calls to the auth server instead of connecting to the database
-export function createAuthServerClient(baseURL: string) {
-  return betterAuth({
-    baseURL,
-  });
-}

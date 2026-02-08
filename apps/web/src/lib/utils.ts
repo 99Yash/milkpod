@@ -40,7 +40,7 @@ export function getErrorMessage(err: unknown): string {
 /**
  * Creates a standardized validation error from Zod issues
  */
-export function createValidationError(issues: z.ZodIssue[]): AppError {
+export function createValidationError(issues: z.core.$ZodIssue[]): AppError {
   const message = issues.map((issue) => issue.message).join(', ');
   return new AppError({
     code: 'UNPROCESSABLE_CONTENT',
@@ -53,7 +53,7 @@ export function createValidationError(issues: z.ZodIssue[]): AppError {
  */
 export function createDatabaseError(
   message?: string,
-  cause?: unknown
+  cause?: unknown,
 ): AppError {
   return new AppError({
     code: 'INTERNAL_SERVER_ERROR',
@@ -77,7 +77,7 @@ export function createAuthError(message?: string): AppError {
  */
 export function createConflictError(
   message?: string,
-  cause?: unknown
+  cause?: unknown,
 ): AppError {
   return new AppError({
     code: 'CONFLICT',
@@ -92,7 +92,7 @@ export function createConflictError(
 export function createExternalServiceError(
   service: string,
   message?: string,
-  cause?: unknown
+  cause?: unknown,
 ): AppError {
   return new AppError({
     code: 'INTERNAL_SERVER_ERROR',
@@ -103,7 +103,7 @@ export function createExternalServiceError(
 
 export function setLocalStorageItem<K extends LocalStorageKey>(
   key: K,
-  value: LocalStorageValue<K>
+  value: LocalStorageValue<K>,
 ): void {
   try {
     const schema = LOCAL_STORAGE_SCHEMAS[key];
@@ -112,7 +112,7 @@ export function setLocalStorageItem<K extends LocalStorageKey>(
     if (!validationResult.success) {
       console.error(
         `[LocalStorageError] Invalid value for key "${key}":`,
-        validationResult.error.issues
+        validationResult.error.issues,
       );
       return;
     }
@@ -122,14 +122,14 @@ export function setLocalStorageItem<K extends LocalStorageKey>(
   } catch (error) {
     console.error(
       `[LocalStorageError] Failed to set item for key "${key}":`,
-      error
+      error,
     );
   }
 }
 
 export function getLocalStorageItem<K extends LocalStorageKey>(
   key: K,
-  defaultValue?: LocalStorageValue<K>
+  defaultValue?: LocalStorageValue<K>,
 ): LocalStorageValue<K> | undefined {
   const schema = LOCAL_STORAGE_SCHEMAS[key];
   const serializedValue = localStorage.getItem(key);
@@ -158,7 +158,7 @@ export function getLocalStorageItem<K extends LocalStorageKey>(
 
   console.warn(
     `[LocalStorageValidation] Invalid data for key "${key}":`,
-    validationResult.error.issues
+    validationResult.error.issues,
   );
 
   if (defaultValue !== undefined) {
@@ -177,7 +177,7 @@ export function removeLocalStorageItem(key: LocalStorageKey): void {
   } catch (error) {
     console.error(
       `[LocalStorageError] Failed to remove item for key "${key}":`,
-      error
+      error,
     );
   }
 }

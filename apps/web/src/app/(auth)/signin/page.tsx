@@ -1,19 +1,16 @@
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { OAuthButtons } from '~/app/(auth)/signin/oauth-buttons';
-import { authServer } from '~/lib/auth/server';
+import { getServerSession } from '~/lib/auth/session';
 import { siteConfig } from '~/lib/site';
 import { EmailSignIn } from './email-signin';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AuthenticationPage() {
-  const session = await authServer.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getServerSession();
 
   if (session?.user) {
-    redirect('/');
+    redirect('/dashboard');
   }
 
   return (
