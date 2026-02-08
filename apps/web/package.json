@@ -11,6 +11,9 @@
   "dependencies": {
     "@milkpod/api": "workspace:*",
     "@milkpod/auth": "workspace:*",
+    "@milkpod/ai": "workspace:*",
+    "@ai-sdk/react": "catalog:",
+    "ai": "catalog:",
     "@hookform/resolvers": "^5.2.2",
     "@elysiajs/eden": "catalog:",
     "@radix-ui/react-accordion": "^1.2.12",

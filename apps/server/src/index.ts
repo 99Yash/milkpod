@@ -8,8 +8,9 @@ new Elysia({ adapter: node() })
   .use(
     cors({
       origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-      methods: ['GET', 'POST', 'OPTIONS'],
+      methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
+      exposeHeaders: ['X-Thread-Id'],
       credentials: true,
     })
   )

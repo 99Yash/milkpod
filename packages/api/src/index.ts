@@ -1,5 +1,9 @@
 import { auth } from '@milkpod/auth';
 import { Elysia } from 'elysia';
+import { chat } from './modules/chat';
+import { assets } from './modules/assets';
+import { collections } from './modules/collections';
+import { threads } from './modules/threads';
 
 export const app = new Elysia({ name: 'api' })
   .all('/api/auth/*', ({ request, set }) => {
@@ -25,18 +29,9 @@ export const app = new Elysia({ name: 'api' })
     };
   })
   .get('/health', () => 'OK')
-  .get('/private', ({ session, set }) => {
-    if (!session) {
-      set.status = 401;
-      return {
-        message: 'Authentication required',
-      };
-    }
-
-    return {
-      message: 'This is private',
-      user: session.user,
-    };
-  });
+  .use(chat)
+  .use(assets)
+  .use(collections)
+  .use(threads);
 
 export type App = typeof app;
