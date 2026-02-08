@@ -1,26 +1,16 @@
 'use client';
 
+import type { ContextResult, RetrieveResult } from '@milkpod/ai';
 import { Badge } from '~/components/ui/badge';
 import { Spinner } from '~/components/ui/spinner';
 import { cn } from '~/lib/utils';
 
-interface Segment {
-  segmentId: string;
-  text: string;
-  startTime: number;
-  endTime: number;
-  speaker: string | null;
-  similarity?: number;
-}
+type ToolResultOutput = RetrieveResult | ContextResult;
+type Segment = ToolResultOutput['segments'][number];
 
 interface ToolResultProps {
   toolName: string;
-  output: {
-    status: string;
-    message: string;
-    segments?: Segment[];
-    query?: string;
-  };
+  output: ToolResultOutput;
   isStreaming: boolean;
 }
 
@@ -55,27 +45,32 @@ export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
 
       {segments.length > 0 && (
         <div className="mt-2 space-y-1.5">
-          {segments.map((segment) => (
-            <div
-              key={segment.segmentId}
-              className={cn(
-                'flex gap-2 rounded-md border bg-background p-2 text-sm',
-                isStreaming && 'animate-pulse'
-              )}
-            >
-              <Badge variant="secondary" className="shrink-0 font-mono text-xs">
-                {formatTime(segment.startTime)}
-              </Badge>
-              {segment.speaker && (
-                <span className="shrink-0 font-medium text-xs text-muted-foreground">
-                  {segment.speaker}:
-                </span>
-              )}
-              <p className="line-clamp-2 text-muted-foreground">
-                {segment.text}
-              </p>
-            </div>
-          ))}
+          {segments.map((segment) => {
+            const segmentKey =
+              'segmentId' in segment ? segment.segmentId : segment.id;
+
+            return (
+              <div
+                key={segmentKey}
+                className={cn(
+                  'flex gap-2 rounded-md border bg-background p-2 text-sm',
+                  isStreaming && 'animate-pulse'
+                )}
+              >
+                <Badge variant="secondary" className="shrink-0 font-mono text-xs">
+                  {formatTime(segment.startTime)}
+                </Badge>
+                {segment.speaker && (
+                  <span className="shrink-0 font-medium text-xs text-muted-foreground">
+                    {segment.speaker}:
+                  </span>
+                )}
+                <p className="line-clamp-2 text-muted-foreground">
+                  {segment.text}
+                </p>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@
 
 import type { UIMessage } from 'ai';
 import { isToolOrDynamicToolUIPart } from 'ai';
+import type { ContextResult, RetrieveResult } from '@milkpod/ai';
 import { cn } from '~/lib/utils';
 import { ToolResult } from './tool-result';
 
@@ -11,6 +12,12 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
+  const fallbackOutput: RetrieveResult = {
+    status: 'searching',
+    query: '',
+    segments: [],
+    message: 'Processing...',
+  };
 
   return (
     <div
@@ -34,24 +41,16 @@ export function ChatMessage({ message }: ChatMessageProps) {
           if (isToolOrDynamicToolUIPart(part)) {
             const hasOutput = part.state === 'output-available';
             const isStreaming = hasOutput && part.preliminary === true;
+            const output =
+              hasOutput && part.output
+                ? (part.output as RetrieveResult | ContextResult)
+                : fallbackOutput;
 
             return (
               <ToolResult
                 key={i}
                 toolName={part.type}
-                output={
-                  hasOutput && part.output
-                    ? (part.output as {
-                        status: string;
-                        message: string;
-                        segments?: [];
-                        query?: string;
-                      })
-                    : {
-                        status: 'searching',
-                        message: 'Processing...',
-                      }
-                }
+                output={output}
                 isStreaming={isStreaming}
               />
             );
