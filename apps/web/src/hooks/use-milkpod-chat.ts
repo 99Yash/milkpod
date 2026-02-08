@@ -3,7 +3,8 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { chatMetadataSchema, type MilkpodMessage } from '@milkpod/ai';
+import { chatMetadataSchema } from '@milkpod/ai/schemas';
+import type { MilkpodMessage } from '@milkpod/ai/types';
 
 const SERVER_URL =
   process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3001';

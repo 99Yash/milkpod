@@ -1,7 +1,7 @@
 'use client';
 
 import { isToolOrDynamicToolUIPart } from 'ai';
-import type { ContextResult, RetrieveResult, MilkpodMessage } from '@milkpod/ai';
+import type { MilkpodMessage, ToolOutput, RetrieveSegmentsOutput } from '@milkpod/ai/types';
 import { cn } from '~/lib/utils';
 import { ToolResult } from './tool-result';
 
@@ -11,7 +11,7 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
-  const fallbackOutput: RetrieveResult | ContextResult = {
+  const fallbackOutput: RetrieveSegmentsOutput = {
     status: 'searching',
     query: '',
     segments: [],
@@ -42,7 +42,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
             const isStreaming = hasOutput && part.preliminary === true;
             const output =
               hasOutput && part.output
-                ? (part.output as RetrieveResult | ContextResult)
+                ? (part.output as ToolOutput)
                 : fallbackOutput;
 
             return (

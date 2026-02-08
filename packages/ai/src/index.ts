@@ -14,10 +14,19 @@ export type { RelevantSegment, RetrievalOptions } from './retrieval';
 
 // Tools
 export { createQAToolSet } from './tools';
-export type { ToolContext, RetrieveResult, ContextResult, QAToolSet } from './tools';
+export type { QAToolSet } from './tools';
 
 // Types
-export type { ChatMetadata, ChatDataParts, MilkpodMessage } from './types';
+export type {
+  ChatMetadata,
+  ChatDataParts,
+  MilkpodMessage,
+  ToolContext,
+  RetrieveSegmentsOutput,
+  GetTranscriptContextOutput,
+  ContextSegment,
+  ToolOutput,
+} from './types';
 
 // Streaming
 export { createChatStream } from './stream';

@@ -4,6 +4,7 @@ import { chat } from './modules/chat';
 import { assets } from './modules/assets';
 import { collections } from './modules/collections';
 import { threads } from './modules/threads';
+import { ingest } from './modules/ingest';
 
 export const app = new Elysia({ name: 'api' })
   .all('/api/auth/*', ({ request, set }) => {
@@ -32,6 +33,7 @@ export const app = new Elysia({ name: 'api' })
   .use(chat)
   .use(assets)
   .use(collections)
-  .use(threads);
+  .use(threads)
+  .use(ingest);
 
 export type App = typeof app;

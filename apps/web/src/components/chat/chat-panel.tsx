@@ -8,7 +8,7 @@ import { Spinner } from '~/components/ui/spinner';
 import { toast } from 'sonner';
 import { useMilkpodChat } from '~/hooks/use-milkpod-chat';
 import { ChatMessage } from './message';
-import type { MilkpodMessage } from '@milkpod/ai';
+import type { MilkpodMessage } from '@milkpod/ai/types';
 import { api } from '~/lib/api';
 
 interface ChatPanelProps {

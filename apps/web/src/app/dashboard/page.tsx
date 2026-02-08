@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import type { Route } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -12,7 +14,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { DashboardTabsClient } from '~/components/dashboard/dashboard-tabs-client';
+import { DashboardContent } from '~/components/dashboard/dashboard-content';
 import {
   DashboardPanel,
   DashboardPanelContent,
@@ -144,14 +146,10 @@ export default async function DashboardPage({
       : tabParam === 'agent' || resolvedSearchParams?.session
         ? 'agent'
         : 'home';
-  const initialSessionId = resolvedSearchParams?.session ?? null;
-
   return (
-    <DashboardTabsClient
+    <DashboardContent
       initialTab={initialTab}
       home={<DashboardHome />}
-      library={<LibraryTab />}
-      agent={<AgentTab />}
     />
   );
 }
@@ -297,78 +295,6 @@ function DashboardHome() {
         </div>
       </section>
     </div>
-  );
-}
-
-function LibraryTab() {
-  return (
-    <section aria-labelledby="library-tab-title" className="space-y-4">
-      <SectionHeader
-        id="library-tab-title"
-        title="Library"
-        action={
-          <Badge variant="outline" className="border-border/60 text-xs">
-            No videos uploaded
-          </Badge>
-        }
-      />
-      <DashboardPanel>
-        <DashboardPanelContent className="space-y-4">
-          <div>
-            <p className="text-base font-semibold text-foreground">Upload your first video</p>
-            <p className="text-sm text-muted-foreground">
-              Drop a video file or paste a link. We'll transcribe it with
-              timestamps and speaker labels.
-            </p>
-          </div>
-          <Button size="sm">
-            <Upload className="size-4" />
-            Upload video
-          </Button>
-        </DashboardPanelContent>
-      </DashboardPanel>
-      <DashboardPanel>
-        <DashboardPanelContent className="space-y-3">
-          <p className="text-sm font-medium text-foreground">What we extract</p>
-          <ul className="space-y-2 text-xs text-muted-foreground">
-            <li>Full transcript with timestamps and speaker labels.</li>
-            <li>Key moments and topic transitions.</li>
-            <li>AI-generated summary and highlights.</li>
-            <li>Searchable Q&A index for instant answers.</li>
-          </ul>
-        </DashboardPanelContent>
-      </DashboardPanel>
-    </section>
-  );
-}
-
-function AgentTab() {
-  return (
-    <section aria-labelledby="agent-tab-title" className="space-y-4">
-      <SectionHeader
-        id="agent-tab-title"
-        title="Agent"
-        action={
-          <Badge variant="outline" className="border-border/60 text-xs">
-            Copilot
-          </Badge>
-        }
-      />
-      <DashboardPanel>
-        <DashboardPanelContent className="space-y-4">
-          <div>
-            <p className="text-base font-semibold text-foreground">Video copilot</p>
-            <p className="text-sm text-muted-foreground">
-              Ask questions about your transcripts and get timestamped, contextual
-              answers.
-            </p>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Upload a video first to start chatting with the agent.
-          </p>
-        </DashboardPanelContent>
-      </DashboardPanel>
-    </section>
   );
 }
 
