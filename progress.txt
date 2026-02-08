@@ -3,7 +3,7 @@
 ### Phase 1: Type Safety & Foundations
 - [x] Task 1: Branded ID types
 - [x] Task 2: Shared API response types
-- [ ] Task 3: Replace t.Any() message validation
+- [x] Task 3: Replace t.Any() message validation
 - [ ] Task 4: Shared tool output types
 - [x] Task 5: Discriminated union for asset status (included in Task 2)
 
