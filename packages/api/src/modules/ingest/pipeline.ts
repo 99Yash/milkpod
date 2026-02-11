@@ -4,7 +4,7 @@ import { resolveAudioUrl } from './ytdlp';
 import { transcribeAudio } from './elevenlabs';
 import { groupWordsIntoSegments } from './segments';
 import { IngestService } from './service';
-import { emitAssetStatus } from '../../events/asset-events';
+import { emitAssetStatus, emitAssetProgress } from '../../events/asset-events';
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
@@ -79,7 +79,9 @@ export async function orchestratePipeline(
       dimensions: number;
     }[] = [];
 
-    for (const seg of storedSegments) {
+    const totalSegments = storedSegments.length;
+    for (let si = 0; si < totalSegments; si++) {
+      const seg = storedSegments[si]!;
       const chunks = chunkSegmentText(seg.text);
       if (chunks.length === 0) continue;
 
@@ -95,6 +97,10 @@ export async function orchestratePipeline(
           dimensions: EMBEDDING_DIMENSIONS,
         });
       }
+
+      // Emit sub-stage progress
+      const pct = ((si + 1) / totalSegments) * 100;
+      emitAssetProgress(userId, assetId, 'embedding', pct, `Embedding segments (${si + 1}/${totalSegments})`);
     }
 
     if (embeddingItems.length > 0) {

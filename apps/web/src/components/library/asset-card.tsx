@@ -21,6 +21,10 @@ interface AssetCardProps {
   asset: Asset;
   onSelect?: (assetId: string) => void;
   onRetry?: () => void;
+  /** Real-time progress (0–100) from SSE, if available */
+  progress?: number;
+  /** Human-readable progress message from SSE */
+  progressMessage?: string;
 }
 
 const statusLabels: Record<AssetStatus, string> = {
@@ -32,14 +36,37 @@ const statusLabels: Record<AssetStatus, string> = {
   failed: 'Failed',
 };
 
-const statusProgress: Record<AssetStatus, number> = {
+/** Fallback progress when no SSE progress is available */
+const statusProgressFallback: Record<AssetStatus, number> = {
   queued: 5,
-  fetching: 25,
-  transcribing: 50,
-  embedding: 75,
+  fetching: 15,
+  transcribing: 40,
+  embedding: 70,
   ready: 100,
   failed: 0,
 };
+
+/**
+ * Maps SSE sub-stage progress (0-100 within a stage) to overall progress.
+ * Each stage occupies a portion of the 0-100 range:
+ *   fetching: 5–25, transcribing: 25–60, embedding: 60–95
+ */
+function computeOverallProgress(status: AssetStatus, stageProgress?: number): number {
+  if (status === 'ready') return 100;
+  if (status === 'failed') return 0;
+  if (stageProgress === undefined) return statusProgressFallback[status];
+
+  const ranges: Partial<Record<AssetStatus, [number, number]>> = {
+    fetching: [5, 25],
+    transcribing: [25, 60],
+    embedding: [60, 95],
+  };
+  const range = ranges[status];
+  if (!range) return statusProgressFallback[status];
+
+  const [min, max] = range;
+  return Math.round(min + ((max - min) * stageProgress) / 100);
+}
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -47,13 +74,22 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function AssetCard({ asset, onSelect, onRetry }: AssetCardProps) {
+export function AssetCard({
+  asset,
+  onSelect,
+  onRetry,
+  progress,
+  progressMessage,
+}: AssetCardProps) {
   const [retrying, setRetrying] = useState(false);
   const [collectionDialogOpen, setCollectionDialogOpen] = useState(false);
   const { status } = asset;
   const isReady = status === 'ready';
   const isFailed = status === 'failed';
   const inProgress = isProcessingStatus(status);
+
+  const overallProgress = computeOverallProgress(status, progress);
+  const displayLabel = progressMessage || statusLabels[status] || status;
 
   const handleRetry = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -127,16 +163,16 @@ export function AssetCard({ asset, onSelect, onRetry }: AssetCardProps) {
               )}
             >
               {inProgress && <Spinner className="size-3 mr-1" />}
-              {statusLabels[status] ?? status}
+              {displayLabel}
             </Badge>
           </div>
         </div>
       </DashboardPanelContent>
       {inProgress && (
-        <div className="h-0.5 w-full overflow-hidden bg-muted">
+        <div className="h-1 w-full overflow-hidden bg-muted">
           <div
-            className="h-full bg-primary transition-all duration-500 ease-out"
-            style={{ width: `${statusProgress[status]}%` }}
+            className="h-full bg-primary transition-all duration-700 ease-out"
+            style={{ width: `${overallProgress}%` }}
           />
         </div>
       )}

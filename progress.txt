@@ -22,7 +22,7 @@
 ### Phase 4: UX Improvements
 - [x] Task 14: Asset detail view (new /asset/[id] route with DashboardLayout, AssetDetail client component fetches asset+transcript+segments via Eden, TranscriptViewer shows timestamped segments with speaker labels, ChatPanel reused as side panel, status polling while processing, back nav to library. Asset cards now link to detail page when ready.)
 - [x] Task 15: Collection management UI (library tab Assets/Collections toggle, collection-list.tsx + collection-card.tsx with edit/delete dialogs, create-collection-dialog.tsx, add-to-collection-dialog.tsx on asset cards via FolderPlus icon, /collection/[id] detail page with member asset list + remove items + scoped Q&A ChatPanel via collectionId, add-asset-to-collection-dialog.tsx in detail view)
-- [ ] Task 16: Streaming progress indicators
+- [x] Task 16: Streaming progress indicators (enhanced existing SSE system: added progress field to AssetStatusEvent, emitAssetProgress helper for sub-stage progress, pipeline emits per-segment embedding progress, AssetCard uses real SSE progress mapped to overall % via stage ranges, useAssetEvents hook has auto-reconnection with exponential backoff, AssetList tracks per-asset progress map, AssetDetail shows live progress messages)
 - [ ] Task 17: Search and filter
 
 ### Phase 5: Sharing & Access Control

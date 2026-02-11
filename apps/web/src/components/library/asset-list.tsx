@@ -4,17 +4,24 @@ import { useEffect, useState, useCallback } from 'react';
 import { api } from '~/lib/api';
 import { AssetCard } from './asset-card';
 import { Spinner } from '~/components/ui/spinner';
-import type { Asset, AssetStatus } from '@milkpod/api/types';
-import { useAssetEvents } from '~/hooks/use-asset-events';
+import type { Asset } from '@milkpod/api/types';
+import { useAssetEvents, type AssetStatusEvent } from '~/hooks/use-asset-events';
 
 interface AssetListProps {
   onSelectAsset?: (assetId: string) => void;
   refreshKey?: number;
 }
 
+/** Per-asset progress info from SSE events */
+interface AssetProgress {
+  progress?: number;
+  message?: string;
+}
+
 export function AssetList({ onSelectAsset, refreshKey }: AssetListProps) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [progressMap, setProgressMap] = useState<Record<string, AssetProgress>>({});
 
   const fetchAssets = useCallback(async () => {
     try {
@@ -33,16 +40,33 @@ export function AssetList({ onSelectAsset, refreshKey }: AssetListProps) {
     fetchAssets();
   }, [fetchAssets, refreshKey]);
 
-  // SSE: update asset status in real-time
+  // SSE: update asset status and progress in real-time
   useAssetEvents(
     useCallback(
-      (assetId: string, status: AssetStatus) => {
+      (event: AssetStatusEvent) => {
         setAssets((prev) =>
-          prev.map((a) => (a.id === assetId ? { ...a, status } : a))
+          prev.map((a) =>
+            a.id === event.assetId ? { ...a, status: event.status } : a
+          )
         );
+        setProgressMap((prev) => ({
+          ...prev,
+          [event.assetId]: {
+            progress: event.progress,
+            message: event.message,
+          },
+        }));
         // Re-fetch full data when asset becomes ready
-        if (status === 'ready') {
-          fetchAssets();
+        if (event.status === 'ready' || event.status === 'failed') {
+          // Clean up progress for terminal states
+          setProgressMap((prev) => {
+            const next = { ...prev };
+            delete next[event.assetId];
+            return next;
+          });
+          if (event.status === 'ready') {
+            fetchAssets();
+          }
         }
       },
       [fetchAssets]
@@ -68,7 +92,14 @@ export function AssetList({ onSelectAsset, refreshKey }: AssetListProps) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {assets.map((asset) => (
-        <AssetCard key={asset.id} asset={asset} onSelect={onSelectAsset} onRetry={fetchAssets} />
+        <AssetCard
+          key={asset.id}
+          asset={asset}
+          onSelect={onSelectAsset}
+          onRetry={fetchAssets}
+          progress={progressMap[asset.id]?.progress}
+          progressMessage={progressMap[asset.id]?.message}
+        />
       ))}
     </div>
   );

@@ -6,6 +6,8 @@ export interface AssetStatusEvent {
   userId: string;
   status: AssetStatus;
   message?: string;
+  /** 0–100 progress within the current stage */
+  progress?: number;
 }
 
 type StatusListener = (payload: AssetStatusEvent) => void;
@@ -27,4 +29,21 @@ export function emitAssetStatus(
   message?: string
 ): void {
   assetEvents.emit('status', { assetId, userId, status, message });
+}
+
+/** Emit sub-stage progress (0–100) without changing the status */
+export function emitAssetProgress(
+  userId: string,
+  assetId: string,
+  status: AssetStatus,
+  progress: number,
+  message?: string
+): void {
+  assetEvents.emit('status', {
+    assetId,
+    userId,
+    status,
+    progress: Math.round(Math.min(100, Math.max(0, progress))),
+    message,
+  });
 }

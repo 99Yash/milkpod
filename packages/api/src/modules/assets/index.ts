@@ -54,6 +54,7 @@ export const assets = new Elysia({ prefix: '/api/assets' })
             assetId: event.assetId,
             status: event.status,
             message: event.message,
+            progress: event.progress,
           });
           write(`data: ${data}\n\n`);
         };

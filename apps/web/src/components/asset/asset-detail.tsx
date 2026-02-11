@@ -21,7 +21,7 @@ import type {
   AssetStatus,
 } from '@milkpod/api/types';
 import { isProcessingStatus } from '@milkpod/api/types';
-import { useAssetEvents } from '~/hooks/use-asset-events';
+import { useAssetEvents, type AssetStatusEvent } from '~/hooks/use-asset-events';
 
 interface AssetDetailProps {
   assetId: string;
@@ -53,6 +53,7 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
   const [asset, setAsset] = useState<AssetData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [progressMessage, setProgressMessage] = useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
@@ -84,14 +85,16 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
     };
   }, [assetId]);
 
-  // SSE: update status in real-time
+  // SSE: update status and progress in real-time
   useAssetEvents(
     useCallback(
-      (eventAssetId: string, status: AssetStatus) => {
-        if (eventAssetId !== assetId) return;
-        setAsset((prev) => (prev ? { ...prev, status } : prev));
+      (event: AssetStatusEvent) => {
+        if (event.assetId !== assetId) return;
+        setAsset((prev) => (prev ? { ...prev, status: event.status } : prev));
+        setProgressMessage(event.message);
         // Re-fetch full data (with transcript) when ready
-        if (status === 'ready') {
+        if (event.status === 'ready') {
+          setProgressMessage(undefined);
           api.api
             .assets({ id: assetId })
             .get()
@@ -99,6 +102,9 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
               if (data) setAsset(data as AssetData);
             })
             .catch(() => {});
+        }
+        if (event.status === 'failed') {
+          setProgressMessage(undefined);
         }
       },
       [assetId]
@@ -180,7 +186,7 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
                 {isProcessingStatus(asset.status) && (
                   <Spinner className="mr-1 size-3" />
                 )}
-                {statusLabels[asset.status] ?? asset.status}
+                {progressMessage || statusLabels[asset.status] || asset.status}
               </Badge>
             </div>
           </div>
@@ -231,7 +237,7 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
               <p className="text-sm text-muted-foreground">
                 {asset.status === 'failed'
                   ? `Processing failed${asset.lastError ? `: ${asset.lastError}` : ''}`
-                  : 'Transcript will appear here once processing completes.'}
+                  : progressMessage || 'Transcript will appear here once processing completes.'}
               </p>
             </div>
           </DashboardPanelContent>
