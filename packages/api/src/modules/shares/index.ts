@@ -1,4 +1,5 @@
 import { Elysia } from 'elysia';
+import { createChatStream } from '@milkpod/ai';
 import type { AssetId, CollectionId, ShareLinkId, UserId } from '@milkpod/db/helpers';
 import { authMiddleware } from '../../middleware/auth';
 import { ShareModel } from './model';
@@ -89,4 +90,49 @@ export const shares = new Elysia({ prefix: '/api/shares' })
       canQuery: result.link.canQuery,
       expiresAt: result.link.expiresAt,
     };
-  });
+  })
+  // Ephemeral Q&A for shared links (public, rate-limited)
+  .post(
+    '/chat/:token',
+    async ({ params, body, set }) => {
+      const result = await ShareService.getSharedResource(params.token);
+      if (!result) {
+        set.status = 404;
+        return { message: 'Invalid or expired share link' };
+      }
+
+      if (!result.link.canQuery) {
+        set.status = 403;
+        return { message: 'Q&A is not enabled for this share link' };
+      }
+
+      const { allowed, remaining } = await ShareService.checkRateLimit(
+        result.link.id
+      );
+      if (!allowed) {
+        set.status = 429;
+        return { message: 'Rate limit exceeded. Try again later.' };
+      }
+
+      // Extract question text from last user message for audit log
+      const lastUserMsg = body.messages.findLast((m) => m.role === 'user');
+      const questionText =
+        lastUserMsg?.parts
+          ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+          .map((p) => p.text)
+          .join(' ') ?? '';
+
+      // Log before streaming so aborted requests still count
+      await ShareService.logQuery(result.link.id, questionText);
+
+      return createChatStream({
+        messages: body.messages,
+        assetId: result.link.assetId ?? undefined,
+        collectionId: result.link.collectionId ?? undefined,
+        headers: {
+          'X-RateLimit-Remaining': String(remaining - 1),
+        },
+      });
+    },
+    { body: ShareModel.chat }
+  );

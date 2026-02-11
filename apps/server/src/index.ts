@@ -10,7 +10,7 @@ new Elysia({ adapter: node() })
       origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
       methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
-      exposeHeaders: ['X-Thread-Id'],
+      exposeHeaders: ['X-Thread-Id', 'X-RateLimit-Remaining'],
       credentials: true,
     })
   )

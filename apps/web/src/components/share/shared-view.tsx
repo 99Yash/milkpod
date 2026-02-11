@@ -10,6 +10,7 @@ import {
   DashboardPanelContent,
 } from '~/components/dashboard/dashboard-panel';
 import { TranscriptViewer } from '~/components/asset/transcript-viewer';
+import { SharedChatPanel } from './shared-chat-panel';
 import type {
   Asset,
   Collection,
@@ -109,7 +110,9 @@ export function SharedView({ token }: SharedViewProps) {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
+    <div
+      className={`mx-auto px-4 py-8 ${data.canQuery ? 'max-w-6xl' : 'max-w-4xl'}`}
+    >
       <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
         <Badge variant="secondary" className="text-xs">
           Shared
@@ -131,7 +134,23 @@ export function SharedView({ token }: SharedViewProps) {
         )}
       </div>
 
-      {data.type === 'asset' ? (
+      {data.canQuery ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div>
+            {data.type === 'asset' ? (
+              <SharedAssetView resource={data.resource} />
+            ) : (
+              <SharedCollectionView resource={data.resource} />
+            )}
+          </div>
+          <DashboardPanel className="h-[600px]">
+            <div className="flex items-center gap-2 border-b px-4 py-3">
+              <h2 className="text-sm font-medium text-foreground">Q&A</h2>
+            </div>
+            <SharedChatPanel token={token} />
+          </DashboardPanel>
+        </div>
+      ) : data.type === 'asset' ? (
         <SharedAssetView resource={data.resource} />
       ) : (
         <SharedCollectionView resource={data.resource} />

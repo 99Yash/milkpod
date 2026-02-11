@@ -2,13 +2,14 @@ import { db } from '@milkpod/db';
 import type { AssetId, CollectionId, ShareLinkId, UserId } from '@milkpod/db/helpers';
 import {
   shareLinks,
+  shareQueries,
   mediaAssets,
   collections,
   collectionItems,
   transcripts,
   transcriptSegments,
 } from '@milkpod/db/schemas';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gte, isNull, count } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import type { ShareModel } from './model';
 
@@ -152,5 +153,29 @@ export abstract class ShareService {
     }
 
     return null;
+  }
+
+  private static RATE_LIMIT = 10;
+
+  static async checkRateLimit(shareLinkId: ShareLinkId) {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const [result] = await db
+      .select({ total: count() })
+      .from(shareQueries)
+      .where(
+        and(
+          eq(shareQueries.shareLinkId, shareLinkId),
+          gte(shareQueries.createdAt, oneHourAgo)
+        )
+      );
+    const used = result?.total ?? 0;
+    return {
+      allowed: used < ShareService.RATE_LIMIT,
+      remaining: Math.max(0, ShareService.RATE_LIMIT - used),
+    };
+  }
+
+  static async logQuery(shareLinkId: ShareLinkId, question: string) {
+    await db.insert(shareQueries).values({ shareLinkId, question });
   }
 }
