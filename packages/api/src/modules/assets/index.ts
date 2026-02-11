@@ -5,6 +5,7 @@ import { AssetModel } from './model';
 import { AssetService } from './service';
 import { IngestService } from '../ingest/service';
 import { orchestratePipeline } from '../ingest/pipeline';
+import { assetEvents, type AssetStatusEvent } from '../../events/asset-events';
 
 export const assets = new Elysia({ prefix: '/api/assets' })
   .use(authMiddleware)
@@ -25,6 +26,64 @@ export const assets = new Elysia({ prefix: '/api/assets' })
       return { message: 'Authentication required' };
     }
     return AssetService.list(session.user.id as UserId);
+  })
+  .get('/events', ({ session, set }) => {
+    if (!session) {
+      set.status = 401;
+      return { message: 'Authentication required' };
+    }
+
+    const userId = session.user.id;
+
+    const encoder = new TextEncoder();
+    let cleanup: (() => void) | undefined;
+
+    const stream = new ReadableStream({
+      start(controller) {
+        const write = (text: string) => {
+          try {
+            controller.enqueue(encoder.encode(text));
+          } catch {
+            // stream already closed
+          }
+        };
+
+        const listener = (event: AssetStatusEvent) => {
+          if (event.userId !== userId) return;
+          const data = JSON.stringify({
+            assetId: event.assetId,
+            status: event.status,
+            message: event.message,
+          });
+          write(`data: ${data}\n\n`);
+        };
+
+        assetEvents.on('status', listener);
+
+        const heartbeat = setInterval(() => {
+          write(': heartbeat\n\n');
+        }, 30_000);
+
+        // Send initial comment so client knows connection is alive
+        write(': connected\n\n');
+
+        cleanup = () => {
+          assetEvents.off('status', listener);
+          clearInterval(heartbeat);
+        };
+      },
+      cancel() {
+        cleanup?.();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    }) as Response;
   })
   .get('/:id', async ({ params, session, set }) => {
     if (!session) {
@@ -88,7 +147,7 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     await IngestService.resetForRetry(asset.id);
 
     // Fire-and-forget pipeline retry
-    orchestratePipeline(asset.id, asset.sourceUrl);
+    orchestratePipeline(asset.id, asset.sourceUrl, session.user.id as UserId);
 
     return { message: 'Retry started' };
   });

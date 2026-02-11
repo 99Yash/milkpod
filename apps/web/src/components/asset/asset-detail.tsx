@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Clock, Mic, User } from 'lucide-react';
 import { toast } from 'sonner';
@@ -21,6 +21,7 @@ import type {
   AssetStatus,
 } from '@milkpod/api/types';
 import { isProcessingStatus } from '@milkpod/api/types';
+import { useAssetEvents } from '~/hooks/use-asset-events';
 
 interface AssetDetailProps {
   assetId: string;
@@ -83,21 +84,26 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
     };
   }, [assetId]);
 
-  // Poll while processing
-  useEffect(() => {
-    if (!asset || !isProcessingStatus(asset.status)) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const { data } = await api.api.assets({ id: assetId }).get();
-        if (data) setAsset(data as AssetData);
-      } catch {
-        // ignore polling errors
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [asset?.status, assetId]);
+  // SSE: update status in real-time
+  useAssetEvents(
+    useCallback(
+      (eventAssetId: string, status: AssetStatus) => {
+        if (eventAssetId !== assetId) return;
+        setAsset((prev) => (prev ? { ...prev, status } : prev));
+        // Re-fetch full data (with transcript) when ready
+        if (status === 'ready') {
+          api.api
+            .assets({ id: assetId })
+            .get()
+            .then(({ data }) => {
+              if (data) setAsset(data as AssetData);
+            })
+            .catch(() => {});
+        }
+      },
+      [assetId]
+    )
+  );
 
   if (isLoading) {
     return (

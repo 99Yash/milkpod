@@ -32,6 +32,15 @@ const statusLabels: Record<AssetStatus, string> = {
   failed: 'Failed',
 };
 
+const statusProgress: Record<AssetStatus, number> = {
+  queued: 5,
+  fetching: 25,
+  transcribing: 50,
+  embedding: 75,
+  ready: 100,
+  failed: 0,
+};
+
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -123,6 +132,14 @@ export function AssetCard({ asset, onSelect, onRetry }: AssetCardProps) {
           </div>
         </div>
       </DashboardPanelContent>
+      {inProgress && (
+        <div className="h-0.5 w-full overflow-hidden bg-muted">
+          <div
+            className="h-full bg-primary transition-all duration-500 ease-out"
+            style={{ width: `${statusProgress[status]}%` }}
+          />
+        </div>
+      )}
     </DashboardPanel>
   );
 

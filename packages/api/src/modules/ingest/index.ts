@@ -61,7 +61,7 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       }
 
       // Fire-and-forget pipeline
-      orchestratePipeline(asset.id, body.url);
+      orchestratePipeline(asset.id, body.url, userId);
 
       return asset;
     },

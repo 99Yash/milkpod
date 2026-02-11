@@ -1,9 +1,10 @@
 import { chunkSegmentText, generateEmbeddings, EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSIONS } from '@milkpod/ai/embeddings';
-import type { AssetId, SegmentId } from '@milkpod/db/helpers';
+import type { AssetId, SegmentId, UserId } from '@milkpod/db/helpers';
 import { resolveAudioUrl } from './ytdlp';
 import { transcribeAudio } from './elevenlabs';
 import { groupWordsIntoSegments } from './segments';
 import { IngestService } from './service';
+import { emitAssetStatus } from '../../events/asset-events';
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
@@ -43,17 +44,20 @@ async function withRetry<T>(
 
 export async function orchestratePipeline(
   assetId: AssetId,
-  sourceUrl: string
+  sourceUrl: string,
+  userId: UserId
 ): Promise<void> {
   try {
     // Stage 1: Fetch direct audio URL
     await IngestService.updateStatus(assetId, 'fetching');
+    emitAssetStatus(userId, assetId, 'fetching');
     const audioUrl = await withRetry('fetching', assetId, () =>
       resolveAudioUrl(sourceUrl)
     );
 
     // Stage 2: Transcribe audio
     await IngestService.updateStatus(assetId, 'transcribing');
+    emitAssetStatus(userId, assetId, 'transcribing');
     const result = await withRetry('transcribing', assetId, () =>
       transcribeAudio(audioUrl)
     );
@@ -66,6 +70,7 @@ export async function orchestratePipeline(
 
     // Stage 3: Generate and store embeddings
     await IngestService.updateStatus(assetId, 'embedding');
+    emitAssetStatus(userId, assetId, 'embedding');
     const embeddingItems: {
       segmentId: SegmentId;
       content: string;
@@ -98,6 +103,7 @@ export async function orchestratePipeline(
 
     // Stage 4: Mark as ready
     await IngestService.updateStatus(assetId, 'ready');
+    emitAssetStatus(userId, assetId, 'ready');
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Unknown pipeline error';
@@ -105,5 +111,6 @@ export async function orchestratePipeline(
     await IngestService.updateStatus(assetId, 'failed', {
       lastError: message,
     });
+    emitAssetStatus(userId, assetId, 'failed', message);
   }
 }

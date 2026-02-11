@@ -4,15 +4,13 @@ import { useEffect, useState, useCallback } from 'react';
 import { api } from '~/lib/api';
 import { AssetCard } from './asset-card';
 import { Spinner } from '~/components/ui/spinner';
-import type { Asset } from '@milkpod/api/types';
-import { isTerminalStatus } from '@milkpod/api/types';
+import type { Asset, AssetStatus } from '@milkpod/api/types';
+import { useAssetEvents } from '~/hooks/use-asset-events';
 
 interface AssetListProps {
   onSelectAsset?: (assetId: string) => void;
   refreshKey?: number;
 }
-
-const POLL_INTERVAL = 3000;
 
 export function AssetList({ onSelectAsset, refreshKey }: AssetListProps) {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -35,14 +33,21 @@ export function AssetList({ onSelectAsset, refreshKey }: AssetListProps) {
     fetchAssets();
   }, [fetchAssets, refreshKey]);
 
-  // Poll while any asset is in a non-terminal status
-  useEffect(() => {
-    const hasInProgress = assets.some((a) => !isTerminalStatus(a.status));
-    if (!hasInProgress) return;
-
-    const interval = setInterval(fetchAssets, POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, [assets, fetchAssets]);
+  // SSE: update asset status in real-time
+  useAssetEvents(
+    useCallback(
+      (assetId: string, status: AssetStatus) => {
+        setAssets((prev) =>
+          prev.map((a) => (a.id === assetId ? { ...a, status } : a))
+        );
+        // Re-fetch full data when asset becomes ready
+        if (status === 'ready') {
+          fetchAssets();
+        }
+      },
+      [fetchAssets]
+    )
+  );
 
   if (isLoading) {
     return (
