@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { ShareDialog } from '~/components/share/share-dialog';
 import { toast } from 'sonner';
 import { api } from '~/lib/api';
 import { Badge } from '~/components/ui/badge';
@@ -110,9 +111,15 @@ export function CollectionDetail({ collectionId }: CollectionDetailProps) {
 
       {/* Collection header */}
       <div className="space-y-1">
-        <h1 className="text-lg font-semibold text-foreground">
-          {collection.name}
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold text-foreground">
+            {collection.name}
+          </h1>
+          <ShareDialog
+            collectionId={collectionId}
+            resourceName={collection.name}
+          />
+        </div>
         {collection.description && (
           <p className="text-sm text-muted-foreground">
             {collection.description}

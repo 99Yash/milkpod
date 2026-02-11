@@ -26,8 +26,8 @@
 - [x] Task 17: Search and filter (API: GET /api/assets?q=&status=&sourceType= with ilike title/channelName search + inArray status/sourceType filtering in AssetService.search(), Frontend: SearchFilterBar component with debounced search input + status/sourceType Select dropdowns + clear filters, wired into LibraryTab → AssetList)
 
 ### Phase 5: Sharing & Access Control
-- [ ] Task 18: Share link schema & API
-- [ ] Task 19: Share link UI
+- [x] Task 18: Share link schema & API (share_links table with id/token/userId/assetId/collectionId/canQuery/expiresAt/revokedAt, ShareLinkId branded type, ShareService with create/list/revoke/validateToken/getSharedResource, shares module with POST /api/shares, GET /api/shares, DELETE /api/shares/:id, GET /api/shares/validate/:token, crypto-random 32-char base64url tokens, ownership verification on create, expiry+revocation checks on validate, migration 0004)
+- [x] Task 19: Share link UI (ShareDialog component with create link form: canQuery toggle, expiry selector, auto-copy to clipboard; lists existing active links with copy + revoke buttons; added to asset-detail.tsx and collection-detail.tsx header areas; public /share/[token] page with SharedView component that validates token via API and renders read-only transcript viewer for assets or item list for collections; enhanced ShareService.getSharedResource to load transcript+segments for assets and items for collections; rebuilt @milkpod/api dist to include shares module types)
 - [ ] Task 20: Rate-limited shared Q&A
 
 ### Phase 6: Production Hardening

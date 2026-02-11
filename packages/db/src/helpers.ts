@@ -25,6 +25,7 @@ export type ThreadId = Brand<string, 'ThreadId'>;
 export type MessageId = Brand<string, 'MessageId'>;
 export type MessagePartId = Brand<string, 'MessagePartId'>;
 export type EvidenceId = Brand<string, 'EvidenceId'>;
+export type ShareLinkId = Brand<string, 'ShareLinkId'>;
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Clock, Mic, User } from 'lucide-react';
+import { ShareDialog } from '~/components/share/share-dialog';
 import { toast } from 'sonner';
 import { api } from '~/lib/api';
 import { Badge } from '~/components/ui/badge';
@@ -146,6 +147,12 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
 
       {/* Asset header */}
       <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div />
+          {isReady && (
+            <ShareDialog assetId={assetId} resourceName={asset.title} />
+          )}
+        </div>
         <div className="flex items-start gap-4">
           {asset.thumbnailUrl && (
             <div className="hidden shrink-0 overflow-hidden rounded-lg sm:block sm:w-40">

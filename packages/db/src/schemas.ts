@@ -5,3 +5,4 @@ export * from './schema/transcript-segments';
 export * from './schema/embeddings';
 export * from './schema/collections';
 export * from './schema/qa';
+export * from './schema/share-links';
