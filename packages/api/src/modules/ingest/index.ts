@@ -1,5 +1,4 @@
 import { Elysia } from 'elysia';
-import type { UserId } from '@milkpod/db/helpers';
 import { authMiddleware } from '../../middleware/auth';
 import { IngestModel } from './model';
 import { IngestService } from './service';
@@ -17,7 +16,7 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
         return { message: 'Authentication required' };
       }
 
-      const userId = session.user.id as UserId;
+      const userId = session.user.id;
 
       // Resolve metadata synchronously — fail fast on bad URLs
       let metadata;

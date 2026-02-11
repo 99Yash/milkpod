@@ -1,14 +1,12 @@
 import { integer, jsonb, pgTable, text } from 'drizzle-orm/pg-core';
-import { createId, lifecycle_dates, type TranscriptId, type AssetId } from '../helpers';
+import { createId, lifecycle_dates } from '../helpers';
 import { mediaAssets } from './media-assets';
 
 export const transcripts = pgTable('transcript', {
   id: text('id')
-    .$type<TranscriptId>()
     .primaryKey()
-    .$defaultFn(() => createId<TranscriptId>('trsc')),
+    .$defaultFn(() => createId('trsc')),
   assetId: text('asset_id')
-    .$type<AssetId>()
     .notNull()
     .references(() => mediaAssets.id, { onDelete: 'cascade' }),
   provider: text('provider').default('elevenlabs').notNull(),

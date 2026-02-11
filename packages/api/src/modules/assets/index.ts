@@ -1,5 +1,4 @@
 import { Elysia } from 'elysia';
-import type { AssetId, UserId } from '@milkpod/db/helpers';
 import { authMiddleware } from '../../middleware/auth';
 import { AssetModel } from './model';
 import { AssetService } from './service';
@@ -16,7 +15,7 @@ export const assets = new Elysia({ prefix: '/api/assets' })
         set.status = 401;
         return { message: 'Authentication required' };
       }
-      return AssetService.create(session.user.id as UserId, body);
+      return AssetService.create(session.user.id, body);
     },
     { body: AssetModel.create }
   )
@@ -29,9 +28,9 @@ export const assets = new Elysia({ prefix: '/api/assets' })
       }
       const hasFilters = query.q || query.status || query.sourceType;
       if (hasFilters) {
-        return AssetService.search(session.user.id as UserId, query);
+        return AssetService.search(session.user.id, query);
       }
-      return AssetService.list(session.user.id as UserId);
+      return AssetService.list(session.user.id);
     },
     { query: AssetModel.listQuery }
   )
@@ -99,7 +98,7 @@ export const assets = new Elysia({ prefix: '/api/assets' })
       set.status = 401;
       return { message: 'Authentication required' };
     }
-    const asset = await AssetService.getWithTranscript(params.id as AssetId, session.user.id as UserId);
+    const asset = await AssetService.getWithTranscript(params.id, session.user.id);
     if (!asset) {
       set.status = 404;
       return { message: 'Asset not found' };
@@ -113,7 +112,7 @@ export const assets = new Elysia({ prefix: '/api/assets' })
         set.status = 401;
         return { message: 'Authentication required' };
       }
-      const updated = await AssetService.update(params.id as AssetId, session.user.id as UserId, body);
+      const updated = await AssetService.update(params.id, session.user.id, body);
       if (!updated) {
         set.status = 404;
         return { message: 'Asset not found' };
@@ -127,7 +126,7 @@ export const assets = new Elysia({ prefix: '/api/assets' })
       set.status = 401;
       return { message: 'Authentication required' };
     }
-    const deleted = await AssetService.remove(params.id as AssetId, session.user.id as UserId);
+    const deleted = await AssetService.remove(params.id, session.user.id);
     if (!deleted) {
       set.status = 404;
       return { message: 'Asset not found' };
@@ -139,7 +138,7 @@ export const assets = new Elysia({ prefix: '/api/assets' })
       set.status = 401;
       return { message: 'Authentication required' };
     }
-    const asset = await AssetService.getById(params.id as AssetId, session.user.id as UserId);
+    const asset = await AssetService.getById(params.id, session.user.id);
     if (!asset) {
       set.status = 404;
       return { message: 'Asset not found' };
@@ -156,7 +155,7 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     await IngestService.resetForRetry(asset.id);
 
     // Fire-and-forget pipeline retry
-    orchestratePipeline(asset.id, asset.sourceUrl, session.user.id as UserId);
+    orchestratePipeline(asset.id, asset.sourceUrl, session.user.id);
 
     return { message: 'Retry started' };
   });

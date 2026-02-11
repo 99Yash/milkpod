@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
+import { clientEnv } from '@milkpod/env/client';
 import type { AssetStatus } from '@milkpod/api/types';
 
-const SERVER_URL =
-  process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3001';
+const SERVER_URL = clientEnv().NEXT_PUBLIC_SERVER_URL;
 
 const MAX_RECONNECT_DELAY = 30_000;
 const BASE_RECONNECT_DELAY = 1_000;

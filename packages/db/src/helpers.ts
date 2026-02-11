@@ -3,32 +3,6 @@ import { timestamp } from 'drizzle-orm/pg-core';
 import { customAlphabet } from 'nanoid';
 
 // ---------------------------------------------------------------------------
-// Branded ID types — prevents mixing AssetId with ThreadId, etc.
-// See: tutorials/total-ts/advanced-patterns-workshop/src/01-branded-types
-// ---------------------------------------------------------------------------
-
-/** Nominal/branded type utility. `Brand<string, "AssetId">` is incompatible
- *  with `Brand<string, "ThreadId">` even though both are strings at runtime. */
-export type Brand<T, TBrand extends string> = T & { readonly __brand: TBrand };
-
-export type UserId = Brand<string, 'UserId'>;
-export type SessionId = Brand<string, 'SessionId'>;
-export type AccountId = Brand<string, 'AccountId'>;
-export type VerificationId = Brand<string, 'VerificationId'>;
-export type AssetId = Brand<string, 'AssetId'>;
-export type TranscriptId = Brand<string, 'TranscriptId'>;
-export type SegmentId = Brand<string, 'SegmentId'>;
-export type EmbeddingId = Brand<string, 'EmbeddingId'>;
-export type CollectionId = Brand<string, 'CollectionId'>;
-export type CollectionItemId = Brand<string, 'CollectionItemId'>;
-export type ThreadId = Brand<string, 'ThreadId'>;
-export type MessageId = Brand<string, 'MessageId'>;
-export type MessagePartId = Brand<string, 'MessagePartId'>;
-export type EvidenceId = Brand<string, 'EvidenceId'>;
-export type ShareLinkId = Brand<string, 'ShareLinkId'>;
-export type ShareQueryId = Brand<string, 'ShareQueryId'>;
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -39,12 +13,12 @@ export const lifecycle_dates = {
     .$onUpdate(() => new Date()),
 };
 
-export function createId<T extends string = string>(
+export function createId(
   prefix?: string,
   { length = 12, separator = '_' } = {}
-): T {
+): string {
   const id = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', length)();
-  return (prefix ? `${prefix}${separator}${id}` : id) as T;
+  return prefix ? `${prefix}${separator}${id}` : id;
 }
 
 export function generateRandomCode(length: number = 8) {

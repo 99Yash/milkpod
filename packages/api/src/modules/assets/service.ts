@@ -1,11 +1,10 @@
 import { db } from '@milkpod/db';
-import type { AssetId, UserId } from '@milkpod/db/helpers';
 import { mediaAssets, transcripts, transcriptSegments } from '@milkpod/db/schemas';
 import { and, eq, ilike, inArray, or, type SQL } from 'drizzle-orm';
 import type { AssetModel } from './model';
 
 export abstract class AssetService {
-  static async create(userId: UserId, data: AssetModel.Create) {
+  static async create(userId: string, data: AssetModel.Create) {
     const [asset] = await db
       .insert(mediaAssets)
       .values({ userId, ...data })
@@ -13,7 +12,7 @@ export abstract class AssetService {
     return asset;
   }
 
-  static async list(userId: UserId) {
+  static async list(userId: string) {
     return db
       .select()
       .from(mediaAssets)
@@ -21,7 +20,7 @@ export abstract class AssetService {
       .orderBy(mediaAssets.createdAt);
   }
 
-  static async search(userId: UserId, query: AssetModel.ListQuery) {
+  static async search(userId: string, query: AssetModel.ListQuery) {
     const conditions: SQL[] = [eq(mediaAssets.userId, userId)];
 
     // Status filter (comma-separated)
@@ -62,7 +61,7 @@ export abstract class AssetService {
       .orderBy(mediaAssets.createdAt);
   }
 
-  static async getById(id: AssetId, userId: UserId) {
+  static async getById(id: string, userId: string) {
     const [asset] = await db
       .select()
       .from(mediaAssets)
@@ -70,7 +69,7 @@ export abstract class AssetService {
     return asset ?? null;
   }
 
-  static async getWithTranscript(id: AssetId, userId: UserId) {
+  static async getWithTranscript(id: string, userId: string) {
     const asset = await AssetService.getById(id, userId);
     if (!asset) return null;
 
@@ -90,7 +89,7 @@ export abstract class AssetService {
     return { ...asset, transcript, segments };
   }
 
-  static async update(id: AssetId, userId: UserId, data: AssetModel.Update) {
+  static async update(id: string, userId: string, data: AssetModel.Update) {
     const [updated] = await db
       .update(mediaAssets)
       .set(data)
@@ -99,7 +98,7 @@ export abstract class AssetService {
     return updated ?? null;
   }
 
-  static async remove(id: AssetId, userId: UserId) {
+  static async remove(id: string, userId: string) {
     const [deleted] = await db
       .delete(mediaAssets)
       .where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)))

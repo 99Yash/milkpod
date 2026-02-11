@@ -1,3 +1,5 @@
+import { serverEnv } from '@milkpod/env/server';
+
 export type ElevenLabsWord = {
   text: string;
   start: number;
@@ -15,10 +17,7 @@ export type TranscriptionResult = {
 export async function transcribeAudio(
   audioUrl: string
 ): Promise<TranscriptionResult> {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) {
-    throw new Error('ELEVENLABS_API_KEY is not set');
-  }
+  const apiKey = serverEnv().ELEVENLABS_API_KEY;
 
   const formData = new FormData();
   formData.append('model_id', 'scribe_v2');

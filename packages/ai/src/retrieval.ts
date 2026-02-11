@@ -1,6 +1,5 @@
 import { and, cosineDistance, desc, eq, gt, ne, sql } from 'drizzle-orm';
 import { db } from '@milkpod/db';
-import type { AssetId, CollectionId, TranscriptId } from '@milkpod/db/helpers';
 import {
   embeddings,
   transcriptSegments,
@@ -20,8 +19,8 @@ export interface RelevantSegment {
 }
 
 export interface RetrievalOptions {
-  assetId?: AssetId;
-  collectionId?: CollectionId;
+  assetId?: string;
+  collectionId?: string;
   limit?: number;
   minSimilarity?: number;
 }
@@ -94,7 +93,7 @@ export async function findRelevantSegments(
 }
 
 export async function getTranscriptContext(
-  transcriptId: TranscriptId,
+  transcriptId: string,
   startTime: number,
   endTime: number,
   windowSeconds = 30

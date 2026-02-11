@@ -1,5 +1,4 @@
 import { db } from '@milkpod/db';
-import type { AssetId, CollectionId, ShareLinkId, UserId } from '@milkpod/db/helpers';
 import {
   shareLinks,
   shareQueries,
@@ -18,15 +17,15 @@ function generateToken(): string {
 }
 
 export abstract class ShareService {
-  static async create(userId: UserId, data: ShareModel.Create) {
+  static async create(userId: string, data: ShareModel.Create) {
     const token = generateToken();
     const [link] = await db
       .insert(shareLinks)
       .values({
         token,
         userId,
-        assetId: (data.assetId as AssetId) ?? null,
-        collectionId: (data.collectionId as CollectionId) ?? null,
+        assetId: data.assetId ?? null,
+        collectionId: data.collectionId ?? null,
         canQuery: data.canQuery ?? false,
         expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
       })
@@ -34,7 +33,7 @@ export abstract class ShareService {
     return link;
   }
 
-  static async list(userId: UserId) {
+  static async list(userId: string) {
     return db
       .select()
       .from(shareLinks)
@@ -42,7 +41,7 @@ export abstract class ShareService {
       .orderBy(shareLinks.createdAt);
   }
 
-  static async getById(id: ShareLinkId, userId: UserId) {
+  static async getById(id: string, userId: string) {
     const [link] = await db
       .select()
       .from(shareLinks)
@@ -50,7 +49,7 @@ export abstract class ShareService {
     return link ?? null;
   }
 
-  static async revoke(id: ShareLinkId, userId: UserId) {
+  static async revoke(id: string, userId: string) {
     const [revoked] = await db
       .update(shareLinks)
       .set({ revokedAt: new Date() })
@@ -157,7 +156,7 @@ export abstract class ShareService {
 
   private static RATE_LIMIT = 10;
 
-  static async checkRateLimit(shareLinkId: ShareLinkId) {
+  static async checkRateLimit(shareLinkId: string) {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const [result] = await db
       .select({ total: count() })
@@ -175,7 +174,7 @@ export abstract class ShareService {
     };
   }
 
-  static async logQuery(shareLinkId: ShareLinkId, question: string) {
+  static async logQuery(shareLinkId: string, question: string) {
     await db.insert(shareQueries).values({ shareLinkId, question });
   }
 }

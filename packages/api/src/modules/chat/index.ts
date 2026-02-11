@@ -1,6 +1,5 @@
 import { Elysia, t } from 'elysia';
 import { createChatStream } from '@milkpod/ai';
-import type { AssetId, CollectionId, ThreadId, UserId } from '@milkpod/db/helpers';
 import { authMiddleware } from '../../middleware/auth';
 import { ChatModel } from './model';
 import { ChatService } from './service';
@@ -18,11 +17,11 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         return { message: 'Authentication required' };
       }
 
-      const userId = session.user.id as UserId;
+      const userId = session.user.id;
 
       // Verify ownership of referenced resources
       if (body.threadId) {
-        const thread = await ThreadService.getById(body.threadId as ThreadId, userId);
+        const thread = await ThreadService.getById(body.threadId, userId);
         if (!thread) {
           set.status = 403;
           return { message: 'Access denied to thread' };
@@ -30,7 +29,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       }
 
       if (body.assetId) {
-        const asset = await AssetService.getById(body.assetId as AssetId, userId);
+        const asset = await AssetService.getById(body.assetId, userId);
         if (!asset) {
           set.status = 403;
           return { message: 'Access denied to asset' };
@@ -39,7 +38,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
 
       if (body.collectionId) {
         const collection = await CollectionService.getById(
-          body.collectionId as CollectionId,
+          body.collectionId,
           userId
         );
         if (!collection) {
@@ -49,7 +48,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       }
 
       // Auto-create thread if none provided
-      let threadId = body.threadId as ThreadId | undefined;
+      let threadId = body.threadId;
       if (!threadId) {
         const thread = await ThreadService.create(userId, {
           assetId: body.assetId,
@@ -67,8 +66,8 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       return createChatStream({
         messages: body.messages,
         threadId,
-        assetId: body.assetId as AssetId | undefined,
-        collectionId: body.collectionId as CollectionId | undefined,
+        assetId: body.assetId,
+        collectionId: body.collectionId,
         headers: { 'X-Thread-Id': threadId },
         onFinish: async ({ messages }) => {
           // Save all assistant messages from the finished conversation
@@ -90,15 +89,15 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       }
 
       const thread = await ThreadService.getById(
-        params.threadId as ThreadId,
-        session.user.id as UserId
+        params.threadId,
+        session.user.id
       );
       if (!thread) {
         set.status = 404;
         return { message: 'Thread not found' };
       }
 
-      const messages = await ChatService.getMessages(params.threadId as ThreadId);
+      const messages = await ChatService.getMessages(params.threadId);
 
       return { threadId: thread.id, messages };
     },

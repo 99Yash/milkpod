@@ -1,16 +1,14 @@
 import { index, integer, pgTable, text, vector } from 'drizzle-orm/pg-core';
-import { createId, lifecycle_dates, type EmbeddingId, type SegmentId } from '../helpers';
+import { createId, lifecycle_dates } from '../helpers';
 import { transcriptSegments } from './transcript-segments';
 
 export const embeddings = pgTable(
   'embedding',
   {
     id: text('id')
-      .$type<EmbeddingId>()
       .primaryKey()
-      .$defaultFn(() => createId<EmbeddingId>('emb')),
+      .$defaultFn(() => createId('emb')),
     segmentId: text('segment_id')
-      .$type<SegmentId>()
       .notNull()
       .references(() => transcriptSegments.id, { onDelete: 'cascade' }),
     content: text('content').notNull(),

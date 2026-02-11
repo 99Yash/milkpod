@@ -1,5 +1,5 @@
 import { db } from '@milkpod/db';
-import { createId, type MessageId, type MessagePartId, type ThreadId } from '@milkpod/db/helpers';
+import { createId } from '@milkpod/db/helpers';
 import { qaMessages, qaMessageParts } from '@milkpod/db/schemas';
 import { eq, asc, inArray } from 'drizzle-orm';
 import { isStaticToolUIPart } from 'ai';
@@ -9,12 +9,12 @@ type PartRow = typeof qaMessageParts.$inferInsert;
 type Part = MilkpodMessage['parts'][number];
 
 function serializePart(
-  messageId: MessageId,
+  messageId: string,
   part: Part,
   sortOrder: number,
 ): PartRow {
   const base: PartRow = {
-    id: createId<MessagePartId>('mpt'),
+    id: createId('mpt'),
     messageId,
     type: part.type,
     sortOrder,
@@ -87,7 +87,7 @@ function deserializePart(row: typeof qaMessageParts.$inferSelect): Part {
 }
 
 export abstract class ChatService {
-  static async saveMessages(threadId: ThreadId, messages: MilkpodMessage[]) {
+  static async saveMessages(threadId: string, messages: MilkpodMessage[]) {
     if (messages.length === 0) return;
 
     await db.transaction(async (tx) => {
@@ -95,7 +95,7 @@ export abstract class ChatService {
         .insert(qaMessages)
         .values(
           messages.map((m) => ({
-            id: m.id as MessageId,
+            id: m.id,
             threadId,
             role: m.role,
           })),
@@ -103,7 +103,7 @@ export abstract class ChatService {
         .onConflictDoNothing();
 
       const partRows = messages.flatMap((m) =>
-        m.parts.map((part, i) => serializePart(m.id as MessageId, part, i)),
+        m.parts.map((part, i) => serializePart(m.id, part, i)),
       );
 
       if (partRows.length > 0) {
@@ -112,7 +112,7 @@ export abstract class ChatService {
     });
   }
 
-  static async getMessages(threadId: ThreadId): Promise<MilkpodMessage[]> {
+  static async getMessages(threadId: string): Promise<MilkpodMessage[]> {
     const messageRows = await db
       .select()
       .from(qaMessages)

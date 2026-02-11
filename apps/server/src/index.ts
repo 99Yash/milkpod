@@ -1,5 +1,6 @@
 import { app, closeConnections } from '@milkpod/api';
 import { cors } from '@elysiajs/cors';
+import { serverEnv } from '@milkpod/env/server';
 import { node } from '@elysiajs/node';
 import 'dotenv/config';
 import { Elysia } from 'elysia';
@@ -7,7 +8,7 @@ import { Elysia } from 'elysia';
 const server = new Elysia({ adapter: node() })
   .use(
     cors({
-      origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+      origin: serverEnv().CORS_ORIGIN,
       methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       exposeHeaders: ['X-Thread-Id', 'X-RateLimit-Remaining'],

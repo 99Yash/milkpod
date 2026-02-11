@@ -1,5 +1,4 @@
 import { db } from '@milkpod/db';
-import type { AssetId, SegmentId, UserId } from '@milkpod/db/helpers';
 import {
   mediaAssets,
   transcripts,
@@ -11,7 +10,7 @@ import type { Segment } from './segments';
 
 export abstract class IngestService {
   static async updateStatus(
-    assetId: AssetId,
+    assetId: string,
     status: 'queued' | 'fetching' | 'transcribing' | 'embedding' | 'ready' | 'failed',
     opts?: { lastError?: string; duration?: number }
   ) {
@@ -25,7 +24,7 @@ export abstract class IngestService {
       .where(eq(mediaAssets.id, assetId));
   }
 
-  static async incrementAttempts(assetId: AssetId, lastError: string) {
+  static async incrementAttempts(assetId: string, lastError: string) {
     await db
       .update(mediaAssets)
       .set({
@@ -35,7 +34,7 @@ export abstract class IngestService {
       .where(eq(mediaAssets.id, assetId));
   }
 
-  static async resetForRetry(assetId: AssetId) {
+  static async resetForRetry(assetId: string) {
     await db
       .update(mediaAssets)
       .set({
@@ -47,7 +46,7 @@ export abstract class IngestService {
   }
 
   static async storeTranscript(
-    assetId: AssetId,
+    assetId: string,
     language: string,
     segments: Segment[]
   ) {
@@ -89,7 +88,7 @@ export abstract class IngestService {
   }
 
   static async storeEmbeddings(
-    items: { segmentId: SegmentId; content: string; embedding: number[]; model: string; dimensions: number; }[]
+    items: { segmentId: string; content: string; embedding: number[]; model: string; dimensions: number; }[]
   ) {
     const BATCH_SIZE = 100;
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
@@ -98,7 +97,7 @@ export abstract class IngestService {
     }
   }
 
-  static async findBySourceId(sourceId: string, userId: UserId) {
+  static async findBySourceId(sourceId: string, userId: string) {
     const [existing] = await db
       .select()
       .from(mediaAssets)

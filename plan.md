@@ -6,20 +6,31 @@ Ordered task list. Work through them in order.
 
 ## Phase 1: Type Safety & Foundations
 
-### Task 1: Branded ID types
+### Task 1: Remove branded ID types
 
-**Files**: `packages/db/src/helpers.ts`, `packages/db/src/schema/*.ts`
+**Files**: `packages/db/src/helpers.ts`, `packages/db/src/schema/*.ts`, `packages/api/src/modules/*`, `packages/ai/src/*.ts`, `packages/api/src/types.ts`
 **What**:
 
-- Add `Brand<T, B>` type utility to helpers.ts
-- Create branded types: `AssetId`, `UserId`, `ThreadId`, `CollectionId`, `TranscriptId`, `SegmentId`, `EmbeddingId`
-- Update `createId()` to return the branded type for each prefix
-- Update schema files to annotate `.$type<BrandedType>()` on ID columns
-- Export all ID types from `packages/db`
-  **Why**: Prevents passing an AssetId where a ThreadId is expected. Catches bugs at compile time.
-  **Ref**: `../../tutorials/total-ts/advanced-patterns-workshop/src/01-branded-types/`
+- Remove the `Brand<T, B>` utility and branded ID exports; revert IDs to plain `string`.
+- Update `createId()` to return `string` and drop generic type params.
+- Remove `.$type<...>()` annotations on ID columns in Drizzle schemas.
+- Replace `as AssetId`/`as ThreadId`/`as CollectionId` casts with `string` usage in API/AI modules.
+- Clean up any remaining imports of branded ID types from `@milkpod/db/helpers`.
+  **Why**: Branded IDs added complexity without enough payoff; keep ID handling straightforward.
 
-### Task 2: Shared API response types
+### Task 2: Type-safe env validation
+
+**Files**: `packages/env/*` (new), `apps/server/src/index.ts`, `packages/auth/src/index.ts`, `packages/db/src/index.ts`, `packages/api/src/modules/ingest/elevenlabs.ts`, `apps/web/src/lib/api.ts`, `apps/web/src/lib/auth/client.ts`, `apps/web/src/hooks/use-*.ts`, `.env.example` files
+**What**:
+
+- Add `@milkpod/env` with Zod schemas for `serverEnv` and `clientEnv`.
+- Validate required vars at startup and export typed env accessors.
+- Replace server-side `process.env` usage with `serverEnv` (auth, db, API, server).
+- Replace `process.env.NEXT_PUBLIC_SERVER_URL` access in the web app with `clientEnv`.
+- Update `.env.example` files to include all required vars (Google OAuth, ElevenLabs, etc.).
+  **Why**: Fail fast on missing/mistyped env vars and keep env usage typed.
+
+### Task 3: Shared API response types
 
 **Files**: `packages/api/src/types.ts` (new), `apps/web/src/components/library/asset-list.tsx`, `apps/web/src/components/agent/agent-tab.tsx`
 **What**:
@@ -31,7 +42,7 @@ Ordered task list. Work through them in order.
   **Why**: Single source of truth for API shapes. No more manual interface duplication.
   **Ref**: `pro-essentials-workshop/src/040-deriving-types-from-values/`
 
-### Task 3: Replace t.Any() message validation
+### Task 4: Replace t.Any() message validation
 
 **Files**: `packages/api/src/modules/chat/model.ts`
 **What**:
@@ -42,7 +53,7 @@ Ordered task list. Work through them in order.
   **Why**: Malformed payloads currently blow up deep in convertToModelMessages with unhelpful errors.
   **Ref**: AI_SDK_AUDIT.md #8
 
-### Task 4: Shared tool output types
+### Task 5: Shared tool output types
 
 **Files**: `packages/ai/src/types.ts`, `packages/ai/src/tools.ts`, `apps/web/src/components/chat/tool-result.tsx`
 **What**:
@@ -54,7 +65,7 @@ Ordered task list. Work through them in order.
   **Why**: Tool output shape changes will cause compile errors instead of silent runtime breakage.
   **Ref**: AI_SDK_AUDIT.md #6
 
-### Task 5: Discriminated union for asset status
+### Task 6: Discriminated union for asset status
 
 **Files**: `packages/db/src/schema/media-assets.ts`, `packages/api/src/types.ts`, `apps/web/src/components/library/asset-card.tsx`, `apps/web/src/components/library/asset-list.tsx`
 **What**:
@@ -70,7 +81,7 @@ Ordered task list. Work through them in order.
 
 ## Phase 2: Critical Fixes
 
-### Task 6: Fix convertToModelMessages async
+### Task 7: Fix convertToModelMessages async
 
 **Files**: `packages/ai/src/stream.ts`
 **What**:
@@ -81,7 +92,7 @@ Ordered task list. Work through them in order.
   **Why**: Currently passing a Promise object instead of actual messages. Silent breakage.
   **Ref**: AI_SDK_AUDIT.md #1
 
-### Task 7: Wire assetId/collectionId into chat context
+### Task 8: Wire assetId/collectionId into chat context
 
 **Files**: `packages/ai/src/stream.ts`, `packages/ai/src/tools.ts`, `packages/ai/src/system-prompt.ts`
 **What**:
@@ -92,7 +103,7 @@ Ordered task list. Work through them in order.
   **Why**: Without this, the LLM has no way to know which asset the user is viewing. Also prevents cross-tenant data leakage.
   **Ref**: AI_SDK_AUDIT.md #2, #10
 
-### Task 8: Resource authorization
+### Task 9: Resource authorization
 
 **Files**: `packages/api/src/modules/chat/index.ts`, `packages/api/src/modules/assets/index.ts`, `packages/api/src/modules/collections/index.ts`, `packages/api/src/modules/threads/index.ts`
 **What**:
@@ -103,7 +114,7 @@ Ordered task list. Work through them in order.
   **Why**: A logged-in user can currently query any other user's assets/threads.
   **Ref**: AI_SDK_AUDIT.md #5
 
-### Task 9: Handle reasoning tokens
+### Task 10: Handle reasoning tokens
 
 **Files**: `apps/web/src/components/chat/message.tsx`, optionally `packages/ai/src/stream.ts`
 **What**:
@@ -114,7 +125,7 @@ Ordered task list. Work through them in order.
   **Why**: Reasoning tokens are sent to client but silently dropped. Wasted bandwidth or missing UX.
   **Ref**: AI_SDK_AUDIT.md #7
 
-### Task 10: Input guardrails
+### Task 11: Input guardrails
 
 **Files**: `packages/ai/src/stream.ts`, `packages/ai/src/guardrails.ts` (new)
 **What**:
@@ -130,7 +141,7 @@ Ordered task list. Work through them in order.
 
 ## Phase 3: Data & Persistence
 
-### Task 11: Normalize message persistence
+### Task 12: Normalize message persistence
 
 **Files**: `packages/db/src/schema/qa.ts`, new migration, `packages/api/src/modules/chat/service.ts`
 **What**:
@@ -142,7 +153,7 @@ Ordered task list. Work through them in order.
   **Why**: JSONB blobs are unqueryable. Normalized parts enable analytics, search, and selective loading.
   **Ref**: AI_SDK_AUDIT.md #3
 
-### Task 12: Embedding model versioning
+### Task 13: Embedding model versioning
 
 **Files**: `packages/db/src/schema/embeddings.ts`, new migration, `packages/ai/src/embeddings.ts`
 **What**:
@@ -153,7 +164,7 @@ Ordered task list. Work through them in order.
   **Why**: Future model changes would silently produce incompatible vectors.
   **Ref**: AI_SDK_AUDIT.md #18
 
-### Task 13: Pipeline error handling & retry
+### Task 14: Pipeline error handling & retry
 
 **Files**: `packages/api/src/modules/ingest/pipeline.ts`, `packages/api/src/modules/assets/index.ts`
 **What**:
@@ -170,7 +181,7 @@ Ordered task list. Work through them in order.
 
 ## Phase 4: UX Improvements
 
-### Task 14: Asset detail view
+### Task 15: Asset detail view
 
 **Files**: `apps/web/src/app/asset/[id]/page.tsx` (new), new components
 **What**:
@@ -182,7 +193,7 @@ Ordered task list. Work through them in order.
 - Back navigation to dashboard
   **Why**: Users need to see the full transcript, not just chat about it.
 
-### Task 15: Collection management UI
+### Task 16: Collection management UI
 
 **Files**: `apps/web/src/components/library/` (new components)
 **What**:
@@ -194,7 +205,7 @@ Ordered task list. Work through them in order.
 - Enable scoped Q&A (pass collectionId to chat)
   **Why**: Collections exist in the API but have no UI.
 
-### Task 16: Streaming progress indicators
+### Task 17: Streaming progress indicators
 
 **Files**: `apps/web/src/components/library/asset-card.tsx`, `packages/api/src/modules/ingest/pipeline.ts`
 **What**:
@@ -205,7 +216,7 @@ Ordered task list. Work through them in order.
 - Falls back to polling if SSE connection drops
   **Why**: Polling is wasteful and laggy. Users deserve real-time feedback.
 
-### Task 17: Search and filter
+### Task 18: Search and filter
 
 **Files**: `apps/web/src/components/library/`, `packages/api/src/modules/assets/`
 **What**:
@@ -221,7 +232,7 @@ Ordered task list. Work through them in order.
 
 ## Phase 5: Sharing & Access Control
 
-### Task 18: Share link schema & API
+### Task 19: Share link schema & API
 
 **Files**: `packages/db/src/schema/share-links.ts` (new), `packages/api/src/modules/shares/` (new)
 **What**:
@@ -232,7 +243,7 @@ Ordered task list. Work through them in order.
 - `GET /api/shares/validate/:token` — validate and return scoped data
   **Why**: Required for read-only sharing feature.
 
-### Task 19: Share link UI
+### Task 20: Share link UI
 
 **Files**: `apps/web/src/components/` (new components), `apps/web/src/app/share/[token]/page.tsx` (new)
 **What**:
@@ -243,7 +254,7 @@ Ordered task list. Work through them in order.
 - Optional: embedded chat with rate limits
   **Why**: Users want to share transcripts with others.
 
-### Task 20: Rate-limited shared Q&A
+### Task 21: Rate-limited shared Q&A
 
 **Files**: `packages/api/src/modules/shares/`, rate limit middleware
 **What**:
@@ -258,7 +269,7 @@ Ordered task list. Work through them in order.
 
 ## Phase 6: Production Hardening
 
-### Task 21: Request logging middleware
+### Task 22: Request logging middleware
 
 **Files**: `packages/api/src/middleware/logger.ts` (new), `packages/api/src/index.ts`
 **What**:
@@ -268,7 +279,7 @@ Ordered task list. Work through them in order.
 - Skip logging for health checks
   **Why**: Can't debug production issues without request logs.
 
-### Task 22: Rate limiting
+### Task 23: Rate limiting
 
 **Files**: `packages/api/src/middleware/rate-limit.ts` (new)
 **What**:
@@ -278,7 +289,7 @@ Ordered task list. Work through them in order.
 - Return 429 with retry-after header
   **Why**: Prevents abuse and runaway costs.
 
-### Task 23: Health checks & graceful shutdown
+### Task 24: Health checks & graceful shutdown
 
 **Files**: `apps/server/src/index.ts`, `packages/api/src/index.ts`
 **What**:
@@ -288,7 +299,7 @@ Ordered task list. Work through them in order.
 - Graceful shutdown: drain in-flight requests, close DB pool
   **Why**: Required for production deployment behind a load balancer.
 
-### Task 24: Error boundaries & offline handling
+### Task 25: Error boundaries & offline handling
 
 **Files**: `apps/web/src/app/error.tsx` (new), `apps/web/src/components/`
 **What**:
@@ -300,11 +311,11 @@ Ordered task list. Work through them in order.
 
 ---
 
-## Phase 7: Podcast Features (Future)
+## Phase 7: Podcast Features
 
-### Task 25–28: Podcast feed schema, RSS ingestion, filtering, private RSS/Plex
+### Task 26–29: Podcast feed schema, RSS ingestion, filtering, private RSS/Plex
 
-These are deferred. See ARCHITECTURE.md for full design.
+See ARCHITECTURE.md for full design.
 
 ---
 
@@ -314,7 +325,6 @@ From `../../tutorials/total-ts/`:
 
 | Pattern                                            | Where to use                                | Tutorial ref                                      |
 | -------------------------------------------------- | ------------------------------------------- | ------------------------------------------------- |
-| Branded types (`Brand<T, B>`)                      | All entity IDs                              | advanced-patterns/01-branded-types                |
 | Type predicates (`value is T`)                     | API response narrowing, status checks       | pro-essentials/085/221-type-predicates            |
 | Assertion functions (`asserts value is T`)         | Auth middleware, ownership checks           | pro-essentials/085/222-assertion-functions        |
 | Discriminated unions                               | Asset status, message part types            | pro-essentials/018-unions-and-narrowing           |

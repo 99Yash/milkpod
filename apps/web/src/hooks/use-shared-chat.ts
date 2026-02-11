@@ -3,11 +3,11 @@
 import { useRef, useCallback } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
+import { clientEnv } from '@milkpod/env/client';
 import { chatMetadataSchema } from '@milkpod/ai/schemas';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 
-const SERVER_URL =
-  process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3001';
+const SERVER_URL = clientEnv().NEXT_PUBLIC_SERVER_URL;
 
 export function useSharedChat({ token }: { token: string }) {
   const rateLimitRef = useRef<number | null>(null);

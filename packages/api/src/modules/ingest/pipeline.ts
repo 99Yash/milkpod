@@ -1,5 +1,4 @@
 import { chunkSegmentText, generateEmbeddings, EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSIONS } from '@milkpod/ai/embeddings';
-import type { AssetId, SegmentId, UserId } from '@milkpod/db/helpers';
 import { resolveAudioUrl } from './ytdlp';
 import { transcribeAudio } from './elevenlabs';
 import { groupWordsIntoSegments } from './segments';
@@ -17,7 +16,7 @@ function delayWithJitter(attempt: number): Promise<void> {
 
 async function withRetry<T>(
   stage: string,
-  assetId: AssetId,
+  assetId: string,
   fn: () => Promise<T>
 ): Promise<T> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -43,9 +42,9 @@ async function withRetry<T>(
 }
 
 export async function orchestratePipeline(
-  assetId: AssetId,
+  assetId: string,
   sourceUrl: string,
-  userId: UserId
+  userId: string
 ): Promise<void> {
   try {
     // Stage 1: Fetch direct audio URL
@@ -72,7 +71,7 @@ export async function orchestratePipeline(
     await IngestService.updateStatus(assetId, 'embedding');
     emitAssetStatus(userId, assetId, 'embedding');
     const embeddingItems: {
-      segmentId: SegmentId;
+      segmentId: string;
       content: string;
       embedding: number[];
       model: string;

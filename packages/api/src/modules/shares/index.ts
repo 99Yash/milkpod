@@ -1,6 +1,5 @@
 import { Elysia } from 'elysia';
 import { createChatStream } from '@milkpod/ai';
-import type { AssetId, CollectionId, ShareLinkId, UserId } from '@milkpod/db/helpers';
 import { authMiddleware } from '../../middleware/auth';
 import { ShareModel } from './model';
 import { ShareService } from './service';
@@ -18,7 +17,7 @@ export const shares = new Elysia({ prefix: '/api/shares' })
         return { message: 'Authentication required' };
       }
 
-      const userId = session.user.id as UserId;
+      const userId = session.user.id;
 
       // Must scope to exactly one of asset or collection
       if (!body.assetId && !body.collectionId) {
@@ -32,7 +31,7 @@ export const shares = new Elysia({ prefix: '/api/shares' })
 
       // Verify ownership of the resource being shared
       if (body.assetId) {
-        const asset = await AssetService.getById(body.assetId as AssetId, userId);
+        const asset = await AssetService.getById(body.assetId, userId);
         if (!asset) {
           set.status = 403;
           return { message: 'Access denied to asset' };
@@ -40,7 +39,7 @@ export const shares = new Elysia({ prefix: '/api/shares' })
       }
       if (body.collectionId) {
         const collection = await CollectionService.getById(
-          body.collectionId as CollectionId,
+          body.collectionId,
           userId
         );
         if (!collection) {
@@ -59,7 +58,7 @@ export const shares = new Elysia({ prefix: '/api/shares' })
       set.status = 401;
       return { message: 'Authentication required' };
     }
-    return ShareService.list(session.user.id as UserId);
+    return ShareService.list(session.user.id);
   })
   // Revoke a share link
   .delete('/:id', async ({ params, session, set }) => {
@@ -68,8 +67,8 @@ export const shares = new Elysia({ prefix: '/api/shares' })
       return { message: 'Authentication required' };
     }
     const revoked = await ShareService.revoke(
-      params.id as ShareLinkId,
-      session.user.id as UserId
+      params.id,
+      session.user.id
     );
     if (!revoked) {
       set.status = 404;
