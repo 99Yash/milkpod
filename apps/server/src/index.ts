@@ -1,10 +1,10 @@
-import { app } from '@milkpod/api';
+import { app, closeConnections } from '@milkpod/api';
 import { cors } from '@elysiajs/cors';
 import { node } from '@elysiajs/node';
 import 'dotenv/config';
 import { Elysia } from 'elysia';
 
-new Elysia({ adapter: node() })
+const server = new Elysia({ adapter: node() })
   .use(
     cors({
       origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
@@ -18,3 +18,25 @@ new Elysia({ adapter: node() })
   .listen(3001, () => {
     console.log('Server is running on http://localhost:3001');
   });
+
+// Graceful shutdown — drain in-flight requests, then close DB pool
+async function shutdown(signal: string) {
+  console.log(`\n${signal} received, shutting down gracefully...`);
+
+  // Stop accepting new connections, let in-flight requests finish
+  await server.stop();
+  console.log('Server stopped accepting connections');
+
+  // Close DB connection pool
+  try {
+    await closeConnections();
+    console.log('Database pool closed');
+  } catch (err) {
+    console.error('Error closing database pool:', err);
+  }
+
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

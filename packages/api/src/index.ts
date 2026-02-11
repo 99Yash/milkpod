@@ -1,5 +1,9 @@
 import { auth } from '@milkpod/auth';
+import { db } from '@milkpod/db';
+import { sql } from 'drizzle-orm';
 import { Elysia } from 'elysia';
+import { requestLogger } from './middleware/logger';
+import { rateLimiter } from './middleware/rate-limit';
 import { chat } from './modules/chat';
 import { assets } from './modules/assets';
 import { collections } from './modules/collections';
@@ -8,6 +12,34 @@ import { ingest } from './modules/ingest';
 import { shares } from './modules/shares';
 
 export const app = new Elysia({ name: 'api' })
+  .use(requestLogger)
+  .get('/health', async ({ set }) => {
+    try {
+      await db.execute(sql`SELECT 1`);
+      return { status: 'ok', db: 'connected' };
+    } catch {
+      set.status = 503;
+      return { status: 'error', db: 'disconnected' };
+    }
+  })
+  .get('/ready', async ({ set }) => {
+    const checks: Record<string, 'ok' | 'error'> = {};
+
+    try {
+      await db.execute(sql`SELECT 1`);
+      checks.db = 'ok';
+    } catch {
+      checks.db = 'error';
+    }
+
+    const allOk = Object.values(checks).every((v) => v === 'ok');
+
+    if (!allOk) {
+      set.status = 503;
+    }
+
+    return { status: allOk ? 'ok' : 'error', checks };
+  })
   .all('/api/auth/*', ({ request, set }) => {
     if (request.method === 'GET' || request.method === 'POST') {
       return auth.handler(request);
@@ -30,7 +62,7 @@ export const app = new Elysia({ name: 'api' })
       session,
     };
   })
-  .get('/health', () => 'OK')
+  .use(rateLimiter)
   .use(chat)
   .use(assets)
   .use(collections)
@@ -39,3 +71,8 @@ export const app = new Elysia({ name: 'api' })
   .use(shares);
 
 export type App = typeof app;
+
+/** Close underlying connection pools. Call during graceful shutdown. */
+export async function closeConnections() {
+  await db.$client.end();
+}
