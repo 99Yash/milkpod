@@ -2,7 +2,6 @@ import { db } from '@milkpod/db';
 import {
   podcastFeeds,
   podcastEpisodes,
-  mediaAssets,
 } from '@milkpod/db/schemas';
 import { and, eq, sql } from 'drizzle-orm';
 import { parseFeed, type FeedEpisode } from './rss';

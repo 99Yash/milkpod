@@ -10,6 +10,7 @@ import { collections } from './modules/collections';
 import { threads } from './modules/threads';
 import { ingest } from './modules/ingest';
 import { shares } from './modules/shares';
+import { podcasts } from './modules/podcasts';
 
 export const app = new Elysia({ name: 'api' })
   .use(requestLogger)
@@ -68,7 +69,8 @@ export const app = new Elysia({ name: 'api' })
   .use(collections)
   .use(threads)
   .use(ingest)
-  .use(shares);
+  .use(shares)
+  .use(podcasts);
 
 export type App = typeof app;
 
