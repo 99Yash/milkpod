@@ -20,13 +20,21 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     },
     { body: AssetModel.create }
   )
-  .get('/', async ({ session, set }) => {
-    if (!session) {
-      set.status = 401;
-      return { message: 'Authentication required' };
-    }
-    return AssetService.list(session.user.id as UserId);
-  })
+  .get(
+    '/',
+    async ({ session, set, query }) => {
+      if (!session) {
+        set.status = 401;
+        return { message: 'Authentication required' };
+      }
+      const hasFilters = query.q || query.status || query.sourceType;
+      if (hasFilters) {
+        return AssetService.search(session.user.id as UserId, query);
+      }
+      return AssetService.list(session.user.id as UserId);
+    },
+    { query: AssetModel.listQuery }
+  )
   .get('/events', ({ session, set }) => {
     if (!session) {
       set.status = 401;

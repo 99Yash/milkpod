@@ -6,10 +6,12 @@ import { AssetCard } from './asset-card';
 import { Spinner } from '~/components/ui/spinner';
 import type { Asset } from '@milkpod/api/types';
 import { useAssetEvents, type AssetStatusEvent } from '~/hooks/use-asset-events';
+import type { AssetFilters } from './search-filter-bar';
 
 interface AssetListProps {
   onSelectAsset?: (assetId: string) => void;
   refreshKey?: number;
+  filters?: AssetFilters;
 }
 
 /** Per-asset progress info from SSE events */
@@ -18,14 +20,19 @@ interface AssetProgress {
   message?: string;
 }
 
-export function AssetList({ onSelectAsset, refreshKey }: AssetListProps) {
+export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [progressMap, setProgressMap] = useState<Record<string, AssetProgress>>({});
 
   const fetchAssets = useCallback(async () => {
     try {
-      const { data } = await api.api.assets.get();
+      const query: Record<string, string> = {};
+      if (filters?.q) query.q = filters.q;
+      if (filters?.status) query.status = filters.status;
+      if (filters?.sourceType) query.sourceType = filters.sourceType;
+
+      const { data } = await api.api.assets.get({ query });
       if (data && Array.isArray(data)) {
         setAssets(data as Asset[]);
       }
@@ -34,7 +41,7 @@ export function AssetList({ onSelectAsset, refreshKey }: AssetListProps) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [filters?.q, filters?.status, filters?.sourceType]);
 
   useEffect(() => {
     fetchAssets();

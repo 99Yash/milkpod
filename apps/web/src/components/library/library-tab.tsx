@@ -4,9 +4,12 @@ import { useCallback, useState } from 'react';
 import { UrlInputForm } from './url-input-form';
 import { AssetList } from './asset-list';
 import { CollectionList } from './collection-list';
+import { SearchFilterBar, type AssetFilters } from './search-filter-bar';
 import { cn } from '~/lib/utils';
 
 type LibraryView = 'assets' | 'collections';
+
+const emptyFilters: AssetFilters = { q: '', status: '', sourceType: '' };
 
 interface LibraryTabProps {
   onSelectAsset?: (assetId: string) => void;
@@ -15,6 +18,7 @@ interface LibraryTabProps {
 export function LibraryTab({ onSelectAsset }: LibraryTabProps) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [view, setView] = useState<LibraryView>('assets');
+  const [filters, setFilters] = useState<AssetFilters>(emptyFilters);
 
   const handleSuccess = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -60,7 +64,12 @@ export function LibraryTab({ onSelectAsset }: LibraryTabProps) {
       {view === 'assets' && (
         <>
           <UrlInputForm onSuccess={handleSuccess} />
-          <AssetList onSelectAsset={onSelectAsset} refreshKey={refreshKey} />
+          <SearchFilterBar filters={filters} onChange={setFilters} />
+          <AssetList
+            onSelectAsset={onSelectAsset}
+            refreshKey={refreshKey}
+            filters={filters}
+          />
         </>
       )}
 
