@@ -7,3 +7,8 @@ export * from './schema/collections';
 export * from './schema/qa';
 export * from './schema/share-links';
 export * from './schema/share-queries';
+export * from './schema/podcast-feeds';
+export * from './schema/podcast-episodes';
+export * from './schema/episode-edits';
+export * from './schema/episode-renders';
+export * from './schema/filter-rules';

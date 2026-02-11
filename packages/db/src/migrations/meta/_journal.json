@@ -43,6 +43,13 @@
       "when": 1770790962555,
       "tag": "0005_fresh_aqueduct",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1770816365607,
+      "tag": "0006_wonderful_greymalkin",
+      "breakpoints": true
     }
   ]
 }
