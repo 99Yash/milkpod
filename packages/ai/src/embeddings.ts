@@ -22,23 +22,64 @@ export async function generateEmbeddings(
   return embeddings;
 }
 
-export function chunkSegmentText(text: string, maxLen = 500): string[] {
+const DEFAULT_SEPARATORS = [
+  '\n\n',
+  '\n',
+  // Punctuation with trailing space (ideal boundaries)
+  '. ', '! ', '? ', ': ', '; ', ', ',
+  // Punctuation without trailing space (common in auto-captions)
+  '.', '!', '?', ':', ';', ',',
+  ' ',
+  '',
+];
+
+export function chunkSegmentText(
+  text: string,
+  maxLen = 2800,
+  overlap = 200,
+  separators = DEFAULT_SEPARATORS
+): string[] {
   if (text.length <= maxLen) return [text];
 
-  const sentences = text.match(/[^.!?]+[.!?]+\s*/g) || [text];
+  const sep = separators.find((s) =>
+    s === '' ? true : text.includes(s)
+  )!;
+  const remaining = separators.slice(separators.indexOf(sep) + 1);
+
+  const splits = sep === ''
+    ? [...text]
+    : text.split(sep).flatMap((part, i, arr) =>
+        // re-attach the separator to the end of each part (except the last)
+        i < arr.length - 1 ? [part + sep] : [part]
+      );
+
   const chunks: string[] = [];
   let current = '';
 
-  for (const sentence of sentences) {
-    if (current.length + sentence.length > maxLen && current.length > 0) {
-      chunks.push(current.trim());
-      current = '';
+  for (const piece of splits) {
+    if (current.length + piece.length > maxLen && current.length > 0) {
+      // If the accumulated chunk is still too long, recurse with finer separators
+      if (current.length > maxLen && remaining.length > 0) {
+        chunks.push(...chunkSegmentText(current.trim(), maxLen, overlap, remaining));
+      } else {
+        chunks.push(current.trim());
+      }
+      // Apply overlap: carry trailing text from previous chunk
+      if (overlap > 0 && current.length > overlap) {
+        current = current.slice(-overlap);
+      } else {
+        current = '';
+      }
     }
-    current += sentence;
+    current += piece;
   }
 
   if (current.trim().length > 0) {
-    chunks.push(current.trim());
+    if (current.length > maxLen && remaining.length > 0) {
+      chunks.push(...chunkSegmentText(current.trim(), maxLen, overlap, remaining));
+    } else {
+      chunks.push(current.trim());
+    }
   }
 
   return chunks;
