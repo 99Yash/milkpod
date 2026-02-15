@@ -48,7 +48,8 @@ export abstract class IngestService {
   static async storeTranscript(
     assetId: string,
     language: string,
-    segments: Segment[]
+    segments: Segment[],
+    provider = 'elevenlabs'
   ) {
     return db.transaction(async (tx) => {
       const [transcript] = await tx
@@ -56,6 +57,7 @@ export abstract class IngestService {
         .values({
           assetId,
           language,
+          provider,
           totalSegments: segments.length,
         })
         .returning();

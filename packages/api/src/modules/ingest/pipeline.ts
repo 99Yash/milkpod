@@ -1,7 +1,6 @@
 import { chunkSegmentText, generateEmbeddings, EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSIONS } from '@milkpod/ai/embeddings';
-import { resolveAudioUrl } from './ytdlp';
-import { transcribeAudio } from './elevenlabs';
-import { groupWordsIntoSegments } from './segments';
+import { fetchYouTubeTranscript } from './youtube';
+import { captionItemsToSegments } from './segments';
 import { IngestService } from './service';
 import { emitAssetStatus, emitAssetProgress } from '../../events/asset-events';
 
@@ -47,27 +46,30 @@ export async function orchestratePipeline(
   userId: string
 ): Promise<void> {
   try {
-    // Stage 1: Fetch direct audio URL
-    await IngestService.updateStatus(assetId, 'fetching');
-    emitAssetStatus(userId, assetId, 'fetching');
-    const audioUrl = await withRetry('fetching', assetId, () =>
-      resolveAudioUrl(sourceUrl)
-    );
-
-    // Stage 2: Transcribe audio
+    // Stage 1: Fetch YouTube captions
     await IngestService.updateStatus(assetId, 'transcribing');
     emitAssetStatus(userId, assetId, 'transcribing');
     const result = await withRetry('transcribing', assetId, () =>
-      transcribeAudio(audioUrl)
+      fetchYouTubeTranscript(sourceUrl)
     );
-    const segments = groupWordsIntoSegments(result.words);
+    const segments = captionItemsToSegments(result.items);
+
+    // Derive duration from the last caption
+    const lastSegment = segments[segments.length - 1];
+    if (lastSegment) {
+      await IngestService.updateStatus(assetId, 'transcribing', {
+        duration: Math.ceil(lastSegment.endTime),
+      });
+    }
+
     const { segments: storedSegments } = await IngestService.storeTranscript(
       assetId,
-      result.language_code,
-      segments
+      result.language,
+      segments,
+      'youtube'
     );
 
-    // Stage 3: Generate and store embeddings
+    // Stage 2: Generate and store embeddings
     await IngestService.updateStatus(assetId, 'embedding');
     emitAssetStatus(userId, assetId, 'embedding');
     const embeddingItems: {
@@ -106,7 +108,7 @@ export async function orchestratePipeline(
       await IngestService.storeEmbeddings(embeddingItems);
     }
 
-    // Stage 4: Mark as ready
+    // Stage 3: Mark as ready
     await IngestService.updateStatus(assetId, 'ready');
     emitAssetStatus(userId, assetId, 'ready');
   } catch (error) {

@@ -1,4 +1,5 @@
 import type { ElevenLabsWord } from './elevenlabs';
+import type { CaptionItem } from './youtube';
 
 export type Segment = {
   segmentIndex: number;
@@ -7,6 +8,28 @@ export type Segment = {
   endTime: number;
   speaker: string | null;
 };
+
+const HTML_ENTITIES: Record<string, string> = {
+  '&#39;': "'",
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+};
+
+function decodeHtmlEntities(text: string): string {
+  return text.replace(/&#?\w+;/g, (match) => HTML_ENTITIES[match] ?? match);
+}
+
+export function captionItemsToSegments(items: CaptionItem[]): Segment[] {
+  return items.map((item, i) => ({
+    segmentIndex: i,
+    text: decodeHtmlEntities(item.text),
+    startTime: item.offset / 1000,
+    endTime: (item.offset + item.duration) / 1000,
+    speaker: null,
+  }));
+}
 
 export function groupWordsIntoSegments(words: ElevenLabsWord[]): Segment[] {
   const segments: Segment[] = [];
