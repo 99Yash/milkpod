@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { api } from '~/lib/api';
+import { fetchAssets } from '~/lib/api-fetchers';
 import { AssetCard } from './asset-card';
 import { Spinner } from '~/components/ui/spinner';
 import type { Asset } from '@milkpod/api/types';
@@ -25,17 +25,15 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
   const [isLoading, setIsLoading] = useState(true);
   const [progressMap, setProgressMap] = useState<Record<string, AssetProgress>>({});
 
-  const fetchAssets = useCallback(async () => {
+  const loadAssets = useCallback(async () => {
     try {
       const query: Record<string, string> = {};
       if (filters?.q) query.q = filters.q;
       if (filters?.status) query.status = filters.status;
       if (filters?.sourceType) query.sourceType = filters.sourceType;
 
-      const { data } = await api.api.assets.get({ query });
-      if (data && Array.isArray(data)) {
-        setAssets(data as Asset[]);
-      }
+      const data = await fetchAssets(query);
+      setAssets(data);
     } catch {
       // silent — toast handled by query cache
     } finally {
@@ -44,8 +42,8 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
   }, [filters?.q, filters?.status, filters?.sourceType]);
 
   useEffect(() => {
-    fetchAssets();
-  }, [fetchAssets, refreshKey]);
+    loadAssets();
+  }, [loadAssets, refreshKey]);
 
   // SSE: update asset status and progress in real-time
   useAssetEvents(
@@ -72,11 +70,11 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
             return next;
           });
           if (event.status === 'ready') {
-            fetchAssets();
+            loadAssets();
           }
         }
       },
-      [fetchAssets]
+      [loadAssets]
     )
   );
 
@@ -103,7 +101,7 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
           key={asset.id}
           asset={asset}
           onSelect={onSelectAsset}
-          onRetry={fetchAssets}
+          onRetry={loadAssets}
           progress={progressMap[asset.id]?.progress}
           progressMessage={progressMap[asset.id]?.message}
         />

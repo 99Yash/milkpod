@@ -29,6 +29,7 @@ export type {
   ContextSegment,
   ToolOutput,
 } from './types';
+export { isToolOutput } from './types';
 
 // Streaming
 export { createChatStream } from './stream';

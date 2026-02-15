@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { isToolOrDynamicToolUIPart } from 'ai';
 import { ChevronDown } from 'lucide-react';
-import type { MilkpodMessage, ToolOutput, RetrieveSegmentsOutput } from '@milkpod/ai/types';
+import { isToolOutput } from '@milkpod/ai/types';
+import type { MilkpodMessage, RetrieveSegmentsOutput } from '@milkpod/ai/types';
 import { cn } from '~/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible';
 import { ToolResult } from './tool-result';
@@ -71,8 +72,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
             const hasOutput = part.state === 'output-available';
             const isStreaming = hasOutput && part.preliminary === true;
             const output =
-              hasOutput && part.output
-                ? (part.output as ToolOutput)
+              hasOutput && isToolOutput(part.output)
+                ? part.output
                 : fallbackOutput;
 
             return (

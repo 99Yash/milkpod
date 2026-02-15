@@ -1,5 +1,5 @@
-import { Elysia } from 'elysia';
-import { authMiddleware } from '../../middleware/auth';
+import { Elysia, status } from 'elysia';
+import { authMacro } from '../../middleware/auth';
 import { AssetModel } from './model';
 import { AssetService } from './service';
 import { IngestService } from '../ingest/service';
@@ -7,40 +7,27 @@ import { orchestratePipeline } from '../ingest/pipeline';
 import { assetEvents, type AssetStatusEvent } from '../../events/asset-events';
 
 export const assets = new Elysia({ prefix: '/api/assets' })
-  .use(authMiddleware)
+  .use(authMacro)
   .post(
     '/',
-    async ({ body, session, set }) => {
-      if (!session) {
-        set.status = 401;
-        return { message: 'Authentication required' };
-      }
-      return AssetService.create(session.user.id, body);
+    async ({ body, user }) => {
+      return AssetService.create(user.id, body);
     },
-    { body: AssetModel.create }
+    { auth: true, body: AssetModel.create }
   )
   .get(
     '/',
-    async ({ session, set, query }) => {
-      if (!session) {
-        set.status = 401;
-        return { message: 'Authentication required' };
-      }
+    async ({ user, query }) => {
       const hasFilters = query.q || query.status || query.sourceType;
       if (hasFilters) {
-        return AssetService.search(session.user.id, query);
+        return AssetService.search(user.id, query);
       }
-      return AssetService.list(session.user.id);
+      return AssetService.list(user.id);
     },
-    { query: AssetModel.listQuery }
+    { auth: true, query: AssetModel.listQuery }
   )
-  .get('/events', ({ session, set }) => {
-    if (!session) {
-      set.status = 401;
-      return { message: 'Authentication required' };
-    }
-
-    const userId = session.user.id;
+  .get('/events', ({ user }) => {
+    const userId = user.id;
 
     const encoder = new TextEncoder();
     let cleanup: (() => void) | undefined;
@@ -92,70 +79,40 @@ export const assets = new Elysia({ prefix: '/api/assets' })
         Connection: 'keep-alive',
       },
     }) as Response;
-  })
-  .get('/:id', async ({ params, session, set }) => {
-    if (!session) {
-      set.status = 401;
-      return { message: 'Authentication required' };
-    }
-    const asset = await AssetService.getWithTranscript(params.id, session.user.id);
-    if (!asset) {
-      set.status = 404;
-      return { message: 'Asset not found' };
-    }
+  }, { auth: true })
+  .get('/:id', async ({ params, user }) => {
+    const asset = await AssetService.getWithTranscript(params.id, user.id);
+    if (!asset) return status(404, { message: 'Asset not found' });
     return asset;
-  })
+  }, { auth: true })
   .patch(
     '/:id',
-    async ({ params, body, session, set }) => {
-      if (!session) {
-        set.status = 401;
-        return { message: 'Authentication required' };
-      }
-      const updated = await AssetService.update(params.id, session.user.id, body);
-      if (!updated) {
-        set.status = 404;
-        return { message: 'Asset not found' };
-      }
+    async ({ params, body, user }) => {
+      const updated = await AssetService.update(params.id, user.id, body);
+      if (!updated) return status(404, { message: 'Asset not found' });
       return updated;
     },
-    { body: AssetModel.update }
+    { auth: true, body: AssetModel.update }
   )
-  .delete('/:id', async ({ params, session, set }) => {
-    if (!session) {
-      set.status = 401;
-      return { message: 'Authentication required' };
-    }
-    const deleted = await AssetService.remove(params.id, session.user.id);
-    if (!deleted) {
-      set.status = 404;
-      return { message: 'Asset not found' };
-    }
+  .delete('/:id', async ({ params, user }) => {
+    const deleted = await AssetService.remove(params.id, user.id);
+    if (!deleted) return status(404, { message: 'Asset not found' });
     return deleted;
-  })
-  .post('/:id/retry', async ({ params, session, set }) => {
-    if (!session) {
-      set.status = 401;
-      return { message: 'Authentication required' };
-    }
-    const asset = await AssetService.getById(params.id, session.user.id);
-    if (!asset) {
-      set.status = 404;
-      return { message: 'Asset not found' };
-    }
+  }, { auth: true })
+  .post('/:id/retry', async ({ params, user }) => {
+    const asset = await AssetService.getById(params.id, user.id);
+    if (!asset) return status(404, { message: 'Asset not found' });
     if (asset.status !== 'failed') {
-      set.status = 409;
-      return { message: 'Only failed assets can be retried' };
+      return status(409, { message: 'Only failed assets can be retried' });
     }
     if (!asset.sourceUrl) {
-      set.status = 422;
-      return { message: 'Asset has no source URL to retry' };
+      return status(422, { message: 'Asset has no source URL to retry' });
     }
 
     await IngestService.resetForRetry(asset.id);
 
     // Fire-and-forget pipeline retry
-    orchestratePipeline(asset.id, asset.sourceUrl, session.user.id);
+    orchestratePipeline(asset.id, asset.sourceUrl, user.id);
 
     return { message: 'Retry started' };
-  });
+  }, { auth: true });

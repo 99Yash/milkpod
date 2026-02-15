@@ -1,5 +1,5 @@
-import { Elysia } from 'elysia';
-import { authMiddleware } from '../../middleware/auth';
+import { Elysia, status } from 'elysia';
+import { authMacro } from '../../middleware/auth';
 import { IngestModel } from './model';
 import { IngestService } from './service';
 import { AssetService } from '../assets/service';
@@ -7,24 +7,18 @@ import { resolveMetadata } from './ytdlp';
 import { orchestratePipeline } from './pipeline';
 
 export const ingest = new Elysia({ prefix: '/api/ingest' })
-  .use(authMiddleware)
+  .use(authMacro)
   .post(
     '/',
-    async ({ body, session, set }) => {
-      if (!session) {
-        set.status = 401;
-        return { message: 'Authentication required' };
-      }
-
-      const userId = session.user.id;
+    async ({ body, user }) => {
+      const userId = user.id;
 
       // Resolve metadata synchronously — fail fast on bad URLs
       let metadata;
       try {
         metadata = await resolveMetadata(body.url);
       } catch {
-        set.status = 422;
-        return { message: 'Could not resolve video metadata. Check the URL.' };
+        return status(422, { message: 'Could not resolve video metadata. Check the URL.' });
       }
 
       // Idempotency: check if this video was already ingested
@@ -48,8 +42,7 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       });
 
       if (!asset) {
-        set.status = 500;
-        return { message: 'Failed to create asset' };
+        return status(500, { message: 'Failed to create asset' });
       }
 
       // Update duration
@@ -64,5 +57,5 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
 
       return asset;
     },
-    { body: IngestModel.ingest }
+    { auth: true, body: IngestModel.ingest }
   );

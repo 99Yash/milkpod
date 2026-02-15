@@ -24,9 +24,10 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
     try {
       const { data, error } = await api.api.ingest.post({ url: trimmed });
       if (error) {
+        const errVal = error.value;
         toast.error(
-          typeof error.value === 'object' && error.value && 'message' in error.value
-            ? (error.value as { message: string }).message
+          typeof errVal === 'object' && errVal && 'message' in errVal
+            ? String(errVal.message)
             : 'Failed to add video'
         );
         return;

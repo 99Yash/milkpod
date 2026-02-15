@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Check, Copy, Link2, Share2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { fetchShareLinks, createShareLink } from '~/lib/api-fetchers';
 import { api } from '~/lib/api';
 import { Button } from '~/components/ui/button';
 import { Label } from '~/components/ui/label';
@@ -92,10 +93,10 @@ export function ShareDialog({
     async function loadLinks() {
       setLoadingLinks(true);
       try {
-        const { data } = await api.api.shares.get();
-        if (cancelled || !data) return;
+        const links = await fetchShareLinks();
+        if (cancelled) return;
         // Filter to only this resource's links
-        const filtered = (data as ShareLink[]).filter((link) =>
+        const filtered = links.filter((link) =>
           assetId ? link.assetId === assetId : link.collectionId === collectionId
         );
         setExistingLinks(filtered);
@@ -115,17 +116,16 @@ export function ShareDialog({
   const handleCreate = async () => {
     setCreating(true);
     try {
-      const { data, error } = await api.api.shares.post({
+      const link = await createShareLink({
         assetId: assetId ?? undefined,
         collectionId: collectionId ?? undefined,
         canQuery,
         expiresAt: getExpiryDate(expiry),
       });
-      if (error || !data) {
+      if (!link) {
         toast.error('Failed to create share link');
         return;
       }
-      const link = data as ShareLink;
       setExistingLinks((prev) => [...prev, link]);
       // Auto-copy to clipboard
       await copyToClipboard(link.token);

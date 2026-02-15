@@ -7,6 +7,11 @@ import type { MilkpodMessage } from '@milkpod/ai';
 
 type PartRow = typeof qaMessageParts.$inferInsert;
 type Part = MilkpodMessage['parts'][number];
+type MessageRole = MilkpodMessage['role'];
+
+function isMessageRole(s: string): s is MessageRole {
+  return s === 'system' || s === 'user' || s === 'assistant';
+}
 
 function serializePart(
   messageId: string,
@@ -51,6 +56,9 @@ function serializePart(
   return base;
 }
 
+// Type assertion required: reconstructing AI SDK discriminated union from DB rows.
+// The Part type is a complex union from the AI SDK that TypeScript can't verify
+// object literals against when the discriminant comes from a DB string column.
 function deserializePart(row: typeof qaMessageParts.$inferSelect): Part {
   if (row.type === 'text' || row.type === 'reasoning') {
     return { type: row.type, text: row.textContent ?? '' } as Part;
@@ -131,10 +139,13 @@ export abstract class ChatService {
 
     const partsByMessage = Map.groupBy(partRows, (r) => r.messageId);
 
-    return messageRows.map((row) => ({
-      id: row.id,
-      role: row.role as 'user' | 'assistant',
-      parts: (partsByMessage.get(row.id) ?? []).map(deserializePart),
-    }));
+    return messageRows.flatMap<MilkpodMessage>((row) => {
+      if (!isMessageRole(row.role)) return [];
+      return {
+        id: row.id,
+        role: row.role,
+        parts: (partsByMessage.get(row.id) ?? []).map(deserializePart),
+      };
+    });
   }
 }

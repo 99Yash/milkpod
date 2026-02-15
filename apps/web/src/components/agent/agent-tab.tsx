@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { api } from '~/lib/api';
+import { fetchAssets } from '~/lib/api-fetchers';
 import { ChatPanel } from '~/components/chat/chat-panel';
 import {
   DashboardPanel,
@@ -22,15 +22,12 @@ export function AgentTab({ initialAssetId }: AgentTabProps) {
   );
 
   useEffect(() => {
-    api.api.assets
-      .get()
-      .then(({ data }) => {
-        if (data && Array.isArray(data)) {
-          const ready = (data as Asset[]).filter((a) => a.status === 'ready');
-          setAssets(ready);
-          if (!selectedId && ready.length > 0) {
-            setSelectedId(ready[0].id);
-          }
+    fetchAssets()
+      .then((data) => {
+        const ready = data.filter((a) => a.status === 'ready');
+        setAssets(ready);
+        if (!selectedId && ready.length > 0) {
+          setSelectedId(ready[0].id);
         }
       })
       .catch(() => {})

@@ -54,15 +54,6 @@ export const app = new Elysia({ name: 'api' })
     set.status = 405;
     return 'Method Not Allowed';
   })
-  .derive(async ({ request }) => {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    return {
-      session,
-    };
-  })
   .use(rateLimiter)
   .use(chat)
   .use(assets)

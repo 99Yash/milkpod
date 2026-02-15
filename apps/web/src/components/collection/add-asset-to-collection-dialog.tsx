@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog';
 import { api } from '~/lib/api';
+import { fetchAssets } from '~/lib/api-fetchers';
 import type { Asset } from '@milkpod/api/types';
 import { cn } from '~/lib/utils';
 
@@ -39,15 +40,12 @@ export function AddAssetToCollectionDialog({
     if (!open) return;
     setIsLoading(true);
     setSelectedId(null);
-    api.api.assets
-      .get()
-      .then(({ data }) => {
-        if (data && Array.isArray(data)) {
-          const available = (data as Asset[]).filter(
-            (a) => !existingAssetIds.includes(a.id)
-          );
-          setAssets(available);
-        }
+    fetchAssets()
+      .then((data) => {
+        const available = data.filter(
+          (a) => !existingAssetIds.includes(a.id)
+        );
+        setAssets(available);
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));

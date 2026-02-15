@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '~/components/ui/dialog';
+import { fetchCollections } from '~/lib/api-fetchers';
 import { api } from '~/lib/api';
 import type { Collection } from '@milkpod/api/types';
 import { cn } from '~/lib/utils';
@@ -37,13 +38,8 @@ export function AddToCollectionDialog({
     if (!open) return;
     setIsLoading(true);
     setSelectedId(null);
-    api.api.collections
-      .get()
-      .then(({ data }) => {
-        if (data && Array.isArray(data)) {
-          setCollections(data as Collection[]);
-        }
-      })
+    fetchCollections()
+      .then((result) => setCollections(result))
       .catch(() => {})
       .finally(() => setIsLoading(false));
   }, [open]);

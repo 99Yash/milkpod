@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { useMilkpodChat } from '~/hooks/use-milkpod-chat';
 import { ChatMessage } from './message';
 import type { MilkpodMessage } from '@milkpod/ai/types';
-import { api } from '~/lib/api';
+import { fetchChatMessages } from '~/lib/api-fetchers';
 
 interface ChatPanelProps {
   threadId?: string;
@@ -27,11 +27,10 @@ function usePersistedMessages(threadId?: string) {
     if (!threadId) return;
 
     setIsLoading(true);
-    api.api.chat({ threadId })
-      .get()
-      .then(({ data }) => {
-        if (data && 'messages' in data) {
-          setMessages(data.messages as MilkpodMessage[]);
+    fetchChatMessages(threadId)
+      .then((result) => {
+        if (result) {
+          setMessages(result.messages);
         }
       })
       .catch(() => {

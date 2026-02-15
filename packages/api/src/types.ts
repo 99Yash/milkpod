@@ -76,3 +76,19 @@ export type CollectionWithItems = Collection & {
     >;
   }>;
 };
+
+// ---------------------------------------------------------------------------
+// Shared resource — returned by ShareService.getSharedResource()
+// ---------------------------------------------------------------------------
+
+export type SharedResourceResult =
+  | {
+      link: ShareLink;
+      resource: AssetWithTranscript;
+      type: 'asset';
+    }
+  | {
+      link: ShareLink;
+      resource: CollectionWithItems;
+      type: 'collection';
+    };

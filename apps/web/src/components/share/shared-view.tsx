@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { Clock, Link2Off, Mic, User } from 'lucide-react';
-import { api } from '~/lib/api';
+import { fetchSharedResource } from '~/lib/api-fetchers';
+import type { SharedData } from '~/lib/api-fetchers';
 import { Badge } from '~/components/ui/badge';
 import { Spinner } from '~/components/ui/spinner';
 import {
@@ -12,35 +13,13 @@ import {
 import { TranscriptViewer } from '~/components/asset/transcript-viewer';
 import { SharedChatPanel } from './shared-chat-panel';
 import type {
-  Asset,
-  Collection,
-  Transcript,
-  TranscriptSegment,
+  AssetWithTranscript,
   CollectionWithItems,
 } from '@milkpod/api/types';
 
 interface SharedViewProps {
   token: string;
 }
-
-type SharedAsset = Asset & {
-  transcript: Transcript | null;
-  segments: TranscriptSegment[];
-};
-
-type SharedData =
-  | {
-      type: 'asset';
-      resource: SharedAsset;
-      canQuery: boolean;
-      expiresAt: string | null;
-    }
-  | {
-      type: 'collection';
-      resource: CollectionWithItems;
-      canQuery: boolean;
-      expiresAt: string | null;
-    };
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -59,19 +38,17 @@ export function SharedView({ token }: SharedViewProps) {
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchSharedResource() {
+    async function loadSharedResource() {
       setIsLoading(true);
       try {
-        const { data: result, error } = await api.api.shares
-          .validate({ token })
-          .get();
+        const result = await fetchSharedResource(token);
         if (cancelled) return;
 
-        if (error || !result || !('type' in result)) {
+        if (!result) {
           setNotFound(true);
           return;
         }
-        setData(result as SharedData);
+        setData(result);
       } catch {
         if (!cancelled) setNotFound(true);
       } finally {
@@ -79,7 +56,7 @@ export function SharedView({ token }: SharedViewProps) {
       }
     }
 
-    fetchSharedResource();
+    loadSharedResource();
     return () => {
       cancelled = true;
     };
@@ -159,7 +136,7 @@ export function SharedView({ token }: SharedViewProps) {
   );
 }
 
-function SharedAssetView({ resource }: { resource: SharedAsset }) {
+function SharedAssetView({ resource }: { resource: AssetWithTranscript }) {
   const speakers = new Set(
     resource.segments?.filter((s) => s.speaker).map((s) => s.speaker!)
   );

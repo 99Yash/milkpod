@@ -1,40 +1,32 @@
-import { Elysia } from 'elysia';
+import { Elysia, status } from 'elysia';
 import { createChatStream } from '@milkpod/ai';
-import { authMiddleware } from '../../middleware/auth';
+import { authMacro } from '../../middleware/auth';
 import { ShareModel } from './model';
 import { ShareService } from './service';
 import { AssetService } from '../assets/service';
 import { CollectionService } from '../collections/service';
 
 export const shares = new Elysia({ prefix: '/api/shares' })
-  .use(authMiddleware)
+  .use(authMacro)
   // Create a share link
   .post(
     '/',
-    async ({ body, session, set }) => {
-      if (!session) {
-        set.status = 401;
-        return { message: 'Authentication required' };
-      }
-
-      const userId = session.user.id;
+    async ({ body, user }) => {
+      const userId = user.id;
 
       // Must scope to exactly one of asset or collection
       if (!body.assetId && !body.collectionId) {
-        set.status = 400;
-        return { message: 'Either assetId or collectionId is required' };
+        return status(400, { message: 'Either assetId or collectionId is required' });
       }
       if (body.assetId && body.collectionId) {
-        set.status = 400;
-        return { message: 'Provide either assetId or collectionId, not both' };
+        return status(400, { message: 'Provide either assetId or collectionId, not both' });
       }
 
       // Verify ownership of the resource being shared
       if (body.assetId) {
         const asset = await AssetService.getById(body.assetId, userId);
         if (!asset) {
-          set.status = 403;
-          return { message: 'Access denied to asset' };
+          return status(403, { message: 'Access denied to asset' });
         }
       }
       if (body.collectionId) {
@@ -43,45 +35,34 @@ export const shares = new Elysia({ prefix: '/api/shares' })
           userId
         );
         if (!collection) {
-          set.status = 403;
-          return { message: 'Access denied to collection' };
+          return status(403, { message: 'Access denied to collection' });
         }
       }
 
       return ShareService.create(userId, body);
     },
-    { body: ShareModel.create }
+    { auth: true, body: ShareModel.create }
   )
   // List user's active share links
-  .get('/', async ({ session, set }) => {
-    if (!session) {
-      set.status = 401;
-      return { message: 'Authentication required' };
-    }
-    return ShareService.list(session.user.id);
-  })
+  .get('/', async ({ user }) => {
+    return ShareService.list(user.id);
+  }, { auth: true })
   // Revoke a share link
-  .delete('/:id', async ({ params, session, set }) => {
-    if (!session) {
-      set.status = 401;
-      return { message: 'Authentication required' };
-    }
+  .delete('/:id', async ({ params, user }) => {
     const revoked = await ShareService.revoke(
       params.id,
-      session.user.id
+      user.id
     );
     if (!revoked) {
-      set.status = 404;
-      return { message: 'Share link not found or already revoked' };
+      return status(404, { message: 'Share link not found or already revoked' });
     }
     return revoked;
-  })
+  }, { auth: true })
   // Validate a share token (public endpoint — no auth required)
-  .get('/validate/:token', async ({ params, set }) => {
+  .get('/validate/:token', async ({ params }) => {
     const result = await ShareService.getSharedResource(params.token);
     if (!result) {
-      set.status = 404;
-      return { message: 'Invalid or expired share link' };
+      return status(404, { message: 'Invalid or expired share link' });
     }
     return {
       type: result.type,
@@ -93,24 +74,21 @@ export const shares = new Elysia({ prefix: '/api/shares' })
   // Ephemeral Q&A for shared links (public, rate-limited)
   .post(
     '/chat/:token',
-    async ({ params, body, set }) => {
+    async ({ params, body }) => {
       const result = await ShareService.getSharedResource(params.token);
       if (!result) {
-        set.status = 404;
-        return { message: 'Invalid or expired share link' };
+        return status(404, { message: 'Invalid or expired share link' });
       }
 
       if (!result.link.canQuery) {
-        set.status = 403;
-        return { message: 'Q&A is not enabled for this share link' };
+        return status(403, { message: 'Q&A is not enabled for this share link' });
       }
 
       const { allowed, remaining } = await ShareService.checkRateLimit(
         result.link.id
       );
       if (!allowed) {
-        set.status = 429;
-        return { message: 'Rate limit exceeded. Try again later.' };
+        return status(429, { message: 'Rate limit exceeded. Try again later.' });
       }
 
       // Extract question text from last user message for audit log

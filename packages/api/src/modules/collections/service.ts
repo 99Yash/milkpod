@@ -1,18 +1,19 @@
 import { db } from '@milkpod/db';
 import { collections, collectionItems, mediaAssets } from '@milkpod/db/schemas';
 import { and, eq } from 'drizzle-orm';
+import type { Collection, CollectionItem, CollectionWithItems } from '../../types';
 import type { CollectionModel } from './model';
 
 export abstract class CollectionService {
-  static async create(userId: string, data: CollectionModel.Create) {
+  static async create(userId: string, data: CollectionModel.Create): Promise<Collection> {
     const [collection] = await db
       .insert(collections)
       .values({ userId, ...data })
       .returning();
-    return collection;
+    return collection!;
   }
 
-  static async list(userId: string) {
+  static async list(userId: string): Promise<Collection[]> {
     return db
       .select()
       .from(collections)
@@ -20,7 +21,7 @@ export abstract class CollectionService {
       .orderBy(collections.createdAt);
   }
 
-  static async getById(id: string, userId: string) {
+  static async getById(id: string, userId: string): Promise<Collection | null> {
     const [collection] = await db
       .select()
       .from(collections)
@@ -28,7 +29,7 @@ export abstract class CollectionService {
     return collection ?? null;
   }
 
-  static async getWithItems(id: string, userId: string) {
+  static async getWithItems(id: string, userId: string): Promise<CollectionWithItems | null> {
     const collection = await CollectionService.getById(id, userId);
     if (!collection) return null;
 
@@ -54,7 +55,7 @@ export abstract class CollectionService {
     return { ...collection, items };
   }
 
-  static async update(id: string, userId: string, data: CollectionModel.Update) {
+  static async update(id: string, userId: string, data: CollectionModel.Update): Promise<Collection | null> {
     const [updated] = await db
       .update(collections)
       .set(data)
@@ -63,7 +64,7 @@ export abstract class CollectionService {
     return updated ?? null;
   }
 
-  static async remove(id: string, userId: string) {
+  static async remove(id: string, userId: string): Promise<Collection | null> {
     const [deleted] = await db
       .delete(collections)
       .where(and(eq(collections.id, id), eq(collections.userId, userId)))
@@ -71,7 +72,7 @@ export abstract class CollectionService {
     return deleted ?? null;
   }
 
-  static async addItem(collectionId: string, data: CollectionModel.AddItem) {
+  static async addItem(collectionId: string, data: CollectionModel.AddItem): Promise<CollectionItem> {
     const [item] = await db
       .insert(collectionItems)
       .values({
@@ -80,10 +81,10 @@ export abstract class CollectionService {
         position: data.position,
       })
       .returning();
-    return item;
+    return item!;
   }
 
-  static async removeItem(collectionId: string, itemId: string) {
+  static async removeItem(collectionId: string, itemId: string): Promise<CollectionItem | null> {
     const [deleted] = await db
       .delete(collectionItems)
       .where(

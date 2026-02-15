@@ -29,8 +29,7 @@ export const requestLogger = new Elysia({ name: 'request-logger' })
     const method = ctx.request.method;
     const status = normalizeStatus(ctx.set.status);
     const userId =
-      (ctx as unknown as { session?: { user?: { id?: string } } }).session?.user
-        ?.id ?? null;
+      (ctx as unknown as { user?: { id?: string } }).user?.id ?? null;
     const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
 
     console.log(

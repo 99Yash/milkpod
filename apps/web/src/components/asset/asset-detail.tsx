@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Clock, Mic, User } from 'lucide-react';
 import { ShareDialog } from '~/components/share/share-dialog';
 import { toast } from 'sonner';
-import { api } from '~/lib/api';
+import { fetchAssetDetail } from '~/lib/api-fetchers';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
@@ -16,9 +16,7 @@ import {
 import { ChatPanel } from '~/components/chat/chat-panel';
 import { TranscriptViewer } from './transcript-viewer';
 import type {
-  Asset,
-  Transcript,
-  TranscriptSegment,
+  AssetWithTranscript,
   AssetStatus,
 } from '@milkpod/api/types';
 import { isProcessingStatus } from '@milkpod/api/types';
@@ -28,10 +26,7 @@ interface AssetDetailProps {
   assetId: string;
 }
 
-type AssetData = Asset & {
-  transcript: Transcript | null;
-  segments: TranscriptSegment[];
-};
+type AssetData = AssetWithTranscript;
 
 const statusLabels: Record<AssetStatus, string> = {
   queued: 'Queued',
@@ -62,14 +57,14 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
     async function fetchAsset() {
       setIsLoading(true);
       try {
-        const { data, error } = await api.api.assets({ id: assetId }).get();
+        const result = await fetchAssetDetail(assetId);
         if (cancelled) return;
 
-        if (error || !data) {
+        if (!result) {
           setNotFound(true);
           return;
         }
-        setAsset(data as AssetData);
+        setAsset(result);
       } catch {
         if (!cancelled) {
           toast.error('Failed to load asset');
@@ -96,11 +91,9 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
         // Re-fetch full data (with transcript) when ready
         if (event.status === 'ready') {
           setProgressMessage(undefined);
-          api.api
-            .assets({ id: assetId })
-            .get()
-            .then(({ data }) => {
-              if (data) setAsset(data as AssetData);
+          fetchAssetDetail(assetId)
+            .then((result) => {
+              if (result) setAsset(result);
             })
             .catch(() => {});
         }

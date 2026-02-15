@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { ShareDialog } from '~/components/share/share-dialog';
 import { toast } from 'sonner';
+import { fetchCollectionDetail } from '~/lib/api-fetchers';
 import { api } from '~/lib/api';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -46,12 +47,12 @@ export function CollectionDetail({ collectionId }: CollectionDetailProps) {
 
   const fetchCollection = useCallback(async () => {
     try {
-      const { data, error } = await api.api.collections({ id: collectionId }).get();
-      if (error || !data) {
+      const result = await fetchCollectionDetail(collectionId);
+      if (!result) {
         setNotFound(true);
         return;
       }
-      setCollection(data as CollectionWithItems);
+      setCollection(result);
     } catch {
       toast.error('Failed to load collection');
       setNotFound(true);

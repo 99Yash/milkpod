@@ -10,6 +10,7 @@ import {
 } from '@milkpod/db/schemas';
 import { and, eq, gte, isNull, count } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
+import type { ShareLink, SharedResourceResult } from '../../types';
 import type { ShareModel } from './model';
 
 function generateToken(): string {
@@ -17,7 +18,7 @@ function generateToken(): string {
 }
 
 export abstract class ShareService {
-  static async create(userId: string, data: ShareModel.Create) {
+  static async create(userId: string, data: ShareModel.Create): Promise<ShareLink> {
     const token = generateToken();
     const [link] = await db
       .insert(shareLinks)
@@ -30,10 +31,10 @@ export abstract class ShareService {
         expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
       })
       .returning();
-    return link;
+    return link!;
   }
 
-  static async list(userId: string) {
+  static async list(userId: string): Promise<ShareLink[]> {
     return db
       .select()
       .from(shareLinks)
@@ -41,7 +42,7 @@ export abstract class ShareService {
       .orderBy(shareLinks.createdAt);
   }
 
-  static async getById(id: string, userId: string) {
+  static async getById(id: string, userId: string): Promise<ShareLink | null> {
     const [link] = await db
       .select()
       .from(shareLinks)
@@ -49,7 +50,7 @@ export abstract class ShareService {
     return link ?? null;
   }
 
-  static async revoke(id: string, userId: string) {
+  static async revoke(id: string, userId: string): Promise<ShareLink | null> {
     const [revoked] = await db
       .update(shareLinks)
       .set({ revokedAt: new Date() })
@@ -64,7 +65,7 @@ export abstract class ShareService {
     return revoked ?? null;
   }
 
-  static async validateToken(token: string) {
+  static async validateToken(token: string): Promise<ShareLink | null> {
     const [link] = await db
       .select()
       .from(shareLinks)
@@ -85,7 +86,7 @@ export abstract class ShareService {
     return link;
   }
 
-  static async getSharedResource(token: string) {
+  static async getSharedResource(token: string): Promise<SharedResourceResult | null> {
     const link = await ShareService.validateToken(token);
     if (!link) return null;
 

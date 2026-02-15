@@ -87,12 +87,11 @@ function categorize(path: string): RateCategory | null {
 // --- Elysia plugin ---
 
 /**
- * Per-user token bucket rate limiter.
+ * Per-IP token bucket rate limiter.
  *
- * Must be `.use()`d AFTER the session `.derive()` in the main app so that
- * `session` is available in the context when `onBeforeHandle` runs.
- *
- * Lifecycle: onRequest → derive (session) → onBeforeHandle (rate check) → handler
+ * User identity is not available at this point in the lifecycle (the auth
+ * macro resolves per-route, after onBeforeHandle). All requests are keyed
+ * by IP address.
  */
 export const rateLimiter = new Elysia({ name: 'rate-limiter' }).onBeforeHandle(
   (ctx) => {
@@ -102,22 +101,12 @@ export const rateLimiter = new Elysia({ name: 'rate-limiter' }).onBeforeHandle(
     const category = categorize(path);
     if (!category) return;
 
-    // Session is derived by the parent app before onBeforeHandle runs
-    const session = (
-      ctx as unknown as {
-        session?: { user?: { id?: string } } | null;
-      }
-    ).session;
-
-    const userId = session?.user?.id ?? null;
-
-    // Fall back to IP for unauthenticated endpoints (share validate/chat)
     const ip =
       request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
       request.headers.get('x-real-ip') ??
       'unknown';
 
-    const identity = userId ?? `ip:${ip}`;
+    const identity = `ip:${ip}`;
     const key = `${identity}:${category}`;
     const config = LIMITS[category];
     const { allowed, retryAfterSecs } = consume(key, config);

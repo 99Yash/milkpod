@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { api } from '~/lib/api';
+import { fetchCollections } from '~/lib/api-fetchers';
 import { CollectionCard } from './collection-card';
 import { CreateCollectionDialog } from './create-collection-dialog';
 import { Spinner } from '~/components/ui/spinner';
@@ -15,12 +15,9 @@ export function CollectionList({ refreshKey }: CollectionListProps) {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchCollections = useCallback(async () => {
+  const loadCollections = useCallback(async () => {
     try {
-      const { data } = await api.api.collections.get();
-      if (data && Array.isArray(data)) {
-        setCollections(data as Collection[]);
-      }
+      setCollections(await fetchCollections());
     } catch {
       // silent
     } finally {
@@ -29,8 +26,8 @@ export function CollectionList({ refreshKey }: CollectionListProps) {
   }, []);
 
   useEffect(() => {
-    fetchCollections();
-  }, [fetchCollections, refreshKey]);
+    loadCollections();
+  }, [loadCollections, refreshKey]);
 
   if (isLoading) {
     return (
@@ -46,7 +43,7 @@ export function CollectionList({ refreshKey }: CollectionListProps) {
         <p className="text-xs text-muted-foreground">
           {collections.length} {collections.length === 1 ? 'collection' : 'collections'}
         </p>
-        <CreateCollectionDialog onCreated={fetchCollections} />
+        <CreateCollectionDialog onCreated={loadCollections} />
       </div>
 
       {collections.length === 0 ? (
@@ -59,8 +56,8 @@ export function CollectionList({ refreshKey }: CollectionListProps) {
             <CollectionCard
               key={collection.id}
               collection={collection}
-              onDeleted={fetchCollections}
-              onUpdated={fetchCollections}
+              onDeleted={loadCollections}
+              onUpdated={loadCollections}
             />
           ))}
         </div>

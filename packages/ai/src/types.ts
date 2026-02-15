@@ -56,3 +56,14 @@ export interface GetTranscriptContextOutput {
 }
 
 export type ToolOutput = RetrieveSegmentsOutput | GetTranscriptContextOutput;
+
+/** Runtime type guard for tool outputs deserialized from `unknown`. */
+export function isToolOutput(val: unknown): val is ToolOutput {
+  if (typeof val !== 'object' || val === null) return false;
+  const obj = val as Record<string, unknown>;
+  return (
+    typeof obj.status === 'string' &&
+    typeof obj.message === 'string' &&
+    Array.isArray(obj.segments)
+  );
+}
