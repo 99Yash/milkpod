@@ -12,6 +12,7 @@ interface AssetListProps {
   onSelectAsset?: (assetId: string) => void;
   refreshKey?: number;
   filters?: AssetFilters;
+  initialAssets?: Asset[];
 }
 
 /** Per-asset progress info from SSE events */
@@ -20,9 +21,9 @@ interface AssetProgress {
   message?: string;
 }
 
-export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps) {
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }: AssetListProps) {
+  const [assets, setAssets] = useState<Asset[]>(initialAssets ?? []);
+  const [isLoading, setIsLoading] = useState(!initialAssets);
   const [progressMap, setProgressMap] = useState<Record<string, AssetProgress>>({});
 
   const loadAssets = useCallback(async () => {

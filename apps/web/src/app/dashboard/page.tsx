@@ -23,6 +23,7 @@ import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { getServerSession } from '~/lib/auth/session';
+import { getAssets, getCollections } from '~/lib/data/queries';
 import { route } from '~/lib/routes';
 import { cn } from '~/lib/utils';
 
@@ -139,6 +140,11 @@ export default async function DashboardPage({
     redirect(route('/signin'));
   }
 
+  const [assets, collections] = await Promise.all([
+    getAssets(session.user.id),
+    getCollections(session.user.id),
+  ]);
+
   const tabParam = resolvedSearchParams?.tab;
   const initialTab =
     tabParam === 'library'
@@ -149,6 +155,8 @@ export default async function DashboardPage({
   return (
     <DashboardContent
       initialTab={initialTab}
+      initialAssets={assets}
+      initialCollections={collections}
       home={<DashboardHome />}
     />
   );

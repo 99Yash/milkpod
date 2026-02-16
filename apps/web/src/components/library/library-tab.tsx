@@ -6,6 +6,7 @@ import { AssetList } from './asset-list';
 import { CollectionList } from './collection-list';
 import { SearchFilterBar, type AssetFilters } from './search-filter-bar';
 import { cn } from '~/lib/utils';
+import type { Asset, Collection } from '@milkpod/api/types';
 
 type LibraryView = 'assets' | 'collections';
 
@@ -13,9 +14,15 @@ const emptyFilters: AssetFilters = { q: '', status: '', sourceType: '' };
 
 interface LibraryTabProps {
   onSelectAsset?: (assetId: string) => void;
+  initialAssets?: Asset[];
+  initialCollections?: Collection[];
 }
 
-export function LibraryTab({ onSelectAsset }: LibraryTabProps) {
+export function LibraryTab({
+  onSelectAsset,
+  initialAssets,
+  initialCollections,
+}: LibraryTabProps) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [view, setView] = useState<LibraryView>('assets');
   const [filters, setFilters] = useState<AssetFilters>(emptyFilters);
@@ -69,12 +76,13 @@ export function LibraryTab({ onSelectAsset }: LibraryTabProps) {
             onSelectAsset={onSelectAsset}
             refreshKey={refreshKey}
             filters={filters}
+            initialAssets={initialAssets}
           />
         </>
       )}
 
       {view === 'collections' && (
-        <CollectionList refreshKey={refreshKey} />
+        <CollectionList refreshKey={refreshKey} initialCollections={initialCollections} />
       )}
     </section>
   );

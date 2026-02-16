@@ -12,13 +12,15 @@ import type { Asset } from '@milkpod/api/types';
 
 interface AgentTabProps {
   initialAssetId?: string;
+  initialAssets?: Asset[];
 }
 
-export function AgentTab({ initialAssetId }: AgentTabProps) {
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
+  const readyInitial = initialAssets?.filter((a) => a.status === 'ready');
+  const [assets, setAssets] = useState<Asset[]>(readyInitial ?? []);
+  const [isLoading, setIsLoading] = useState(!initialAssets);
   const [selectedId, setSelectedId] = useState<string | undefined>(
-    initialAssetId
+    initialAssetId ?? readyInitial?.[0]?.id
   );
 
   useEffect(() => {

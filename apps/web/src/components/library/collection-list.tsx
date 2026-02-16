@@ -9,11 +9,12 @@ import type { Collection } from '@milkpod/api/types';
 
 interface CollectionListProps {
   refreshKey?: number;
+  initialCollections?: Collection[];
 }
 
-export function CollectionList({ refreshKey }: CollectionListProps) {
-  const [collections, setCollections] = useState<Collection[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export function CollectionList({ refreshKey, initialCollections }: CollectionListProps) {
+  const [collections, setCollections] = useState<Collection[]>(initialCollections ?? []);
+  const [isLoading, setIsLoading] = useState(!initialCollections);
 
   const loadCollections = useCallback(async () => {
     try {
