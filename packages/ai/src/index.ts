@@ -6,6 +6,7 @@ export {
   generateEmbedding,
   generateEmbeddings,
   chunkSegmentText,
+  chunkTranscript,
   EMBEDDING_MODEL_NAME,
   EMBEDDING_DIMENSIONS,
 } from './embeddings';

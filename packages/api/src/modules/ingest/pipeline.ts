@@ -1,4 +1,4 @@
-import { chunkSegmentText, generateEmbeddings, EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSIONS } from '@milkpod/ai/embeddings';
+import { chunkTranscript, generateEmbeddings, EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSIONS } from '@milkpod/ai/embeddings';
 import { fetchYouTubeTranscript } from './youtube';
 import { captionItemsToSegments } from './segments';
 import { IngestService } from './service';
@@ -72,6 +72,9 @@ export async function orchestratePipeline(
     // Stage 2: Generate and store embeddings
     await IngestService.updateStatus(assetId, 'embedding');
     emitAssetStatus(userId, assetId, 'embedding');
+
+    // Concatenate all segments into full transcript, then chunk recursively
+    const chunkItems = chunkTranscript(storedSegments);
     const embeddingItems: {
       segmentId: string;
       content: string;
@@ -80,28 +83,25 @@ export async function orchestratePipeline(
       dimensions: number;
     }[] = [];
 
-    const totalSegments = storedSegments.length;
-    for (let si = 0; si < totalSegments; si++) {
-      const seg = storedSegments[si]!;
-      const chunks = chunkSegmentText(seg.text);
-      if (chunks.length === 0) continue;
-
+    const EMBED_BATCH = 64;
+    for (let i = 0; i < chunkItems.length; i += EMBED_BATCH) {
+      const batch = chunkItems.slice(i, i + EMBED_BATCH);
       const vectors = await withRetry('embedding', assetId, () =>
-        generateEmbeddings(chunks)
+        generateEmbeddings(batch.map((c) => c.content))
       );
-      for (let i = 0; i < chunks.length; i++) {
+      for (let j = 0; j < batch.length; j++) {
         embeddingItems.push({
-          segmentId: seg.id,
-          content: chunks[i]!,
-          embedding: vectors[i]!,
+          segmentId: batch[j]!.segmentId,
+          content: batch[j]!.content,
+          embedding: vectors[j]!,
           model: EMBEDDING_MODEL_NAME,
           dimensions: EMBEDDING_DIMENSIONS,
         });
       }
 
-      // Emit sub-stage progress
-      const pct = ((si + 1) / totalSegments) * 100;
-      emitAssetProgress(userId, assetId, 'embedding', pct, `Embedding segments (${si + 1}/${totalSegments})`);
+      const done = Math.min(i + EMBED_BATCH, chunkItems.length);
+      const pct = (done / chunkItems.length) * 100;
+      emitAssetProgress(userId, assetId, 'embedding', pct, `Embedding chunks (${done}/${chunkItems.length})`);
     }
 
     if (embeddingItems.length > 0) {

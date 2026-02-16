@@ -84,3 +84,46 @@ export function chunkSegmentText(
 
   return chunks;
 }
+
+/**
+ * Concatenates all segment texts into a full transcript, runs recursive
+ * character splitting on the result, then maps each chunk back to the
+ * segment it starts in (for the segmentId FK).
+ */
+export function chunkTranscript(
+  segments: { id: string; text: string }[]
+): { content: string; segmentId: string }[] {
+  if (segments.length === 0) return [];
+
+  const fullText = segments.map((s) => s.text).join('\n');
+
+  // Build offset-to-segment lookup
+  const segOffsets: { offset: number; id: string }[] = [];
+  let offset = 0;
+  for (const seg of segments) {
+    segOffsets.push({ offset, id: seg.id });
+    offset += seg.text.length + 1; // +1 for \n separator
+  }
+
+  const chunks = chunkSegmentText(fullText);
+
+  // Map each chunk back to the segment whose offset range contains its position
+  const result: { content: string; segmentId: string }[] = [];
+  let searchFrom = 0;
+
+  for (const chunk of chunks) {
+    const pos = fullText.indexOf(chunk, searchFrom);
+    const charPos = pos >= 0 ? pos : 0;
+
+    let segId = segOffsets[0]!.id;
+    for (const so of segOffsets) {
+      if (so.offset <= charPos) segId = so.id;
+      else break;
+    }
+
+    result.push({ content: chunk, segmentId: segId });
+    if (pos >= 0) searchFrom = pos + 1;
+  }
+
+  return result;
+}
