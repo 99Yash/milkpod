@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Clock, Mic, User } from 'lucide-react';
+import { ArrowLeft, Clock, FileText, MessageSquareText, Mic, User } from 'lucide-react';
 import { ShareDialog } from '~/components/share/share-dialog';
 import { toast } from 'sonner';
 import { fetchAssetDetail } from '~/lib/api-fetchers';
@@ -136,16 +136,16 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
 
   return (
     <div className="space-y-4">
-      <BackButton />
+      {/* Header: back + share */}
+      <div className="flex items-center justify-between">
+        <BackButton />
+        {isReady && (
+          <ShareDialog assetId={assetId} resourceName={asset.title} />
+        )}
+      </div>
 
-      {/* Asset header */}
+      {/* Asset info */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div />
-          {isReady && (
-            <ShareDialog assetId={assetId} resourceName={asset.title} />
-          )}
-        </div>
         <div className="flex items-start gap-4">
           {asset.thumbnailUrl && (
             <div className="hidden shrink-0 overflow-hidden rounded-lg sm:block sm:w-40">
@@ -197,21 +197,25 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
       {isReady && asset.segments.length > 0 ? (
         <div className="grid gap-4 lg:grid-cols-[1fr_400px]">
           {/* Transcript panel */}
-          <DashboardPanel className="h-[600px]">
+          <DashboardPanel className="flex h-[calc(100svh-14rem)] min-h-[400px] flex-col overflow-hidden">
             <div className="flex items-center gap-2 border-b px-4 py-3">
+              <FileText className="size-4 text-muted-foreground" />
               <h2 className="text-sm font-medium text-foreground">
                 Transcript
               </h2>
-              <span className="text-xs text-muted-foreground">
+              <span className="ml-auto text-xs text-muted-foreground">
                 {asset.segments.length} segments
               </span>
             </div>
-            <TranscriptViewer segments={asset.segments} />
+            <div className="min-h-0 flex-1">
+              <TranscriptViewer segments={asset.segments} />
+            </div>
           </DashboardPanel>
 
           {/* Chat panel */}
-          <DashboardPanel className="h-[600px]">
+          <DashboardPanel className="h-[calc(100svh-14rem)] min-h-[400px]">
             <div className="flex items-center gap-2 border-b px-4 py-3">
+              <MessageSquareText className="size-4 text-muted-foreground" />
               <h2 className="text-sm font-medium text-foreground">
                 Ask AI
               </h2>
