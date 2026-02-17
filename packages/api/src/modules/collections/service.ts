@@ -10,7 +10,8 @@ export abstract class CollectionService {
       .insert(collections)
       .values({ userId, ...data })
       .returning();
-    return collection!;
+    if (!collection) throw new Error('Failed to insert collection');
+    return collection;
   }
 
   static async list(userId: string): Promise<Collection[]> {
@@ -81,7 +82,8 @@ export abstract class CollectionService {
         position: data.position,
       })
       .returning();
-    return item!;
+    if (!item) throw new Error('Failed to insert collection item');
+    return item;
   }
 
   static async removeItem(collectionId: string, itemId: string): Promise<CollectionItem | null> {

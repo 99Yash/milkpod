@@ -1,20 +1,5 @@
 import { t } from 'elysia';
-import type { MilkpodMessage } from '@milkpod/ai/types';
-
-const uiMessage = t.Unsafe<MilkpodMessage>(
-  t.Object({
-    id: t.String(),
-    role: t.Union([
-      t.Literal('system'),
-      t.Literal('user'),
-      t.Literal('assistant'),
-    ]),
-    parts: t.Array(
-      t.Object({ type: t.String() }, { additionalProperties: true })
-    ),
-    metadata: t.Optional(t.Any()),
-  })
-);
+import { uiMessageSchema } from '../../schemas';
 
 export namespace ShareModel {
   export const create = t.Object({
@@ -26,7 +11,7 @@ export namespace ShareModel {
   export type Create = typeof create.static;
 
   export const chat = t.Object({
-    messages: t.Array(uiMessage, { minItems: 1 }),
+    messages: t.Array(uiMessageSchema, { minItems: 1 }),
   });
   export type Chat = typeof chat.static;
 }

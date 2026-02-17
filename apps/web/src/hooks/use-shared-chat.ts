@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useCallback } from 'react';
-import { useChat } from '@ai-sdk/react';
+import { useChat, type UseChatHelpers } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { clientEnv } from '@milkpod/env/client';
 import { chatMetadataSchema } from '@milkpod/ai/schemas';
@@ -9,7 +9,7 @@ import type { MilkpodMessage } from '@milkpod/ai/types';
 
 const SERVER_URL = clientEnv().NEXT_PUBLIC_SERVER_URL;
 
-export function useSharedChat({ token }: { token: string }) {
+export function useSharedChat({ token }: { token: string }): UseChatHelpers<MilkpodMessage> & { rateLimitRemaining: number | null } {
   const rateLimitRef = useRef<number | null>(null);
 
   const customFetch: typeof globalThis.fetch = useCallback(

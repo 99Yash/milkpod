@@ -23,7 +23,7 @@ interface OAuthProvider {
   icon?: React.ComponentType<{ className?: string }>;
 }
 
-export const OAUTH_PROVIDERS: Record<OAuthProviderId, OAuthProvider> = {
+export const OAUTH_PROVIDERS = {
   github: {
     id: 'github',
     name: 'GitHub',
@@ -34,12 +34,12 @@ export const OAUTH_PROVIDERS: Record<OAuthProviderId, OAuthProvider> = {
     name: 'Google',
     icon: Google,
   },
-} as const;
+} as const satisfies Record<OAuthProviderId, OAuthProvider>;
 
-export const PROVIDER_AUTH_OPTIONS: Record<OAuthProviderId, AuthOptionsType> = {
+export const PROVIDER_AUTH_OPTIONS = {
   github: 'GITHUB',
   google: 'GOOGLE',
-};
+} as const satisfies Record<OAuthProviderId, AuthOptionsType>;
 
 export const getProviderById = (
   id: OAuthProviderId

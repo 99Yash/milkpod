@@ -89,11 +89,16 @@ export async function orchestratePipeline(
       const vectors = await withRetry('embedding', assetId, () =>
         generateEmbeddings(batch.map((c) => c.content))
       );
-      for (let j = 0; j < batch.length; j++) {
+      for (const [j, chunk] of batch.entries()) {
+        const vector = vectors[j];
+        if (!vector) {
+          console.warn(`Missing embedding vector at index ${j} for asset ${assetId}`);
+          continue;
+        }
         embeddingItems.push({
-          segmentId: batch[j]!.segmentId,
-          content: batch[j]!.content,
-          embedding: vectors[j]!,
+          segmentId: chunk.segmentId,
+          content: chunk.content,
+          embedding: vector,
           model: EMBEDDING_MODEL_NAME,
           dimensions: EMBEDDING_DIMENSIONS,
         });

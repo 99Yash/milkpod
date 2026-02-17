@@ -64,11 +64,11 @@ function consume(
 
 type RateCategory = 'ingest' | 'chat' | 'crud';
 
-const LIMITS: Record<RateCategory, BucketConfig> = {
+const LIMITS = {
   ingest: { capacity: 10, refillRate: 10 / 60 }, // 10 per minute
   chat: { capacity: 30, refillRate: 30 / 60 }, // 30 per minute
   crud: { capacity: 100, refillRate: 100 / 60 }, // 100 per minute
-};
+} satisfies Record<RateCategory, BucketConfig>;
 
 function categorize(path: string): RateCategory | null {
   if (path.startsWith('/api/ingest')) return 'ingest';

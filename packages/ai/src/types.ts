@@ -1,4 +1,4 @@
-import type { InferUITools, UIMessage } from 'ai';
+import type { InferUITools, LanguageModelUsage, UIMessage } from 'ai';
 import type { QAToolSet } from './tools';
 import type { RelevantSegment } from './retrieval';
 
@@ -15,7 +15,7 @@ export type ChatDataParts = {
   status: {
     threadId: string;
     status: 'processing' | 'completed';
-    usage?: unknown;
+    usage?: LanguageModelUsage;
   };
 };
 

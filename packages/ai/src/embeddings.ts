@@ -41,9 +41,11 @@ export function chunkSegmentText(
 ): string[] {
   if (text.length <= maxLen) return [text];
 
+  // The default separators list ends with '' which always matches,
+  // so this find() is guaranteed to return a result.
   const sep = separators.find((s) =>
     s === '' ? true : text.includes(s)
-  )!;
+  ) ?? '';
   const remaining = separators.slice(separators.indexOf(sep) + 1);
 
   const splits = sep === ''
@@ -115,7 +117,9 @@ export function chunkTranscript(
     const pos = fullText.indexOf(chunk, searchFrom);
     const charPos = pos >= 0 ? pos : 0;
 
-    let segId = segOffsets[0]!.id;
+    const first = segOffsets[0];
+    if (!first) throw new Error('Invariant: segOffsets is empty');
+    let segId = first.id;
     for (const so of segOffsets) {
       if (so.offset <= charPos) segId = so.id;
       else break;

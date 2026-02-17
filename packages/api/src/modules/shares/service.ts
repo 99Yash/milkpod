@@ -31,7 +31,8 @@ export abstract class ShareService {
         expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
       })
       .returning();
-    return link!;
+    if (!link) throw new Error('Failed to insert share link');
+    return link;
   }
 
   static async list(userId: string): Promise<ShareLink[]> {

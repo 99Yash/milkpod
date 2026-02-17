@@ -138,7 +138,7 @@ export function SharedView({ token }: SharedViewProps) {
 
 function SharedAssetView({ resource }: { resource: AssetWithTranscript }) {
   const speakers = new Set(
-    resource.segments?.filter((s) => s.speaker).map((s) => s.speaker!)
+    resource.segments?.map((s) => s.speaker).filter((s): s is string => s != null)
   );
 
   return (

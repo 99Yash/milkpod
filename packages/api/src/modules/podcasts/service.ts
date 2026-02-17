@@ -1,10 +1,13 @@
 import { db } from '@milkpod/db';
 import {
+  episodeStatusEnum,
   podcastFeeds,
   podcastEpisodes,
 } from '@milkpod/db/schemas';
 import { and, eq, sql } from 'drizzle-orm';
 import { parseFeed, type FeedEpisode } from './rss';
+
+type EpisodeStatus = (typeof episodeStatusEnum.enumValues)[number];
 
 export abstract class PodcastService {
   // ---------------------------------------------------------------------------
@@ -193,7 +196,7 @@ export abstract class PodcastService {
   /** Update episode status. */
   static async updateEpisodeStatus(
     episodeId: string,
-    status: 'queued' | 'fetching' | 'transcribing' | 'labeling' | 'editing' | 'publishing' | 'ready' | 'failed',
+    status: EpisodeStatus,
     opts?: { lastError?: string; assetId?: string }
   ) {
     await db

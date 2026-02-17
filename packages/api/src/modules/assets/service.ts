@@ -19,7 +19,8 @@ export abstract class AssetService {
       .insert(mediaAssets)
       .values({ userId, ...data })
       .returning();
-    return asset!;
+    if (!asset) throw new Error('Failed to insert media asset');
+    return asset;
   }
 
   static async list(userId: string): Promise<Asset[]> {

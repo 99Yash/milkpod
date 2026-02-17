@@ -2,7 +2,6 @@ export const dynamic = 'force-dynamic';
 
 import type { Route } from 'next';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import {
   ArrowRight,
   CheckCircle2,
@@ -22,7 +21,7 @@ import {
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
-import { getServerSession } from '~/lib/auth/session';
+import { getServerSession, assertAuthenticated } from '~/lib/auth/session';
 import { getAssets, getCollections } from '~/lib/data/queries';
 import { route } from '~/lib/routes';
 import { cn } from '~/lib/utils';
@@ -136,9 +135,7 @@ export default async function DashboardPage({
   const resolvedSearchParams = await searchParams;
   const session = await getServerSession();
 
-  if (!session?.user) {
-    redirect(route('/signin'));
-  }
+  assertAuthenticated(session);
 
   const [assets, collections] = await Promise.all([
     getAssets(session.user.id),

@@ -1,8 +1,6 @@
 export const dynamic = 'force-dynamic';
 
-import { redirect } from 'next/navigation';
-import { getServerSession } from '~/lib/auth/session';
-import { route } from '~/lib/routes';
+import { getServerSession, assertAuthenticated } from '~/lib/auth/session';
 import { AssetDetail } from '~/components/asset/asset-detail';
 
 type AssetPageProps = {
@@ -12,9 +10,7 @@ type AssetPageProps = {
 export default async function AssetPage({ params }: AssetPageProps) {
   const session = await getServerSession();
 
-  if (!session?.user) {
-    redirect(route('/signin'));
-  }
+  assertAuthenticated(session);
 
   const { id } = await params;
 

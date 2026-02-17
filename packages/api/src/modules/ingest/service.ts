@@ -1,5 +1,6 @@
 import { db } from '@milkpod/db';
 import {
+  assetStatusEnum,
   mediaAssets,
   transcripts,
   transcriptSegments,
@@ -8,10 +9,12 @@ import {
 import { and, eq, sql } from 'drizzle-orm';
 import type { Segment } from './segments';
 
+type AssetStatus = (typeof assetStatusEnum.enumValues)[number];
+
 export abstract class IngestService {
   static async updateStatus(
     assetId: string,
-    status: 'queued' | 'fetching' | 'transcribing' | 'embedding' | 'ready' | 'failed',
+    status: AssetStatus,
     opts?: { lastError?: string; duration?: number }
   ) {
     await db

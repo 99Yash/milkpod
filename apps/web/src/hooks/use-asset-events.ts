@@ -18,7 +18,7 @@ export interface AssetStatusEvent {
 
 export function useAssetEvents(
   onStatusChange: (event: AssetStatusEvent) => void
-) {
+): void {
   const callbackRef = useRef(onStatusChange);
   callbackRef.current = onStatusChange;
 

@@ -33,6 +33,7 @@ pnpm db:migrate       # Run migrations
 ## Architecture
 
 ### Workspace Structure
+
 - `apps/web` - Next.js frontend
 - `apps/server` - Elysia backend (mounts `@milkpod/api`)
 - `packages/api` - Elysia routes + Eden types
@@ -41,12 +42,14 @@ pnpm db:migrate       # Run migrations
 - `packages/config` - Shared TypeScript configuration
 
 ### Data Flow
+
 1. **Frontend → API**: Web app uses Eden treaty client (`apps/web/src/lib/api.ts`) with `credentials: "include"` for auth cookies
 2. **Frontend → Auth**: Client-side uses `authClient` from `apps/web/src/lib/auth/client.ts`; server-side (RSC) uses `authServer` from `apps/web/src/lib/auth/server.ts`
 3. **Backend → Auth**: `/api/auth/*` routes handled by Better Auth from `@milkpod/auth`
 4. **Session Derivation**: Backend derives session via `auth.api.getSession` on every request
 
 ### Path Aliases
+
 - `apps/web` uses `~/` for `apps/web/src/*`
 - `apps/server` uses `~/` for `apps/server/src/*`
 - Shared packages consumed via `@milkpod/*` imports
@@ -64,4 +67,4 @@ pnpm db:migrate       # Run migrations
 - `CORS_ORIGIN` - Allowed origin for Elysia CORS
 - `DATABASE_URL` - PostgreSQL connection string
 - `BETTER_AUTH_SECRET` / `BETTER_AUTH_URL` - Better Auth configuration
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` - OAuth provider (optional)
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` - OAuth provider

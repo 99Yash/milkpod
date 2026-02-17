@@ -131,7 +131,7 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
 
   const isReady = asset.status === 'ready';
   const speakers = new Set(
-    asset.segments?.filter((s) => s.speaker).map((s) => s.speaker!)
+    asset.segments?.map((s) => s.speaker).filter((s): s is string => s != null)
   );
 
   return (
