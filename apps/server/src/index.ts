@@ -1,8 +1,8 @@
-import 'dotenv/config';
-import { app, closeConnections } from '@milkpod/api';
 import { cors } from '@elysiajs/cors';
-import { serverEnv } from '@milkpod/env/server';
 import { node } from '@elysiajs/node';
+import { app, closeConnections } from '@milkpod/api';
+import { serverEnv } from '@milkpod/env/server';
+import 'dotenv/config';
 import { Elysia } from 'elysia';
 
 const server = new Elysia({ adapter: node() })
@@ -13,7 +13,7 @@ const server = new Elysia({ adapter: node() })
       allowedHeaders: ['Content-Type', 'Authorization'],
       exposeHeaders: ['X-Thread-Id', 'X-RateLimit-Remaining'],
       credentials: true,
-    })
+    }),
   )
   .use(app)
   .listen(3001, () => {
@@ -28,7 +28,6 @@ async function shutdown(signal: string) {
   await server.stop();
   console.log('Server stopped accepting connections');
 
-  // Close DB connection pool
   try {
     await closeConnections();
     console.log('Database pool closed');
