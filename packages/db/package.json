@@ -33,7 +33,6 @@
     "dotenv": "catalog:",
     "drizzle-orm": "^0.44.2",
     "pg": "^8.14.1",
-    "zod": "catalog:",
-    "@milkpod/env": "workspace:*"
+    "zod": "catalog:"
   }
 }
