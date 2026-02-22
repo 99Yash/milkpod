@@ -41,7 +41,7 @@ export async function findRelevantSegments(
     conditions.push(eq(transcripts.assetId, assetId));
   }
 
-  let queryBuilder = db
+  let queryBuilder = db()
     .select({
       segmentId: transcriptSegments.id,
       text: transcriptSegments.text,
@@ -76,7 +76,7 @@ export async function findRelevantSegments(
 
   // Warn if any stored embeddings were generated with a different model
   if (results.length > 0) {
-    const [mismatch] = await db
+    const [mismatch] = await db()
       .select({ model: embeddings.model })
       .from(embeddings)
       .where(ne(embeddings.model, EMBEDDING_MODEL_NAME))
@@ -106,7 +106,7 @@ export async function getTranscriptContext(
     speaker: string | null;
   }[]
 > {
-  return db
+  return db()
     .select({
       id: transcriptSegments.id,
       text: transcriptSegments.text,

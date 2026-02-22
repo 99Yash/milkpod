@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import type { Asset, Collection } from '@milkpod/api/types';
 
 export async function getAssets(userId: string): Promise<Asset[]> {
-  return db
+  return db()
     .select()
     .from(mediaAssets)
     .where(eq(mediaAssets.userId, userId))
@@ -14,7 +14,7 @@ export async function getAssets(userId: string): Promise<Asset[]> {
 }
 
 export async function getCollections(userId: string): Promise<Collection[]> {
-  return db
+  return db()
     .select()
     .from(collections)
     .where(eq(collections.userId, userId))

@@ -17,7 +17,7 @@ export abstract class IngestService {
     status: AssetStatus,
     opts?: { lastError?: string; duration?: number }
   ) {
-    await db
+    await db()
       .update(mediaAssets)
       .set({
         status,
@@ -28,7 +28,7 @@ export abstract class IngestService {
   }
 
   static async incrementAttempts(assetId: string, lastError: string) {
-    await db
+    await db()
       .update(mediaAssets)
       .set({
         attempts: sql`${mediaAssets.attempts} + 1`,
@@ -38,7 +38,7 @@ export abstract class IngestService {
   }
 
   static async resetForRetry(assetId: string) {
-    await db
+    await db()
       .update(mediaAssets)
       .set({
         status: 'queued',
@@ -54,7 +54,7 @@ export abstract class IngestService {
     segments: Segment[],
     provider = 'elevenlabs'
   ) {
-    return db.transaction(async (tx) => {
+    return db().transaction(async (tx) => {
       const [transcript] = await tx
         .insert(transcripts)
         .values({
@@ -98,12 +98,12 @@ export abstract class IngestService {
     const BATCH_SIZE = 100;
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
       const batch = items.slice(i, i + BATCH_SIZE);
-      await db.insert(embeddingsTable).values(batch);
+      await db().insert(embeddingsTable).values(batch);
     }
   }
 
   static async findBySourceId(sourceId: string, userId: string) {
-    const [existing] = await db
+    const [existing] = await db()
       .select()
       .from(mediaAssets)
       .where(
