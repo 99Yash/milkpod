@@ -1,4 +1,4 @@
-import { integer, pgEnum, pgTable, text, unique } from 'drizzle-orm/pg-core';
+import { index, integer, pgEnum, pgTable, text, unique } from 'drizzle-orm/pg-core';
 import { createId, lifecycle_dates } from '../helpers';
 import { user } from './auth';
 
@@ -44,5 +44,8 @@ export const mediaAssets = pgTable(
     providerJobId: text('provider_job_id'),
     ...lifecycle_dates,
   },
-  (t) => [unique('media_asset_idempotency_key_unique').on(t.idempotencyKey)]
+  (t) => [
+    unique('media_asset_idempotency_key_unique').on(t.idempotencyKey),
+    index('media_asset_user_id_idx').on(t.userId),
+  ]
 );

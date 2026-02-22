@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import type { ToolOutput } from '@milkpod/ai/types';
 import { Badge } from '~/components/ui/badge';
 import { Spinner } from '~/components/ui/spinner';
@@ -12,10 +14,19 @@ interface ToolResultProps {
   isStreaming: boolean;
 }
 
+const COLLAPSE_THRESHOLD = 6;
+
 export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
   const isSearching =
     output.status === 'searching' || output.status === 'loading';
   const segments = output.segments ?? [];
+  const [expanded, setExpanded] = useState(false);
+
+  const shouldCollapse = segments.length > COLLAPSE_THRESHOLD;
+  const visibleSegments =
+    shouldCollapse && !expanded
+      ? segments.slice(0, COLLAPSE_THRESHOLD)
+      : segments;
 
   return (
     <div className="my-2 rounded-lg border bg-muted/30 p-3">
@@ -35,9 +46,9 @@ export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
         <span>{output.message}</span>
       </div>
 
-      {segments.length > 0 && (
-        <div className="mt-2 space-y-1.5">
-          {segments.map((segment) => {
+      {visibleSegments.length > 0 && (
+        <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto">
+          {visibleSegments.map((segment) => {
             const segmentKey =
               'segmentId' in segment ? segment.segmentId : segment.id;
 
@@ -64,6 +75,24 @@ export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
             );
           })}
         </div>
+      )}
+
+      {shouldCollapse && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronDown
+            className={cn(
+              'size-3 transition-transform',
+              expanded && 'rotate-180'
+            )}
+          />
+          {expanded
+            ? 'Show less'
+            : `Show ${segments.length - COLLAPSE_THRESHOLD} more`}
+        </button>
       )}
     </div>
   );

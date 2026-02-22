@@ -97,6 +97,21 @@ export async function fetchSharedResource(
 }
 
 // ---------------------------------------------------------------------------
+// Threads
+// ---------------------------------------------------------------------------
+
+export async function fetchLatestThreadForAsset(
+  assetId: string
+): Promise<{ id: string } | null> {
+  const { data, error } = await api.api.threads.get({
+    query: { assetId },
+  });
+  if (error || !data || !Array.isArray(data) || data.length === 0)
+    return null;
+  return data[0] as { id: string };
+}
+
+// ---------------------------------------------------------------------------
 // Chat messages
 // ---------------------------------------------------------------------------
 

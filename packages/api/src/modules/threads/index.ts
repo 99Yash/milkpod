@@ -1,4 +1,4 @@
-import { Elysia, status } from 'elysia';
+import { Elysia, status, t } from 'elysia';
 import { authMacro } from '../../middleware/auth';
 import { ThreadModel } from './model';
 import { ThreadService } from './service';
@@ -12,9 +12,23 @@ export const threads = new Elysia({ prefix: '/api/threads' })
     },
     { auth: true, body: ThreadModel.create }
   )
-  .get('/', async ({ user }) => {
-    return ThreadService.list(user.id);
-  }, { auth: true })
+  .get(
+    '/',
+    async ({ query, user }) => {
+      if (query.assetId) {
+        const thread = await ThreadService.getLatestForAsset(
+          query.assetId,
+          user.id
+        );
+        return thread ? [thread] : [];
+      }
+      return ThreadService.list(user.id);
+    },
+    {
+      auth: true,
+      query: t.Object({ assetId: t.Optional(t.String()) }),
+    }
+  )
   .get('/:id', async ({ params, user }) => {
     const thread = await ThreadService.getWithMessages(
       params.id,

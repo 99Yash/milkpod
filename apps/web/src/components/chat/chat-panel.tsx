@@ -10,52 +10,92 @@ import { toast } from 'sonner';
 import { useMilkpodChat } from '~/hooks/use-milkpod-chat';
 import { ChatMessage } from './message';
 import type { MilkpodMessage } from '@milkpod/ai/types';
-import { fetchChatMessages } from '~/lib/api-fetchers';
+import {
+  fetchChatMessages,
+  fetchLatestThreadForAsset,
+} from '~/lib/api-fetchers';
 
 interface ChatPanelProps {
   threadId?: string;
   assetId?: string;
   collectionId?: string;
+  /** Server-fetched thread data. `null` = no thread exists, `undefined` = not fetched server-side. */
+  initialThread?: {
+    threadId: string;
+    messages: MilkpodMessage[];
+  } | null;
 }
 
 const SUGGESTIONS = ['Summarize', 'Key points', 'Action items'] as const;
 
-function usePersistedMessages(threadId?: string) {
+function useRestoredThread(
+  assetId?: string,
+  explicitThreadId?: string,
+  initialThread?: { threadId: string; messages: MilkpodMessage[] } | null,
+) {
+  const [threadId, setThreadId] = useState<string | undefined>(
+    initialThread?.threadId ?? explicitThreadId
+  );
   const [messages, setMessages] = useState<MilkpodMessage[] | undefined>(
-    undefined
+    initialThread?.messages
   );
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (!threadId) return;
+    // Server already provided initial data — skip client fetch
+    if (initialThread !== undefined) return;
+
+    // If an explicit threadId is provided, load messages directly
+    if (explicitThreadId) {
+      setThreadId(explicitThreadId);
+      setIsLoading(true);
+      fetchChatMessages(explicitThreadId)
+        .then((result) => {
+          if (result) setMessages(result.messages);
+        })
+        .catch(() => toast.error('Failed to load chat history'))
+        .finally(() => setIsLoading(false));
+      return;
+    }
+
+    // Otherwise, look up the latest thread for this asset
+    if (!assetId) return;
 
     setIsLoading(true);
-    fetchChatMessages(threadId)
-      .then((result) => {
-        if (result) {
-          setMessages(result.messages);
-        }
+    fetchLatestThreadForAsset(assetId)
+      .then(async (thread) => {
+        if (!thread) return;
+        const result = await fetchChatMessages(thread.id);
+        // Set both together so useChat sees the id and messages in the same render
+        if (result) setMessages(result.messages);
+        setThreadId(thread.id);
       })
       .catch(() => {
-        toast.error('Failed to load chat history');
+        // No existing thread — start fresh
       })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  }, [threadId]);
+      .finally(() => setIsLoading(false));
+  }, [assetId, explicitThreadId, initialThread]);
 
-  return { messages, isLoading };
+  return { threadId, messages, isLoading };
 }
 
-export function ChatPanel({ threadId, assetId, collectionId }: ChatPanelProps) {
+export function ChatPanel({
+  threadId: explicitThreadId,
+  assetId,
+  collectionId,
+  initialThread,
+}: ChatPanelProps) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { messages: persistedMessages, isLoading: isLoadingHistory } =
-    usePersistedMessages(threadId);
+  const {
+    threadId: restoredThreadId,
+    messages: persistedMessages,
+    isLoading: isLoadingHistory,
+  } = useRestoredThread(assetId, explicitThreadId, initialThread);
 
   const { messages, sendMessage, status, error } = useMilkpodChat({
-    threadId,
+    threadId: restoredThreadId,
     assetId,
     collectionId,
     initialMessages: persistedMessages,
@@ -100,7 +140,7 @@ export function ChatPanel({ threadId, assetId, collectionId }: ChatPanelProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <ScrollArea ref={scrollRef} className="flex-1 px-4">
+      <ScrollArea ref={scrollRef} className="min-h-0 flex-1 px-4">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 py-12 text-center">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-muted">
@@ -145,21 +185,22 @@ export function ChatPanel({ threadId, assetId, collectionId }: ChatPanelProps) {
 
       <form
         onSubmit={handleSubmit}
-        className="shrink-0 border-t border-border/40 bg-background p-3"
+        className="shrink-0 border-t border-border/40 bg-background/70 p-3"
       >
-        <div className="flex items-end gap-2">
+        <div className="relative">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about the video..."
-            className="min-h-[44px] max-h-[120px] resize-none border-border/40"
+            className="min-h-[48px] max-h-[140px] resize-none border-border/40 bg-background/70 pr-12"
             rows={1}
             disabled={isLoading}
           />
           <Button
             type="submit"
-            size="icon"
+            size="icon-sm"
+            className="absolute bottom-1.5 right-1.5 z-10 rounded-full"
             disabled={isLoading || !input.trim()}
           >
             <SendHorizonal className="size-4" />
