@@ -18,6 +18,9 @@ export async function transcribeAudio(
   audioUrl: string
 ): Promise<TranscriptionResult> {
   const apiKey = serverEnv().ELEVENLABS_API_KEY;
+  if (!apiKey) {
+    throw new Error('ELEVENLABS_API_KEY environment variable is not set');
+  }
 
   const formData = new FormData();
   formData.append('model_id', 'scribe_v2');
