@@ -23,6 +23,7 @@ import {
 import { ChatPanel } from '~/components/chat/chat-panel';
 import { TranscriptViewer } from './transcript-viewer';
 import type { AssetWithTranscript, AssetStatus } from '@milkpod/api/types';
+import type { MilkpodMessage } from '@milkpod/ai/types';
 import { isProcessingStatus } from '@milkpod/api/types';
 import {
   useAssetEvents,
@@ -32,6 +33,7 @@ import {
 interface AssetDetailProps {
   assetId: string;
   initialAsset: AssetWithTranscript;
+  initialThread?: { threadId: string; messages: MilkpodMessage[] } | null;
 }
 
 const statusLabels: Record<AssetStatus, string> = {
@@ -43,7 +45,7 @@ const statusLabels: Record<AssetStatus, string> = {
   failed: 'Failed',
 };
 
-export function AssetDetail({ assetId, initialAsset }: AssetDetailProps) {
+export function AssetDetail({ assetId, initialAsset, initialThread }: AssetDetailProps) {
   const [asset, setAsset] = useState<AssetWithTranscript>(initialAsset);
   const [progressMessage, setProgressMessage] = useState<
     string | undefined
@@ -168,7 +170,7 @@ export function AssetDetail({ assetId, initialAsset }: AssetDetailProps) {
               <MessageSquareText className="size-4 text-muted-foreground" />
               <h2 className="text-sm font-medium text-foreground">Ask AI</h2>
             </div>
-            <ChatPanel assetId={assetId} />
+            <ChatPanel assetId={assetId} initialThread={initialThread} />
           </div>
         </div>
       ) : isReady && asset.segments.length === 0 ? (

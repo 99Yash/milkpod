@@ -1,7 +1,7 @@
 import { auth } from '@milkpod/auth';
 import { db } from '@milkpod/db';
-import { sql } from 'drizzle-orm';
 export { closeConnections } from '@milkpod/db';
+import { sql } from 'drizzle-orm';
 import { Elysia } from 'elysia';
 import { requestLogger } from './middleware/logger';
 import { rateLimiter } from './middleware/rate-limit';

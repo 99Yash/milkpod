@@ -1,10 +1,15 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { findRelevantSegments, getTranscriptContext } from './retrieval';
+import {
+  findRelevantSegments,
+  getTranscriptContext,
+  getTranscriptOverview,
+} from './retrieval';
 import type {
   ToolContext,
   RetrieveSegmentsOutput,
   GetTranscriptContextOutput,
+  ReadTranscriptOutput,
 } from './types';
 
 // --- Schemas ---
@@ -93,9 +98,57 @@ export function createQAToolSet(context: ToolContext = {}) {
     },
   });
 
+  const readTranscriptInput = z.object({});
+  const readTranscriptTool = tool<
+    z.infer<typeof readTranscriptInput>,
+    ReadTranscriptOutput
+  >({
+    description:
+      'Read a broad overview of the entire transcript. Use this for synthesis tasks like summarizing, listing key points, extracting action items, or identifying themes — any task that requires understanding the full content rather than searching for a specific topic.',
+    inputSchema: readTranscriptInput,
+    execute: async function* (): AsyncGenerator<ReadTranscriptOutput> {
+      yield {
+        status: 'loading',
+        totalSegments: 0,
+        segments: [],
+        message: 'Reading transcript...',
+      };
+
+      if (!context.assetId) {
+        yield {
+          status: 'loaded',
+          totalSegments: 0,
+          segments: [],
+          message: 'No asset selected.',
+        };
+        return;
+      }
+
+      const overview = await getTranscriptOverview(context.assetId);
+
+      if (!overview) {
+        yield {
+          status: 'loaded',
+          totalSegments: 0,
+          segments: [],
+          message: 'Transcript not found.',
+        };
+        return;
+      }
+
+      yield {
+        status: 'loaded',
+        totalSegments: overview.totalSegments,
+        segments: overview.sampledSegments,
+        message: `Loaded ${overview.sampledSegments.length} segments (of ${overview.totalSegments} total).`,
+      };
+    },
+  });
+
   return {
     retrieve_segments: retrieveSegmentsTool,
     get_transcript_context: getTranscriptContextTool,
+    read_transcript: readTranscriptTool,
   } as const;
 }
 

@@ -50,6 +50,13 @@
       "when": 1770816365607,
       "tag": "0006_wonderful_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771762835609,
+      "tag": "0007_legal_korvac",
+      "breakpoints": true
     }
   ]
 }

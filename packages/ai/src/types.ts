@@ -55,7 +55,17 @@ export interface GetTranscriptContextOutput {
   message: string;
 }
 
-export type ToolOutput = RetrieveSegmentsOutput | GetTranscriptContextOutput;
+export interface ReadTranscriptOutput {
+  status: 'loading' | 'loaded';
+  totalSegments: number;
+  segments: ContextSegment[];
+  message: string;
+}
+
+export type ToolOutput =
+  | RetrieveSegmentsOutput
+  | GetTranscriptContextOutput
+  | ReadTranscriptOutput;
 
 /** Runtime type guard for tool outputs deserialized from `unknown`. */
 export function isToolOutput(val: unknown): val is ToolOutput {

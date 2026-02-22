@@ -62,7 +62,6 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         collectionId: body.collectionId,
         headers: { 'X-Thread-Id': threadId },
         onFinish: async ({ messages }) => {
-          // Save all assistant messages from the finished conversation
           const assistantMessages = messages.filter(
             (m) => m.role === 'assistant'
           );

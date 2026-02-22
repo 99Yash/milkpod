@@ -43,10 +43,10 @@ export function TranscriptToolbar({
   const hasSearch = search.length > 0;
 
   return (
-    <div className="shrink-0 px-3 py-2">
-      <div className="flex items-center gap-2">
+    <div className="shrink-0 px-5 py-3">
+      <div className="flex items-center gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
@@ -54,14 +54,14 @@ export function TranscriptToolbar({
             placeholder="Search transcript..."
             aria-label="Search transcript"
             className={cn(
-              'h-7 w-full rounded-md bg-muted/40 pl-7 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-border/60',
-              hasSearch ? 'pr-28' : 'pr-7',
+              'h-9 w-full rounded-lg border border-border/50 bg-background/70 pl-9 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-border/60',
+              hasSearch ? 'pr-32' : 'pr-9',
             )}
           />
 
           {hasSearch && (
-            <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
-              <span className="px-1 text-[11px] tabular-nums text-muted-foreground">
+            <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+              <span className="px-1 text-xs tabular-nums text-muted-foreground">
                 {totalMatches > 0
                   ? `${activeMatchIndex + 1}/${totalMatches}`
                   : '0/0'}
@@ -70,39 +70,39 @@ export function TranscriptToolbar({
                 type="button"
                 onClick={onPrevMatch}
                 disabled={totalMatches === 0}
-                className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
                 aria-label="Previous match (Shift+Enter)"
               >
-                <ChevronUp className="size-3.5" />
+                <ChevronUp className="size-4" />
               </button>
               <button
                 type="button"
                 onClick={onNextMatch}
                 disabled={totalMatches === 0}
-                className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                className="rounded p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
                 aria-label="Next match (Enter)"
               >
-                <ChevronDown className="size-3.5" />
+                <ChevronDown className="size-4" />
               </button>
               <button
                 type="button"
                 onClick={() => onSearchChange('')}
-                className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                className="rounded p-1 text-muted-foreground hover:text-foreground"
                 aria-label="Clear search"
               >
-                <X className="size-3" />
+                <X className="size-3.5" />
               </button>
             </div>
           )}
         </div>
 
         {showViewToggle && (
-          <div className="flex shrink-0 items-center rounded-md border border-border/60 bg-muted/30">
+          <div className="flex shrink-0 items-center rounded-full border border-border/60 bg-muted/40 p-0.5">
             <button
               type="button"
               onClick={() => onViewModeChange('flat')}
               className={cn(
-                'rounded-l-md p-1.5 transition-colors',
+                'rounded-full p-1.5 transition-colors',
                 viewMode === 'flat'
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
@@ -110,13 +110,13 @@ export function TranscriptToolbar({
               aria-label="List view"
               aria-pressed={viewMode === 'flat'}
             >
-              <List className="size-3.5" />
+              <List className="size-4" />
             </button>
             <button
               type="button"
               onClick={() => onViewModeChange('chapters')}
               className={cn(
-                'rounded-r-md p-1.5 transition-colors',
+                'rounded-full p-1.5 transition-colors',
                 viewMode === 'chapters'
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
@@ -124,7 +124,7 @@ export function TranscriptToolbar({
               aria-label="Chapter view"
               aria-pressed={viewMode === 'chapters'}
             >
-              <BookOpen className="size-3.5" />
+              <BookOpen className="size-4" />
             </button>
           </div>
         )}
