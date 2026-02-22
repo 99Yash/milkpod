@@ -12,12 +12,6 @@ export const auth = betterAuth<BetterAuthOptions>({
     schema,
   }),
   trustedOrigins: [env.CORS_ORIGIN],
-  session: {
-    cookieCache: {
-      enabled: true,
-      maxAge: 5 * 60, // 5 minutes — avoids DB round trip on every request
-    },
-  },
   emailAndPassword: {
     enabled: true,
   },
