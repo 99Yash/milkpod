@@ -6,11 +6,12 @@ import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
 import { useLastAuthMethod } from '~/hooks/use-last-auth-method';
 import { authClient } from '~/lib/auth/client';
-import type { AuthOptionsType, OAuthProviderId } from '~/lib/constants';
+import type { OAuthProviderId } from '~/lib/constants';
 import {
   getProviderById,
   LAST_AUTH_METHOD_KEY,
   OAUTH_PROVIDERS,
+  PROVIDER_AUTH_OPTIONS,
 } from '~/lib/constants';
 import { cn, getErrorMessage, setLocalStorageItem } from '~/lib/utils';
 
@@ -24,7 +25,7 @@ const OAuthButton: React.FC<OAuthButtonProps> = ({ providerId, className }) => {
   const [isLoading, setIsLoading] = React.useState(false);
 
   const provider = getProviderById(providerId);
-  const authMethod = providerId.toUpperCase() as AuthOptionsType;
+  const authMethod = PROVIDER_AUTH_OPTIONS[providerId];
 
   const handleOAuthSignIn = React.useCallback(async () => {
     if (!provider) {
@@ -86,7 +87,7 @@ export const OAuthButtons: React.FC<{
       {Object.values(OAUTH_PROVIDERS).map((provider) => (
         <OAuthButton
           key={provider.id}
-          providerId={provider.id as OAuthProviderId}
+          providerId={provider.id}
         />
       ))}
     </div>

@@ -1,0 +1,287 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { Clock, Link2Off, Mic, User } from 'lucide-react';
+import { fetchSharedResource } from '~/lib/api-fetchers';
+import type { SharedData } from '~/lib/api-fetchers';
+import { Badge } from '~/components/ui/badge';
+import { Spinner } from '~/components/ui/spinner';
+import {
+  DashboardPanel,
+  DashboardPanelContent,
+} from '~/components/dashboard/dashboard-panel';
+import { TranscriptViewer } from '~/components/asset/transcript-viewer';
+import { SharedChatPanel } from './shared-chat-panel';
+import type {
+  AssetWithTranscript,
+  CollectionWithItems,
+} from '@milkpod/api/types';
+
+interface SharedViewProps {
+  token: string;
+}
+
+function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0)
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+export function SharedView({ token }: SharedViewProps) {
+  const [data, setData] = useState<SharedData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSharedResource() {
+      setIsLoading(true);
+      try {
+        const result = await fetchSharedResource(token);
+        if (cancelled) return;
+
+        if (!result) {
+          setNotFound(true);
+          return;
+        }
+        setData(result);
+      } catch {
+        if (!cancelled) setNotFound(true);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    loadSharedResource();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner className="size-6" />
+      </div>
+    );
+  }
+
+  if (notFound || !data) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Link2Off className="size-10 text-muted-foreground" />
+          <h1 className="text-lg font-semibold text-foreground">
+            Link not found
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            This share link is invalid, expired, or has been revoked.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`mx-auto px-4 py-8 ${data.canQuery ? 'max-w-6xl' : 'max-w-4xl'}`}
+    >
+      <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
+        <Badge variant="secondary" className="text-xs">
+          Shared
+        </Badge>
+        {data.canQuery && (
+          <Badge variant="outline" className="text-xs">
+            Q&A enabled
+          </Badge>
+        )}
+        {data.expiresAt && (
+          <span>
+            Expires{' '}
+            {new Date(data.expiresAt).toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+          </span>
+        )}
+      </div>
+
+      {data.canQuery ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div>
+            {data.type === 'asset' ? (
+              <SharedAssetView resource={data.resource} />
+            ) : (
+              <SharedCollectionView resource={data.resource} />
+            )}
+          </div>
+          <DashboardPanel className="h-[600px]">
+            <div className="flex items-center gap-2 border-b px-4 py-3">
+              <h2 className="text-sm font-medium text-foreground">Q&A</h2>
+            </div>
+            <SharedChatPanel token={token} />
+          </DashboardPanel>
+        </div>
+      ) : data.type === 'asset' ? (
+        <SharedAssetView resource={data.resource} />
+      ) : (
+        <SharedCollectionView resource={data.resource} />
+      )}
+    </div>
+  );
+}
+
+function SharedAssetView({ resource }: { resource: AssetWithTranscript }) {
+  const speakers = new Set(
+    resource.segments?.map((s) => s.speaker).filter((s): s is string => s != null)
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Asset header */}
+      <div className="flex items-start gap-4">
+        {resource.thumbnailUrl && (
+          <div className="hidden shrink-0 overflow-hidden rounded-lg sm:block sm:w-40">
+            <img
+              src={resource.thumbnailUrl}
+              alt={resource.title}
+              className="aspect-video w-full object-cover"
+            />
+          </div>
+        )}
+        <div className="min-w-0 flex-1 space-y-2">
+          <h1 className="text-lg font-semibold text-foreground leading-tight">
+            {resource.title}
+          </h1>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {resource.channelName && (
+              <span className="flex items-center gap-1">
+                <User className="size-3" />
+                {resource.channelName}
+              </span>
+            )}
+            {resource.duration && (
+              <span className="flex items-center gap-1">
+                <Clock className="size-3" />
+                {formatDuration(resource.duration)}
+              </span>
+            )}
+            {speakers.size > 0 && (
+              <span className="flex items-center gap-1">
+                <Mic className="size-3" />
+                {speakers.size} speaker{speakers.size > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Transcript */}
+      {resource.segments.length > 0 ? (
+        <DashboardPanel className="h-[600px]">
+          <div className="flex items-center gap-2 border-b px-4 py-3">
+            <h2 className="text-sm font-medium text-foreground">Transcript</h2>
+            <span className="text-xs text-muted-foreground">
+              {resource.segments.length} segments
+            </span>
+          </div>
+          <TranscriptViewer segments={resource.segments} />
+        </DashboardPanel>
+      ) : (
+        <DashboardPanel>
+          <DashboardPanelContent>
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              {resource.status === 'ready'
+                ? 'Transcript is empty.'
+                : 'Transcript is still being processed.'}
+            </p>
+          </DashboardPanelContent>
+        </DashboardPanel>
+      )}
+    </div>
+  );
+}
+
+function SharedCollectionView({
+  resource,
+}: {
+  resource: CollectionWithItems;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <h1 className="text-lg font-semibold text-foreground">
+          {resource.name}
+        </h1>
+        {resource.description && (
+          <p className="text-sm text-muted-foreground">
+            {resource.description}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {resource.items.length}{' '}
+          {resource.items.length === 1 ? 'asset' : 'assets'}
+        </p>
+      </div>
+
+      <DashboardPanel>
+        <div className="flex items-center gap-2 border-b px-4 py-3">
+          <h2 className="text-sm font-medium text-foreground">Assets</h2>
+        </div>
+        {resource.items.length === 0 ? (
+          <DashboardPanelContent>
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              This collection is empty.
+            </p>
+          </DashboardPanelContent>
+        ) : (
+          <div className="divide-y">
+            {resource.items.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-3 px-4 py-3"
+              >
+                {item.asset.thumbnailUrl && (
+                  <div className="w-16 shrink-0 overflow-hidden rounded">
+                    <img
+                      src={item.asset.thumbnailUrl}
+                      alt={item.asset.title}
+                      className="aspect-video w-full object-cover"
+                    />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-1 text-sm font-medium text-foreground">
+                    {item.asset.title}
+                  </p>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    {item.asset.duration && (
+                      <span className="text-xs text-muted-foreground">
+                        {formatDuration(item.asset.duration)}
+                      </span>
+                    )}
+                    <Badge
+                      variant={
+                        item.asset.status === 'failed'
+                          ? 'destructive'
+                          : 'outline'
+                      }
+                      className="border-border/60 text-[10px]"
+                    >
+                      {item.asset.status}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </DashboardPanel>
+    </div>
+  );
+}

@@ -33,6 +33,13 @@ export namespace AssetModel {
   });
   export type Update = typeof update.static;
 
+  export const listQuery = t.Object({
+    q: t.Optional(t.String()),
+    status: t.Optional(t.String()),
+    sourceType: t.Optional(t.String()),
+  });
+  export type ListQuery = typeof listQuery.static;
+
   export const asset = t.Object({
     id: t.String(),
     title: t.String(),

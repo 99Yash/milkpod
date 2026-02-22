@@ -1,35 +1,11 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { findRelevantSegments, getTranscriptContext } from './retrieval';
-import type { RelevantSegment } from './retrieval';
-
-// --- Types ---
-
-export interface ToolContext {
-  assetId?: string;
-  collectionId?: string;
-}
-
-export interface RetrieveResult {
-  status: 'searching' | 'found';
-  query: string;
-  segments: RelevantSegment[];
-  message: string;
-}
-
-interface ContextSegment {
-  id: string;
-  text: string;
-  startTime: number;
-  endTime: number;
-  speaker: string | null;
-}
-
-export interface ContextResult {
-  status: 'loading' | 'loaded';
-  segments: ContextSegment[];
-  message: string;
-}
+import type {
+  ToolContext,
+  RetrieveSegmentsOutput,
+  GetTranscriptContextOutput,
+} from './types';
 
 // --- Schemas ---
 
@@ -55,12 +31,12 @@ const transcriptContextInput = z.object({
 export function createQAToolSet(context: ToolContext = {}) {
   const retrieveSegmentsTool = tool<
     z.infer<typeof retrieveSegmentsInput>,
-    RetrieveResult
+    RetrieveSegmentsOutput
   >({
     description:
       'Search the transcript for segments relevant to the question. Always use this before answering a question about the video/audio content.',
     inputSchema: retrieveSegmentsInput,
-    execute: async function* ({ query }): AsyncGenerator<RetrieveResult> {
+    execute: async function* ({ query }): AsyncGenerator<RetrieveSegmentsOutput> {
       yield {
         status: 'searching',
         query,
@@ -85,7 +61,7 @@ export function createQAToolSet(context: ToolContext = {}) {
 
   const getTranscriptContextTool = tool<
     z.infer<typeof transcriptContextInput>,
-    ContextResult
+    GetTranscriptContextOutput
   >({
     description:
       'Fetch surrounding transcript segments for a specific timestamp window. Use this to get more context around a known segment.',
@@ -95,7 +71,7 @@ export function createQAToolSet(context: ToolContext = {}) {
       startTime,
       endTime,
       windowSeconds,
-    }): AsyncGenerator<ContextResult> {
+    }): AsyncGenerator<GetTranscriptContextOutput> {
       yield {
         status: 'loading',
         segments: [],

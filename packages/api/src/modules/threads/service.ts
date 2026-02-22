@@ -7,7 +7,12 @@ export abstract class ThreadService {
   static async create(userId: string, data: ThreadModel.Create) {
     const [thread] = await db
       .insert(qaThreads)
-      .values({ userId, ...data })
+      .values({
+        userId,
+        title: data.title,
+        assetId: data.assetId,
+        collectionId: data.collectionId,
+      })
       .returning();
     return thread;
   }

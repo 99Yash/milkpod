@@ -1,4 +1,4 @@
-import { and, cosineDistance, desc, eq, gt, sql } from 'drizzle-orm';
+import { and, cosineDistance, desc, eq, gt, ne, sql } from 'drizzle-orm';
 import { db } from '@milkpod/db';
 import {
   embeddings,
@@ -6,7 +6,7 @@ import {
   transcripts,
   collectionItems,
 } from '@milkpod/db/schemas';
-import { generateEmbedding } from './embeddings';
+import { generateEmbedding, EMBEDDING_MODEL_NAME } from './embeddings';
 
 export interface RelevantSegment {
   segmentId: string;
@@ -73,6 +73,21 @@ export async function findRelevantSegments(
     .where(and(...conditions))
     .orderBy(desc(similarity))
     .limit(limit);
+
+  // Warn if any stored embeddings were generated with a different model
+  if (results.length > 0) {
+    const [mismatch] = await db
+      .select({ model: embeddings.model })
+      .from(embeddings)
+      .where(ne(embeddings.model, EMBEDDING_MODEL_NAME))
+      .limit(1);
+
+    if (mismatch) {
+      console.warn(
+        `[retrieval] Embedding model mismatch: query uses "${EMBEDDING_MODEL_NAME}" but stored embeddings include "${mismatch.model}". Results may be degraded.`
+      );
+    }
+  }
 
   return results;
 }
