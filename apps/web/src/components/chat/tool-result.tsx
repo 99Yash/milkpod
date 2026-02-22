@@ -4,17 +4,12 @@ import type { ToolOutput } from '@milkpod/ai/types';
 import { Badge } from '~/components/ui/badge';
 import { Spinner } from '~/components/ui/spinner';
 import { cn } from '~/lib/utils';
+import { formatTime } from '~/lib/format';
 
 interface ToolResultProps {
   toolName: string;
   output: ToolOutput;
   isStreaming: boolean;
-}
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
