@@ -6,7 +6,7 @@ import type { CollectionModel } from './model';
 
 export abstract class CollectionService {
   static async create(userId: string, data: CollectionModel.Create): Promise<Collection> {
-    const [collection] = await db
+    const [collection] = await db()
       .insert(collections)
       .values({ userId, ...data })
       .returning();
@@ -15,7 +15,7 @@ export abstract class CollectionService {
   }
 
   static async list(userId: string): Promise<Collection[]> {
-    return db
+    return db()
       .select()
       .from(collections)
       .where(eq(collections.userId, userId))
@@ -23,7 +23,7 @@ export abstract class CollectionService {
   }
 
   static async getById(id: string, userId: string): Promise<Collection | null> {
-    const [collection] = await db
+    const [collection] = await db()
       .select()
       .from(collections)
       .where(and(eq(collections.id, id), eq(collections.userId, userId)));
@@ -34,7 +34,7 @@ export abstract class CollectionService {
     const collection = await CollectionService.getById(id, userId);
     if (!collection) return null;
 
-    const items = await db
+    const items = await db()
       .select({
         id: collectionItems.id,
         position: collectionItems.position,
@@ -57,7 +57,7 @@ export abstract class CollectionService {
   }
 
   static async update(id: string, userId: string, data: CollectionModel.Update): Promise<Collection | null> {
-    const [updated] = await db
+    const [updated] = await db()
       .update(collections)
       .set(data)
       .where(and(eq(collections.id, id), eq(collections.userId, userId)))
@@ -66,7 +66,7 @@ export abstract class CollectionService {
   }
 
   static async remove(id: string, userId: string): Promise<Collection | null> {
-    const [deleted] = await db
+    const [deleted] = await db()
       .delete(collections)
       .where(and(eq(collections.id, id), eq(collections.userId, userId)))
       .returning();
@@ -74,7 +74,7 @@ export abstract class CollectionService {
   }
 
   static async addItem(collectionId: string, data: CollectionModel.AddItem): Promise<CollectionItem> {
-    const [item] = await db
+    const [item] = await db()
       .insert(collectionItems)
       .values({
         collectionId,
@@ -87,7 +87,7 @@ export abstract class CollectionService {
   }
 
   static async removeItem(collectionId: string, itemId: string): Promise<CollectionItem | null> {
-    const [deleted] = await db
+    const [deleted] = await db()
       .delete(collectionItems)
       .where(
         and(

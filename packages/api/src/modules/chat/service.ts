@@ -98,7 +98,7 @@ export abstract class ChatService {
   static async saveMessages(threadId: string, messages: MilkpodMessage[]) {
     if (messages.length === 0) return;
 
-    await db.transaction(async (tx) => {
+    await db().transaction(async (tx) => {
       await tx
         .insert(qaMessages)
         .values(
@@ -121,7 +121,7 @@ export abstract class ChatService {
   }
 
   static async getMessages(threadId: string): Promise<MilkpodMessage[]> {
-    const messageRows = await db
+    const messageRows = await db()
       .select()
       .from(qaMessages)
       .where(eq(qaMessages.threadId, threadId))
@@ -131,7 +131,7 @@ export abstract class ChatService {
 
     const messageIds = messageRows.map((r) => r.id);
 
-    const partRows = await db
+    const partRows = await db()
       .select()
       .from(qaMessageParts)
       .where(inArray(qaMessageParts.messageId, messageIds))
