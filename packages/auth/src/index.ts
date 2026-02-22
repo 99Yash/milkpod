@@ -1,17 +1,16 @@
 import { db } from '@milkpod/db';
 import * as schema from '@milkpod/db/schema/auth';
-import { serverEnv } from '@milkpod/env/server';
 import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 
-const env = serverEnv();
-
+// Server-side auth instance (used in the backend auth server)
+// This instance has direct database access and handles authentication
 export const auth = betterAuth<BetterAuthOptions>({
   database: drizzleAdapter(db, {
     provider: 'pg',
     schema,
   }),
-  trustedOrigins: [env.CORS_ORIGIN],
+  trustedOrigins: [process.env.CORS_ORIGIN || 'http://localhost:3000'],
   emailAndPassword: {
     enabled: true,
   },
@@ -19,14 +18,14 @@ export const auth = betterAuth<BetterAuthOptions>({
     google: {
       display: 'popup',
       prompt: 'select_account',
-      clientId: env.GOOGLE_CLIENT_ID,
-      clientSecret: env.GOOGLE_CLIENT_SECRET,
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     },
   },
   advanced: {
     defaultCookieAttributes: {
       sameSite: 'lax',
-      secure: env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === 'production',
       httpOnly: true,
     },
   },

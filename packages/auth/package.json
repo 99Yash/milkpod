@@ -26,7 +26,6 @@
     "better-auth": "catalog:",
     "dotenv": "catalog:",
     "zod": "catalog:",
-    "@milkpod/db": "workspace:*",
-    "@milkpod/env": "workspace:*"
+    "@milkpod/db": "workspace:*"
   }
 }

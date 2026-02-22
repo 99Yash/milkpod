@@ -14,8 +14,7 @@
     "@elysiajs/cors": "catalog:",
     "@elysiajs/node": "catalog:",
     "dotenv": "catalog:",
-    "@milkpod/api": "workspace:*",
-    "@milkpod/env": "workspace:*"
+    "@milkpod/api": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:",

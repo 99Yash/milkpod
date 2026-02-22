@@ -19,7 +19,7 @@ export const APP_ERROR_CODES_BY_KEY = {
 export type APP_ERROR_CODE_KEY = keyof typeof APP_ERROR_CODES_BY_KEY;
 
 // User-friendly error messages for different error codes
-export const ERROR_MESSAGES = {
+export const ERROR_MESSAGES: Record<APP_ERROR_CODE_KEY, string> = {
   PARSE_ERROR:
     'Failed to parse request data. Please check your input and try again.',
   BAD_REQUEST: 'Invalid request. Please check your input and try again.',
@@ -37,7 +37,7 @@ export const ERROR_MESSAGES = {
   UNPROCESSABLE_CONTENT: 'The request content could not be processed.',
   TOO_MANY_REQUESTS: 'Too many requests. Please wait before trying again.',
   CLIENT_CLOSED_REQUEST: 'The request was closed before completion.',
-} as const satisfies Record<APP_ERROR_CODE_KEY, string>;
+} as const;
 
 export class AppError extends Error {
   public readonly code: APP_ERROR_CODE_KEY;

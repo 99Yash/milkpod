@@ -2,10 +2,6 @@ import { sql } from 'drizzle-orm';
 import { timestamp } from 'drizzle-orm/pg-core';
 import { customAlphabet } from 'nanoid';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 export const lifecycle_dates = {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at')
@@ -16,7 +12,7 @@ export const lifecycle_dates = {
 export function createId(
   prefix?: string,
   { length = 12, separator = '_' } = {}
-): string {
+) {
   const id = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', length)();
   return prefix ? `${prefix}${separator}${id}` : id;
 }

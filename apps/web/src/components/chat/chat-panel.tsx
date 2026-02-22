@@ -1,7 +1,6 @@
 'use client';
 
 import { useRef, useEffect, useState } from 'react';
-import { MessageSquareText, SendHorizonal } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
 import { ScrollArea } from '~/components/ui/scroll-area';
@@ -9,8 +8,8 @@ import { Spinner } from '~/components/ui/spinner';
 import { toast } from 'sonner';
 import { useMilkpodChat } from '~/hooks/use-milkpod-chat';
 import { ChatMessage } from './message';
-import type { MilkpodMessage } from '@milkpod/ai/types';
-import { fetchChatMessages } from '~/lib/api-fetchers';
+import type { MilkpodMessage } from '@milkpod/ai';
+import { api } from '~/lib/api';
 
 interface ChatPanelProps {
   threadId?: string;
@@ -28,10 +27,11 @@ function usePersistedMessages(threadId?: string) {
     if (!threadId) return;
 
     setIsLoading(true);
-    fetchChatMessages(threadId)
-      .then((result) => {
-        if (result) {
-          setMessages(result.messages);
+    api.api.chat({ threadId })
+      .get()
+      .then(({ data }) => {
+        if (data && 'messages' in data) {
+          setMessages(data.messages as MilkpodMessage[]);
         }
       })
       .catch(() => {
@@ -100,14 +100,8 @@ export function ChatPanel({ threadId, assetId, collectionId }: ChatPanelProps) {
     <div className="flex h-full flex-col">
       <ScrollArea ref={scrollRef} className="flex-1 px-4">
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 py-12 text-center">
-            <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-              <MessageSquareText className="size-5 text-muted-foreground" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-foreground">Ask about this video</p>
-              <p className="text-xs text-muted-foreground">Get answers with timestamps from the transcript.</p>
-            </div>
+          <div className="flex h-full items-center justify-center py-12 text-center text-sm text-muted-foreground">
+            Ask a question about the transcript to get started.
           </div>
         ) : (
           <div className="space-y-1 py-4">
@@ -126,9 +120,9 @@ export function ChatPanel({ threadId, assetId, collectionId }: ChatPanelProps) {
 
       <form
         onSubmit={handleSubmit}
-        className="border-t bg-background p-3"
+        className="border-t bg-background p-4"
       >
-        <div className="flex items-end gap-2">
+        <div className="flex gap-2">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -138,8 +132,8 @@ export function ChatPanel({ threadId, assetId, collectionId }: ChatPanelProps) {
             rows={1}
             disabled={isLoading}
           />
-          <Button type="submit" size="icon" disabled={isLoading || !input.trim()}>
-            <SendHorizonal className="size-4" />
+          <Button type="submit" size="sm" disabled={isLoading || !input.trim()}>
+            Send
           </Button>
         </div>
       </form>

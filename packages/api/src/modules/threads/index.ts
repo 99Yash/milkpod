@@ -1,43 +1,72 @@
-import { Elysia, status } from 'elysia';
-import { authMacro } from '../../middleware/auth';
+import { Elysia } from 'elysia';
+import { authMiddleware } from '../../middleware/auth';
 import { ThreadModel } from './model';
 import { ThreadService } from './service';
 
 export const threads = new Elysia({ prefix: '/api/threads' })
-  .use(authMacro)
+  .use(authMiddleware)
   .post(
     '/',
-    async ({ body, user }) => {
-      return ThreadService.create(user.id, body);
+    async ({ body, session, set }) => {
+      if (!session) {
+        set.status = 401;
+        return { message: 'Authentication required' };
+      }
+      return ThreadService.create(session.user.id, body);
     },
-    { auth: true, body: ThreadModel.create }
+    { body: ThreadModel.create }
   )
-  .get('/', async ({ user }) => {
-    return ThreadService.list(user.id);
-  }, { auth: true })
-  .get('/:id', async ({ params, user }) => {
+  .get('/', async ({ session, set }) => {
+    if (!session) {
+      set.status = 401;
+      return { message: 'Authentication required' };
+    }
+    return ThreadService.list(session.user.id);
+  })
+  .get('/:id', async ({ params, session, set }) => {
+    if (!session) {
+      set.status = 401;
+      return { message: 'Authentication required' };
+    }
     const thread = await ThreadService.getWithMessages(
       params.id,
-      user.id
+      session.user.id
     );
-    if (!thread) return status(404, { message: 'Thread not found' });
+    if (!thread) {
+      set.status = 404;
+      return { message: 'Thread not found' };
+    }
     return thread;
-  }, { auth: true })
+  })
   .patch(
     '/:id',
-    async ({ params, body, user }) => {
+    async ({ params, body, session, set }) => {
+      if (!session) {
+        set.status = 401;
+        return { message: 'Authentication required' };
+      }
       const updated = await ThreadService.update(
         params.id,
-        user.id,
+        session.user.id,
         body
       );
-      if (!updated) return status(404, { message: 'Thread not found' });
+      if (!updated) {
+        set.status = 404;
+        return { message: 'Thread not found' };
+      }
       return updated;
     },
-    { auth: true, body: ThreadModel.update }
+    { body: ThreadModel.update }
   )
-  .delete('/:id', async ({ params, user }) => {
-    const deleted = await ThreadService.remove(params.id, user.id);
-    if (!deleted) return status(404, { message: 'Thread not found' });
+  .delete('/:id', async ({ params, session, set }) => {
+    if (!session) {
+      set.status = 401;
+      return { message: 'Authentication required' };
+    }
+    const deleted = await ThreadService.remove(params.id, session.user.id);
+    if (!deleted) {
+      set.status = 404;
+      return { message: 'Thread not found' };
+    }
     return deleted;
-  }, { auth: true });
+  });

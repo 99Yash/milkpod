@@ -1,10 +1,12 @@
 import type { App } from '@milkpod/api';
 import { treaty } from '@elysiajs/eden';
-import { clientEnv } from '@milkpod/env/client';
 import { QueryCache, QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-export const api = treaty<App>(clientEnv().NEXT_PUBLIC_SERVER_URL, {
+const SERVER_URL =
+  process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3001';
+
+export const api = treaty<App>(SERVER_URL, {
   fetch: {
     credentials: 'include',
   },

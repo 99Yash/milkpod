@@ -1,13 +1,16 @@
 'use client';
 
-import type { ToolOutput } from '@milkpod/ai/types';
+import type { ContextResult, RetrieveResult } from '@milkpod/ai';
 import { Badge } from '~/components/ui/badge';
 import { Spinner } from '~/components/ui/spinner';
 import { cn } from '~/lib/utils';
 
+type ToolResultOutput = RetrieveResult | ContextResult;
+type Segment = ToolResultOutput['segments'][number];
+
 interface ToolResultProps {
   toolName: string;
-  output: ToolOutput;
+  output: ToolResultOutput;
   isStreaming: boolean;
 }
 

@@ -1,13 +1,12 @@
 'use client';
 
 import { useRef, useCallback, useEffect } from 'react';
-import { useChat, type UseChatHelpers } from '@ai-sdk/react';
+import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { clientEnv } from '@milkpod/env/client';
-import { chatMetadataSchema } from '@milkpod/ai/schemas';
-import type { MilkpodMessage } from '@milkpod/ai/types';
+import { chatMetadataSchema, type MilkpodMessage } from '@milkpod/ai';
 
-const SERVER_URL = clientEnv().NEXT_PUBLIC_SERVER_URL;
+const SERVER_URL =
+  process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3001';
 
 export function useMilkpodChat({
   threadId,
@@ -19,7 +18,7 @@ export function useMilkpodChat({
   assetId?: string;
   collectionId?: string;
   initialMessages?: MilkpodMessage[];
-} = {}): UseChatHelpers<MilkpodMessage> & { threadId: string | undefined } {
+} = {}) {
   const threadIdRef = useRef<string | undefined>(threadId);
 
   useEffect(() => {

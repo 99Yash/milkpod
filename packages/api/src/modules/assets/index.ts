@@ -1,118 +1,65 @@
-import { Elysia, status } from 'elysia';
-import { authMacro } from '../../middleware/auth';
+import { Elysia } from 'elysia';
+import { authMiddleware } from '../../middleware/auth';
 import { AssetModel } from './model';
 import { AssetService } from './service';
-import { IngestService } from '../ingest/service';
-import { orchestratePipeline } from '../ingest/pipeline';
-import { assetEvents, type AssetStatusEvent } from '../../events/asset-events';
 
 export const assets = new Elysia({ prefix: '/api/assets' })
-  .use(authMacro)
+  .use(authMiddleware)
   .post(
     '/',
-    async ({ body, user }) => {
-      return AssetService.create(user.id, body);
-    },
-    { auth: true, body: AssetModel.create }
-  )
-  .get(
-    '/',
-    async ({ user, query }) => {
-      const hasFilters = query.q || query.status || query.sourceType;
-      if (hasFilters) {
-        return AssetService.search(user.id, query);
+    async ({ body, session, set }) => {
+      if (!session) {
+        set.status = 401;
+        return { message: 'Authentication required' };
       }
-      return AssetService.list(user.id);
+      return AssetService.create(session.user.id, body);
     },
-    { auth: true, query: AssetModel.listQuery }
+    { body: AssetModel.create }
   )
-  .get('/events', ({ user }) => {
-    const userId = user.id;
-
-    const encoder = new TextEncoder();
-    let cleanup: (() => void) | undefined;
-
-    const stream = new ReadableStream({
-      start(controller) {
-        const write = (text: string) => {
-          try {
-            controller.enqueue(encoder.encode(text));
-          } catch {
-            // stream already closed
-          }
-        };
-
-        const listener = (event: AssetStatusEvent) => {
-          if (event.userId !== userId) return;
-          const data = JSON.stringify({
-            assetId: event.assetId,
-            status: event.status,
-            message: event.message,
-            progress: event.progress,
-          });
-          write(`data: ${data}\n\n`);
-        };
-
-        assetEvents.on('status', listener);
-
-        const heartbeat = setInterval(() => {
-          write(': heartbeat\n\n');
-        }, 30_000);
-
-        // Send initial comment so client knows connection is alive
-        write(': connected\n\n');
-
-        cleanup = () => {
-          assetEvents.off('status', listener);
-          clearInterval(heartbeat);
-        };
-      },
-      cancel() {
-        cleanup?.();
-      },
-    });
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
-    }) as Response;
-  }, { auth: true })
-  .get('/:id', async ({ params, user }) => {
-    const asset = await AssetService.getWithTranscript(params.id, user.id);
-    if (!asset) return status(404, { message: 'Asset not found' });
+  .get('/', async ({ session, set }) => {
+    if (!session) {
+      set.status = 401;
+      return { message: 'Authentication required' };
+    }
+    return AssetService.list(session.user.id);
+  })
+  .get('/:id', async ({ params, session, set }) => {
+    if (!session) {
+      set.status = 401;
+      return { message: 'Authentication required' };
+    }
+    const asset = await AssetService.getWithTranscript(params.id, session.user.id);
+    if (!asset) {
+      set.status = 404;
+      return { message: 'Asset not found' };
+    }
     return asset;
-  }, { auth: true })
+  })
   .patch(
     '/:id',
-    async ({ params, body, user }) => {
-      const updated = await AssetService.update(params.id, user.id, body);
-      if (!updated) return status(404, { message: 'Asset not found' });
+    async ({ params, body, session, set }) => {
+      if (!session) {
+        set.status = 401;
+        return { message: 'Authentication required' };
+      }
+      const updated = await AssetService.update(params.id, session.user.id, body);
+      if (!updated) {
+        set.status = 404;
+        return { message: 'Asset not found' };
+      }
       return updated;
     },
-    { auth: true, body: AssetModel.update }
+    { body: AssetModel.update }
   )
-  .delete('/:id', async ({ params, user }) => {
-    const deleted = await AssetService.remove(params.id, user.id);
-    if (!deleted) return status(404, { message: 'Asset not found' });
+  .delete('/:id', async ({ params, session, set }) => {
+    if (!session) {
+      set.status = 401;
+      return { message: 'Authentication required' };
+    }
+    const deleted = await AssetService.remove(params.id, session.user.id);
+    if (!deleted) {
+      set.status = 404;
+      return { message: 'Asset not found' };
+    }
     return deleted;
-  }, { auth: true })
-  .post('/:id/retry', async ({ params, user }) => {
-    const asset = await AssetService.getById(params.id, user.id);
-    if (!asset) return status(404, { message: 'Asset not found' });
-    if (asset.status !== 'failed') {
-      return status(409, { message: 'Only failed assets can be retried' });
-    }
-    if (!asset.sourceUrl) {
-      return status(422, { message: 'Asset has no source URL to retry' });
-    }
-
-    await IngestService.resetForRetry(asset.id);
-
-    // Fire-and-forget pipeline retry
-    orchestratePipeline(asset.id, asset.sourceUrl, user.id);
-
-    return { message: 'Retry started' };
-  }, { auth: true });
+  });

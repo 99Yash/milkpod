@@ -1,20 +1,18 @@
 import { db } from '@milkpod/db';
 import { collections, collectionItems, mediaAssets } from '@milkpod/db/schemas';
 import { and, eq } from 'drizzle-orm';
-import type { Collection, CollectionItem, CollectionWithItems } from '../../types';
 import type { CollectionModel } from './model';
 
 export abstract class CollectionService {
-  static async create(userId: string, data: CollectionModel.Create): Promise<Collection> {
+  static async create(userId: string, data: CollectionModel.Create) {
     const [collection] = await db
       .insert(collections)
       .values({ userId, ...data })
       .returning();
-    if (!collection) throw new Error('Failed to insert collection');
     return collection;
   }
 
-  static async list(userId: string): Promise<Collection[]> {
+  static async list(userId: string) {
     return db
       .select()
       .from(collections)
@@ -22,7 +20,7 @@ export abstract class CollectionService {
       .orderBy(collections.createdAt);
   }
 
-  static async getById(id: string, userId: string): Promise<Collection | null> {
+  static async getById(id: string, userId: string) {
     const [collection] = await db
       .select()
       .from(collections)
@@ -30,7 +28,7 @@ export abstract class CollectionService {
     return collection ?? null;
   }
 
-  static async getWithItems(id: string, userId: string): Promise<CollectionWithItems | null> {
+  static async getWithItems(id: string, userId: string) {
     const collection = await CollectionService.getById(id, userId);
     if (!collection) return null;
 
@@ -56,7 +54,7 @@ export abstract class CollectionService {
     return { ...collection, items };
   }
 
-  static async update(id: string, userId: string, data: CollectionModel.Update): Promise<Collection | null> {
+  static async update(id: string, userId: string, data: CollectionModel.Update) {
     const [updated] = await db
       .update(collections)
       .set(data)
@@ -65,7 +63,7 @@ export abstract class CollectionService {
     return updated ?? null;
   }
 
-  static async remove(id: string, userId: string): Promise<Collection | null> {
+  static async remove(id: string, userId: string) {
     const [deleted] = await db
       .delete(collections)
       .where(and(eq(collections.id, id), eq(collections.userId, userId)))
@@ -73,20 +71,15 @@ export abstract class CollectionService {
     return deleted ?? null;
   }
 
-  static async addItem(collectionId: string, data: CollectionModel.AddItem): Promise<CollectionItem> {
+  static async addItem(collectionId: string, data: CollectionModel.AddItem) {
     const [item] = await db
       .insert(collectionItems)
-      .values({
-        collectionId,
-        assetId: data.assetId,
-        position: data.position,
-      })
+      .values({ collectionId, ...data })
       .returning();
-    if (!item) throw new Error('Failed to insert collection item');
     return item;
   }
 
-  static async removeItem(collectionId: string, itemId: string): Promise<CollectionItem | null> {
+  static async removeItem(collectionId: string, itemId: string) {
     const [deleted] = await db
       .delete(collectionItems)
       .where(

@@ -8,10 +8,9 @@ import {
 import type { MilkpodMessage } from './types';
 import { chatModel } from './provider';
 import { createQAToolSet } from './tools';
-import { buildSystemPrompt } from './system-prompt';
+import { QA_SYSTEM_PROMPT } from './system-prompt';
 import { chatMetadataSchema } from './schemas';
 import { AIError } from './errors';
-import { checkInput, createRefusalResponse } from './guardrails';
 
 export interface ChatRequest {
   messages: MilkpodMessage[];
@@ -40,20 +39,12 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
     return new Response('Invalid messages', { status: 400 });
   }
 
-  const guardrailResult = await checkInput(validatedMessages);
-  if (!guardrailResult.allowed) {
-    return createRefusalResponse(validatedMessages, req.headers);
-  }
-
   const modelMessages = await convertToModelMessages(validatedMessages);
   const startTime = Date.now();
 
   const result = streamText({
     model: chatModel,
-    system: buildSystemPrompt({
-      assetId: req.assetId,
-      collectionId: req.collectionId,
-    }),
+    system: QA_SYSTEM_PROMPT,
     messages: modelMessages,
     tools,
     stopWhen: [stepCountIs(5)],
@@ -64,7 +55,6 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
 
   return result.toUIMessageStreamResponse<MilkpodMessage>({
     headers: req.headers,
-    sendReasoning: true,
     originalMessages: validatedMessages,
     onFinish: req.onFinish,
     messageMetadata: ({ part }) => {

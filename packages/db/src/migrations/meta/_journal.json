@@ -15,41 +15,6 @@
       "when": 1770533333785,
       "tag": "0001_broad_dakota_north",
       "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1770562387432,
-      "tag": "0002_clean_shooting_star",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1770562741122,
-      "tag": "0003_even_echo",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1770787918412,
-      "tag": "0004_deep_franklin_storm",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1770790962555,
-      "tag": "0005_fresh_aqueduct",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1770816365607,
-      "tag": "0006_wonderful_greymalkin",
-      "breakpoints": true
     }
   ]
 }

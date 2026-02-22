@@ -16,19 +16,18 @@
     "check-types": "tsc -b"
   },
   "devDependencies": {
-    "@milkpod/config": "workspace:*",
-    "tsdown": "catalog:"
+    "tsdown": "catalog:",
+    "@milkpod/config": "workspace:*"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
-    "@milkpod/ai": "workspace:*",
-    "@milkpod/auth": "workspace:*",
-    "@milkpod/db": "workspace:*",
-    "@milkpod/env": "workspace:*",
     "ai": "catalog:",
+    "elysia": "catalog:",
     "drizzle-orm": "^0.44.2",
-    "elysia": "catalog:"
+    "@milkpod/auth": "workspace:*",
+    "@milkpod/ai": "workspace:*",
+    "@milkpod/db": "workspace:*"
   }
 }
