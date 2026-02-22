@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { LAST_AUTH_METHOD_KEY, type AuthOptionsType } from '~/lib/constants';
 import { getLocalStorageItem, LOCAL_STORAGE_CHANGE_EVENT } from '~/lib/utils';
 
-export function useLastAuthMethod() {
+export function useLastAuthMethod(): AuthOptionsType | null {
   const [lastAuthMethod, setLastAuthMethod] =
     useState<AuthOptionsType | null>(null);
 

@@ -15,16 +15,15 @@ export type LocalStorageValue<K extends LocalStorageKey> = z.infer<
   (typeof LOCAL_STORAGE_SCHEMAS)[K] & z.ZodTypeAny
 >;
 
+export type OAuthProviderId = Lowercase<Exclude<AuthOptionsType, 'EMAIL'>>;
+
 interface OAuthProvider {
-  id: string;
+  id: OAuthProviderId;
   name: string;
   icon?: React.ComponentType<{ className?: string }>;
 }
 
-export const OAUTH_PROVIDERS: Record<
-  Lowercase<Exclude<AuthOptionsType, 'EMAIL'>>,
-  OAuthProvider
-> = {
+export const OAUTH_PROVIDERS = {
   github: {
     id: 'github',
     name: 'GitHub',
@@ -35,9 +34,12 @@ export const OAUTH_PROVIDERS: Record<
     name: 'Google',
     icon: Google,
   },
-} as const;
+} as const satisfies Record<OAuthProviderId, OAuthProvider>;
 
-export type OAuthProviderId = keyof typeof OAUTH_PROVIDERS;
+export const PROVIDER_AUTH_OPTIONS = {
+  github: 'GITHUB',
+  google: 'GOOGLE',
+} as const satisfies Record<OAuthProviderId, AuthOptionsType>;
 
 export const getProviderById = (
   id: OAuthProviderId

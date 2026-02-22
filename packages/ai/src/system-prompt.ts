@@ -1,4 +1,4 @@
-export const QA_SYSTEM_PROMPT = `You are Milkpod, an AI assistant that helps users understand video and audio content by analyzing transcripts.
+const BASE_SYSTEM_PROMPT = `You are Milkpod, an AI assistant that helps users understand video and audio content by analyzing transcripts.
 
 ## Rules
 
@@ -15,3 +15,47 @@ export const QA_SYSTEM_PROMPT = `You are Milkpod, an AI assistant that helps use
 6. **Handle ambiguity gracefully.** If a question is ambiguous, ask for clarification. If multiple interpretations are possible, address the most likely one and note alternatives.
 
 7. **Refuse gracefully when no evidence exists.** If no relevant segments are found, tell the user that the transcript doesn't appear to contain information about their question.`;
+
+export interface SystemPromptContext {
+  assetId?: string;
+  assetTitle?: string;
+  collectionId?: string;
+}
+
+export function buildSystemPrompt(context: SystemPromptContext = {}): string {
+  const parts = [BASE_SYSTEM_PROMPT];
+
+  if (context.assetId || context.collectionId) {
+    const lines = ['## Current Context'];
+
+    if (context.assetId) {
+      const label = context.assetTitle
+        ? `"${context.assetTitle}" (${context.assetId})`
+        : context.assetId;
+      lines.push(
+        `- You are answering questions about a specific asset: ${label}.`,
+        '- The retrieve_segments tool is already scoped to this asset — you do not need to specify an asset ID.'
+      );
+    }
+
+    if (context.collectionId) {
+      lines.push(
+        `- Queries are scoped to collection: ${context.collectionId}.`,
+        '- The retrieve_segments tool will search across all assets in this collection.'
+      );
+    }
+
+    if (!context.assetId && !context.collectionId) {
+      lines.push(
+        '- No specific asset or collection is selected. Searches will cover all available transcripts.'
+      );
+    }
+
+    parts.push(lines.join('\n'));
+  }
+
+  return parts.join('\n\n');
+}
+
+/** @deprecated Use `buildSystemPrompt()` for context-aware prompts */
+export const QA_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;

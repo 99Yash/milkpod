@@ -1,95 +1,79 @@
-import { Elysia } from 'elysia';
-import { authMiddleware } from '../../middleware/auth';
+import { Elysia, status } from 'elysia';
+import { authMacro } from '../../middleware/auth';
 import { CollectionModel } from './model';
 import { CollectionService } from './service';
+import { AssetService } from '../assets/service';
 
 export const collections = new Elysia({ prefix: '/api/collections' })
-  .use(authMiddleware)
+  .use(authMacro)
   .post(
     '/',
-    async ({ body, session, set }) => {
-      if (!session) {
-        set.status = 401;
-        return { message: 'Authentication required' };
-      }
-      return CollectionService.create(session.user.id, body);
+    async ({ body, user }) => {
+      return CollectionService.create(user.id, body);
     },
-    { body: CollectionModel.create }
+    { auth: true, body: CollectionModel.create }
   )
-  .get('/', async ({ session, set }) => {
-    if (!session) {
-      set.status = 401;
-      return { message: 'Authentication required' };
-    }
-    return CollectionService.list(session.user.id);
-  })
-  .get('/:id', async ({ params, session, set }) => {
-    if (!session) {
-      set.status = 401;
-      return { message: 'Authentication required' };
-    }
+  .get('/', async ({ user }) => {
+    return CollectionService.list(user.id);
+  }, { auth: true })
+  .get('/:id', async ({ params, user }) => {
     const collection = await CollectionService.getWithItems(
       params.id,
-      session.user.id
+      user.id
     );
-    if (!collection) {
-      set.status = 404;
-      return { message: 'Collection not found' };
-    }
+    if (!collection) return status(404, { message: 'Collection not found' });
     return collection;
-  })
+  }, { auth: true })
   .patch(
     '/:id',
-    async ({ params, body, session, set }) => {
-      if (!session) {
-        set.status = 401;
-        return { message: 'Authentication required' };
-      }
+    async ({ params, body, user }) => {
       const updated = await CollectionService.update(
         params.id,
-        session.user.id,
+        user.id,
         body
       );
-      if (!updated) {
-        set.status = 404;
-        return { message: 'Collection not found' };
-      }
+      if (!updated) return status(404, { message: 'Collection not found' });
       return updated;
     },
-    { body: CollectionModel.update }
+    { auth: true, body: CollectionModel.update }
   )
-  .delete('/:id', async ({ params, session, set }) => {
-    if (!session) {
-      set.status = 401;
-      return { message: 'Authentication required' };
-    }
-    const deleted = await CollectionService.remove(params.id, session.user.id);
-    if (!deleted) {
-      set.status = 404;
-      return { message: 'Collection not found' };
-    }
+  .delete('/:id', async ({ params, user }) => {
+    const deleted = await CollectionService.remove(params.id, user.id);
+    if (!deleted) return status(404, { message: 'Collection not found' });
     return deleted;
-  })
+  }, { auth: true })
   .post(
     '/:id/items',
-    async ({ params, body, session, set }) => {
-      if (!session) {
-        set.status = 401;
-        return { message: 'Authentication required' };
+    async ({ params, body, user }) => {
+      const userId = user.id;
+
+      // Verify user owns the collection
+      const collection = await CollectionService.getById(params.id, userId);
+      if (!collection) {
+        return status(403, { message: 'Access denied to collection' });
       }
+
+      // Verify user owns the asset being added
+      const asset = await AssetService.getById(body.assetId, userId);
+      if (!asset) {
+        return status(403, { message: 'Access denied to asset' });
+      }
+
       return CollectionService.addItem(params.id, body);
     },
-    { body: CollectionModel.addItem }
+    { auth: true, body: CollectionModel.addItem }
   )
-  .delete('/:id/items/:itemId', async ({ params, session, set }) => {
-    if (!session) {
-      set.status = 401;
-      return { message: 'Authentication required' };
+  .delete('/:id/items/:itemId', async ({ params, user }) => {
+    // Verify user owns the collection
+    const collection = await CollectionService.getById(
+      params.id,
+      user.id
+    );
+    if (!collection) {
+      return status(403, { message: 'Access denied to collection' });
     }
+
     const deleted = await CollectionService.removeItem(params.id, params.itemId);
-    if (!deleted) {
-      set.status = 404;
-      return { message: 'Item not found' };
-    }
+    if (!deleted) return status(404, { message: 'Item not found' });
     return deleted;
-  });
+  }, { auth: true });
