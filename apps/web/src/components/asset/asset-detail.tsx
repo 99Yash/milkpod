@@ -1,13 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Clock, FileText, MessageSquareText, Mic, User } from 'lucide-react';
 import { ShareDialog } from '~/components/share/share-dialog';
-import { toast } from 'sonner';
 import { fetchAssetDetail } from '~/lib/api-fetchers';
 import { Badge } from '~/components/ui/badge';
-import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
 import {
   DashboardPanel,
@@ -24,9 +22,8 @@ import { useAssetEvents, type AssetStatusEvent } from '~/hooks/use-asset-events'
 
 interface AssetDetailProps {
   assetId: string;
+  initialAsset: AssetWithTranscript;
 }
-
-type AssetData = AssetWithTranscript;
 
 const statusLabels: Record<AssetStatus, string> = {
   queued: 'Queued',
@@ -45,48 +42,16 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function AssetDetail({ assetId }: AssetDetailProps) {
-  const [asset, setAsset] = useState<AssetData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+export function AssetDetail({ assetId, initialAsset }: AssetDetailProps) {
+  const [asset, setAsset] = useState<AssetWithTranscript>(initialAsset);
   const [progressMessage, setProgressMessage] = useState<string | undefined>();
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchAsset() {
-      setIsLoading(true);
-      try {
-        const result = await fetchAssetDetail(assetId);
-        if (cancelled) return;
-
-        if (!result) {
-          setNotFound(true);
-          return;
-        }
-        setAsset(result);
-      } catch {
-        if (!cancelled) {
-          toast.error('Failed to load asset');
-          setNotFound(true);
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
-
-    fetchAsset();
-    return () => {
-      cancelled = true;
-    };
-  }, [assetId]);
 
   // SSE: update status and progress in real-time
   useAssetEvents(
     useCallback(
       (event: AssetStatusEvent) => {
         if (event.assetId !== assetId) return;
-        setAsset((prev) => (prev ? { ...prev, status: event.status } : prev));
+        setAsset((prev) => ({ ...prev, status: event.status }));
         setProgressMessage(event.message);
         // Re-fetch full data (with transcript) when ready
         if (event.status === 'ready') {
@@ -104,30 +69,6 @@ export function AssetDetail({ assetId }: AssetDetailProps) {
       [assetId]
     )
   );
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Spinner className="size-6" />
-      </div>
-    );
-  }
-
-  if (notFound || !asset) {
-    return (
-      <div className="space-y-4">
-        <BackButton />
-        <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
-          <p className="text-sm text-muted-foreground">Asset not found</p>
-          <Link href="/dashboard?tab=library">
-            <Button variant="outline" size="sm">
-              Back to library
-            </Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
 
   const isReady = asset.status === 'ready';
   const speakers = new Set(
