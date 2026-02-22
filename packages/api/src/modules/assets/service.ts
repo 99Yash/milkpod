@@ -15,7 +15,7 @@ const VALID_SOURCE_TYPES = new Set<string>(sourceTypeEnum.enumValues);
 
 export abstract class AssetService {
   static async create(userId: string, data: AssetModel.Create): Promise<Asset> {
-    const [asset] = await db
+    const [asset] = await db()
       .insert(mediaAssets)
       .values({ userId, ...data })
       .returning();
@@ -24,7 +24,7 @@ export abstract class AssetService {
   }
 
   static async list(userId: string): Promise<Asset[]> {
-    return db
+    return db()
       .select()
       .from(mediaAssets)
       .where(eq(mediaAssets.userId, userId))
@@ -69,7 +69,7 @@ export abstract class AssetService {
       );
     }
 
-    return db
+    return db()
       .select()
       .from(mediaAssets)
       .where(and(...conditions))
@@ -77,7 +77,7 @@ export abstract class AssetService {
   }
 
   static async getById(id: string, userId: string): Promise<Asset | null> {
-    const [asset] = await db
+    const [asset] = await db()
       .select()
       .from(mediaAssets)
       .where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)));
@@ -88,14 +88,14 @@ export abstract class AssetService {
     const asset = await AssetService.getById(id, userId);
     if (!asset) return null;
 
-    const [transcript] = await db
+    const [transcript] = await db()
       .select()
       .from(transcripts)
       .where(eq(transcripts.assetId, id));
 
     if (!transcript) return { ...asset, transcript: null, segments: [] };
 
-    const segments = await db
+    const segments = await db()
       .select()
       .from(transcriptSegments)
       .where(eq(transcriptSegments.transcriptId, transcript.id))
@@ -105,7 +105,7 @@ export abstract class AssetService {
   }
 
   static async update(id: string, userId: string, data: AssetModel.Update): Promise<Asset | null> {
-    const [updated] = await db
+    const [updated] = await db()
       .update(mediaAssets)
       .set(data)
       .where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)))
@@ -114,7 +114,7 @@ export abstract class AssetService {
   }
 
   static async remove(id: string, userId: string): Promise<Asset | null> {
-    const [deleted] = await db
+    const [deleted] = await db()
       .delete(mediaAssets)
       .where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)))
       .returning();

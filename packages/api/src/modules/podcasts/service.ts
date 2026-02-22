@@ -18,7 +18,7 @@ export abstract class PodcastService {
   static async addFeed(userId: string, feedUrl: string) {
     const parsed = await parseFeed(feedUrl);
 
-    const [feed] = await db
+    const [feed] = await db()
       .insert(podcastFeeds)
       .values({
         userId,
@@ -46,7 +46,7 @@ export abstract class PodcastService {
 
   /** List all feeds for a user. */
   static async listFeeds(userId: string) {
-    return db
+    return db()
       .select()
       .from(podcastFeeds)
       .where(eq(podcastFeeds.userId, userId))
@@ -55,7 +55,7 @@ export abstract class PodcastService {
 
   /** Get a single feed by ID, scoped to user. */
   static async getFeed(feedId: string, userId: string) {
-    const [feed] = await db
+    const [feed] = await db()
       .select()
       .from(podcastFeeds)
       .where(
@@ -70,7 +70,7 @@ export abstract class PodcastService {
     userId: string,
     data: { refreshIntervalMins?: number }
   ) {
-    const [updated] = await db
+    const [updated] = await db()
       .update(podcastFeeds)
       .set(data)
       .where(
@@ -82,7 +82,7 @@ export abstract class PodcastService {
 
   /** Delete a feed and all its episodes (cascade). */
   static async deleteFeed(feedId: string, userId: string) {
-    const [deleted] = await db
+    const [deleted] = await db()
       .delete(podcastFeeds)
       .where(
         and(eq(podcastFeeds.id, feedId), eq(podcastFeeds.userId, userId))
@@ -103,7 +103,7 @@ export abstract class PodcastService {
     const parsed = await parseFeed(feed.feedUrl);
 
     // Update feed metadata
-    await db
+    await db()
       .update(podcastFeeds)
       .set({
         title: parsed.meta.title,
@@ -136,7 +136,7 @@ export abstract class PodcastService {
     if (episodes.length === 0) return [];
 
     // Get existing GUIDs for this feed
-    const existing = await db
+    const existing = await db()
       .select({ guid: podcastEpisodes.guid })
       .from(podcastEpisodes)
       .where(eq(podcastEpisodes.feedId, feedId));
@@ -146,7 +146,7 @@ export abstract class PodcastService {
 
     if (newItems.length === 0) return [];
 
-    const inserted = await db
+    const inserted = await db()
       .insert(podcastEpisodes)
       .values(
         newItems.map((ep) => ({
@@ -170,7 +170,7 @@ export abstract class PodcastService {
     const feed = await PodcastService.getFeed(feedId, userId);
     if (!feed) return null;
 
-    return db
+    return db()
       .select()
       .from(podcastEpisodes)
       .where(eq(podcastEpisodes.feedId, feedId))
@@ -179,7 +179,7 @@ export abstract class PodcastService {
 
   /** Get a single episode, verifying feed ownership. */
   static async getEpisode(episodeId: string, userId: string) {
-    const [episode] = await db
+    const [episode] = await db()
       .select()
       .from(podcastEpisodes)
       .where(eq(podcastEpisodes.id, episodeId));
@@ -199,7 +199,7 @@ export abstract class PodcastService {
     status: EpisodeStatus,
     opts?: { lastError?: string; assetId?: string }
   ) {
-    await db
+    await db()
       .update(podcastEpisodes)
       .set({
         status,
@@ -214,7 +214,7 @@ export abstract class PodcastService {
     episodeId: string,
     lastError: string
   ) {
-    await db
+    await db()
       .update(podcastEpisodes)
       .set({
         attempts: sql`${podcastEpisodes.attempts} + 1`,
@@ -225,7 +225,7 @@ export abstract class PodcastService {
 
   /** Link an episode to its transcribed media asset. */
   static async linkAsset(episodeId: string, assetId: string) {
-    await db
+    await db()
       .update(podcastEpisodes)
       .set({ assetId })
       .where(eq(podcastEpisodes.id, episodeId));
@@ -233,7 +233,7 @@ export abstract class PodcastService {
 
   /** Reset episode for retry. */
   static async resetEpisodeForRetry(episodeId: string) {
-    await db
+    await db()
       .update(podcastEpisodes)
       .set({
         status: 'queued',

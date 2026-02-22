@@ -5,7 +5,7 @@ import type { ThreadModel } from './model';
 
 export abstract class ThreadService {
   static async create(userId: string, data: ThreadModel.Create) {
-    const [thread] = await db
+    const [thread] = await db()
       .insert(qaThreads)
       .values({
         userId,
@@ -18,7 +18,7 @@ export abstract class ThreadService {
   }
 
   static async list(userId: string) {
-    return db
+    return db()
       .select()
       .from(qaThreads)
       .where(eq(qaThreads.userId, userId))
@@ -26,7 +26,7 @@ export abstract class ThreadService {
   }
 
   static async getById(id: string, userId: string) {
-    const [thread] = await db
+    const [thread] = await db()
       .select()
       .from(qaThreads)
       .where(and(eq(qaThreads.id, id), eq(qaThreads.userId, userId)));
@@ -37,7 +37,7 @@ export abstract class ThreadService {
     const thread = await ThreadService.getById(id, userId);
     if (!thread) return null;
 
-    const messages = await db
+    const messages = await db()
       .select()
       .from(qaMessages)
       .where(eq(qaMessages.threadId, id))
@@ -47,7 +47,7 @@ export abstract class ThreadService {
   }
 
   static async update(id: string, userId: string, data: ThreadModel.Update) {
-    const [updated] = await db
+    const [updated] = await db()
       .update(qaThreads)
       .set(data)
       .where(and(eq(qaThreads.id, id), eq(qaThreads.userId, userId)))
@@ -56,7 +56,7 @@ export abstract class ThreadService {
   }
 
   static async remove(id: string, userId: string) {
-    const [deleted] = await db
+    const [deleted] = await db()
       .delete(qaThreads)
       .where(and(eq(qaThreads.id, id), eq(qaThreads.userId, userId)))
       .returning();

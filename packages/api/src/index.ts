@@ -1,6 +1,7 @@
 import { auth } from '@milkpod/auth';
 import { db } from '@milkpod/db';
 import { sql } from 'drizzle-orm';
+export { closeConnections } from '@milkpod/db';
 import { Elysia } from 'elysia';
 import { requestLogger } from './middleware/logger';
 import { rateLimiter } from './middleware/rate-limit';
@@ -16,7 +17,7 @@ export const app = new Elysia({ name: 'api' })
   .use(requestLogger)
   .get('/health', async ({ set }) => {
     try {
-      await db.execute(sql`SELECT 1`);
+      await db().execute(sql`SELECT 1`);
       return { status: 'ok', db: 'connected' };
     } catch {
       set.status = 503;
@@ -27,7 +28,7 @@ export const app = new Elysia({ name: 'api' })
     const checks: Record<string, 'ok' | 'error'> = {};
 
     try {
-      await db.execute(sql`SELECT 1`);
+      await db().execute(sql`SELECT 1`);
       checks.db = 'ok';
     } catch {
       checks.db = 'error';
@@ -65,7 +66,3 @@ export const app = new Elysia({ name: 'api' })
 
 export type App = typeof app;
 
-/** Close underlying connection pools. Call during graceful shutdown. */
-export async function closeConnections() {
-  await db.$client.end();
-}

@@ -20,7 +20,7 @@ function generateToken(): string {
 export abstract class ShareService {
   static async create(userId: string, data: ShareModel.Create): Promise<ShareLink> {
     const token = generateToken();
-    const [link] = await db
+    const [link] = await db()
       .insert(shareLinks)
       .values({
         token,
@@ -36,7 +36,7 @@ export abstract class ShareService {
   }
 
   static async list(userId: string): Promise<ShareLink[]> {
-    return db
+    return db()
       .select()
       .from(shareLinks)
       .where(and(eq(shareLinks.userId, userId), isNull(shareLinks.revokedAt)))
@@ -44,7 +44,7 @@ export abstract class ShareService {
   }
 
   static async getById(id: string, userId: string): Promise<ShareLink | null> {
-    const [link] = await db
+    const [link] = await db()
       .select()
       .from(shareLinks)
       .where(and(eq(shareLinks.id, id), eq(shareLinks.userId, userId)));
@@ -52,7 +52,7 @@ export abstract class ShareService {
   }
 
   static async revoke(id: string, userId: string): Promise<ShareLink | null> {
-    const [revoked] = await db
+    const [revoked] = await db()
       .update(shareLinks)
       .set({ revokedAt: new Date() })
       .where(
@@ -67,7 +67,7 @@ export abstract class ShareService {
   }
 
   static async validateToken(token: string): Promise<ShareLink | null> {
-    const [link] = await db
+    const [link] = await db()
       .select()
       .from(shareLinks)
       .where(
@@ -92,20 +92,20 @@ export abstract class ShareService {
     if (!link) return null;
 
     if (link.assetId) {
-      const [asset] = await db
+      const [asset] = await db()
         .select()
         .from(mediaAssets)
         .where(eq(mediaAssets.id, link.assetId));
       if (!asset) return null;
 
       // Load transcript + segments for the shared asset
-      const [transcript] = await db
+      const [transcript] = await db()
         .select()
         .from(transcripts)
         .where(eq(transcripts.assetId, link.assetId));
 
       const segments = transcript
-        ? await db
+        ? await db()
             .select()
             .from(transcriptSegments)
             .where(eq(transcriptSegments.transcriptId, transcript.id))
@@ -120,14 +120,14 @@ export abstract class ShareService {
     }
 
     if (link.collectionId) {
-      const [collection] = await db
+      const [collection] = await db()
         .select()
         .from(collections)
         .where(eq(collections.id, link.collectionId));
       if (!collection) return null;
 
       // Load collection items with asset info
-      const items = await db
+      const items = await db()
         .select({
           id: collectionItems.id,
           position: collectionItems.position,
@@ -160,7 +160,7 @@ export abstract class ShareService {
 
   static async checkRateLimit(shareLinkId: string) {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const [result] = await db
+    const [result] = await db()
       .select({ total: count() })
       .from(shareQueries)
       .where(
@@ -177,6 +177,6 @@ export abstract class ShareService {
   }
 
   static async logQuery(shareLinkId: string, question: string) {
-    await db.insert(shareQueries).values({ shareLinkId, question });
+    await db().insert(shareQueries).values({ shareLinkId, question });
   }
 }
