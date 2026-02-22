@@ -35,6 +35,14 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Write web env
+        run: |
+          echo "DATABASE_URL=$DATABASE_URL" >> apps/web/.env
+          echo "BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET" >> apps/web/.env
+          echo "BETTER_AUTH_URL=$BETTER_AUTH_URL" >> apps/web/.env
+          echo "GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID" >> apps/web/.env
+          echo "GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET" >> apps/web/.env
+          echo "CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}" >> apps/web/.env
       - name: Typecheck
         run: pnpm check-types
       - name: Build
