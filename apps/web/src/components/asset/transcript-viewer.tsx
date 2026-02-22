@@ -1,70 +1,21 @@
 'use client';
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { Search, X } from 'lucide-react';
-import { ScrollArea } from '~/components/ui/scroll-area';
-import { Input } from '~/components/ui/input';
-import { cn } from '~/lib/utils';
 import type { TranscriptSegment } from '@milkpod/api/types';
+import { coalesceSegments } from './transcript/types';
+import type { ViewMode } from './transcript/types';
+import { analyzeContent, detectChapters } from './transcript/chapter-detection';
+import { TranscriptToolbar } from './transcript/transcript-toolbar';
+import { FlatView } from './transcript/flat-view';
+import { ChapteredView } from './transcript/chaptered-view';
+
+const SEARCH_DEBOUNCE_MS = 300;
+const SCROLL_TO_MATCH_DELAY_MS = 160; // Wait for accordion expansion in chaptered view
 
 interface TranscriptViewerProps {
   segments: TranscriptSegment[];
   activeSegmentId?: string;
   onSegmentClick?: (segment: TranscriptSegment) => void;
-}
-
-interface CoalescedGroup {
-  segments: TranscriptSegment[];
-  speaker: string | null;
-  startTime: number;
-  endTime: number;
-  text: string;
-}
-
-const GAP_THRESHOLD = 3; // seconds
-
-function coalesceSegments(segments: TranscriptSegment[]): CoalescedGroup[] {
-  if (segments.length === 0) return [];
-
-  const groups: CoalescedGroup[] = [];
-  let current: CoalescedGroup = {
-    segments: [segments[0]],
-    speaker: segments[0].speaker,
-    startTime: segments[0].startTime,
-    endTime: segments[0].endTime,
-    text: segments[0].text,
-  };
-
-  for (let i = 1; i < segments.length; i++) {
-    const seg = segments[i];
-    const sameSpeaker =
-      seg.speaker === current.speaker ||
-      (seg.speaker == null && current.speaker == null);
-    const smallGap = seg.startTime - current.endTime < GAP_THRESHOLD;
-
-    if (sameSpeaker && smallGap) {
-      current.segments.push(seg);
-      current.endTime = seg.endTime;
-      current.text += ' ' + seg.text;
-    } else {
-      groups.push(current);
-      current = {
-        segments: [seg],
-        speaker: seg.speaker,
-        startTime: seg.startTime,
-        endTime: seg.endTime,
-        text: seg.text,
-      };
-    }
-  }
-  groups.push(current);
-  return groups;
-}
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 export function TranscriptViewer({
@@ -75,34 +26,58 @@ export function TranscriptViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
 
   useEffect(() => {
-    const id = setTimeout(() => setDebouncedSearch(search), 300);
+    const id = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(id);
   }, [search]);
 
   const groups = useMemo(() => coalesceSegments(segments), [segments]);
+  const profile = useMemo(() => analyzeContent(groups), [groups]);
+  const chapters = useMemo(() => detectChapters(groups), [groups]);
 
-  const filteredGroups = useMemo(() => {
-    if (!debouncedSearch) return groups;
+  const [viewMode, setViewMode] = useState<ViewMode>(profile.defaultMode);
+
+  useEffect(() => {
+    setViewMode(profile.defaultMode);
+  }, [profile.defaultMode]);
+
+  const showViewToggle = groups.length > 5;
+
+  // Compute all match positions (as group IDs) and per-group offsets
+  const { matches, matchOffsets } = useMemo(() => {
+    const matchList: string[] = [];
+    const offsets = new Map<string, number>();
+
+    if (!debouncedSearch) return { matches: matchList, matchOffsets: offsets };
+
     const q = debouncedSearch.toLowerCase();
-    return groups.filter(
-      (g) =>
-        g.text.toLowerCase().includes(q) ||
-        (g.speaker && g.speaker.toLowerCase().includes(q))
-    );
+    for (const group of groups) {
+      const id = group.segments[0].id;
+      offsets.set(id, matchList.length);
+
+      const text = group.text.toLowerCase();
+      let pos = 0;
+      while ((pos = text.indexOf(q, pos)) !== -1) {
+        matchList.push(id);
+        pos += q.length;
+      }
+    }
+
+    return { matches: matchList, matchOffsets: offsets };
   }, [groups, debouncedSearch]);
 
-  const activeGroupIndex = useMemo(() => {
-    if (!activeSegmentId) return -1;
-    return filteredGroups.findIndex((g) =>
-      g.segments.some((s) => s.id === activeSegmentId)
-    );
-  }, [filteredGroups, activeSegmentId]);
+  // Reset active match index when search changes
+  useEffect(() => {
+    setActiveMatchIndex(0);
+  }, [debouncedSearch]);
+
+  const activeMatchGroupId = matches[activeMatchIndex] ?? null;
 
   const scrollToSegment = useCallback((segmentId: string) => {
     const el = containerRef.current?.querySelector(
-      `[data-segment-id="${segmentId}"]`
+      `[data-segment-id="${segmentId}"]`,
     );
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
@@ -112,6 +87,31 @@ export function TranscriptViewer({
       scrollToSegment(activeSegmentId);
     }
   }, [activeSegmentId, scrollToSegment]);
+
+  // Scroll to active match when it changes
+  useEffect(() => {
+    if (matches.length === 0) return;
+
+    const timer = setTimeout(() => {
+      const el = containerRef.current?.querySelector(
+        '[data-active-match]',
+      );
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, SCROLL_TO_MATCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [activeMatchIndex, matches.length]);
+
+  const handleNextMatch = useCallback(() => {
+    if (matches.length === 0) return;
+    setActiveMatchIndex((prev) => (prev + 1) % matches.length);
+  }, [matches.length]);
+
+  const handlePrevMatch = useCallback(() => {
+    if (matches.length === 0) return;
+    setActiveMatchIndex(
+      (prev) => (prev - 1 + matches.length) % matches.length,
+    );
+  }, [matches.length]);
 
   if (segments.length === 0) {
     return (
@@ -123,77 +123,48 @@ export function TranscriptViewer({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b px-3 py-2">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search transcript..."
-            className="h-8 pl-8 pr-8 text-sm"
+      <TranscriptToolbar
+        search={search}
+        onSearchChange={setSearch}
+        totalMatches={matches.length}
+        activeMatchIndex={activeMatchIndex}
+        onPrevMatch={handlePrevMatch}
+        onNextMatch={handleNextMatch}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        showViewToggle={showViewToggle}
+      />
+
+      <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide">
+        {viewMode === 'chapters' ? (
+          <ChapteredView
+            chapters={chapters}
+            activeSegmentId={activeSegmentId}
+            searchQuery={debouncedSearch || undefined}
+            matchOffsets={matchOffsets}
+            activeMatchGlobalIndex={
+              matches.length > 0 ? activeMatchIndex : undefined
+            }
+            activeMatchGroupId={activeMatchGroupId ?? undefined}
+            onSegmentClick={onSegmentClick}
+            scrollToSegment={scrollToSegment}
           />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="size-3.5" />
-            </button>
-          )}
-        </div>
-        {debouncedSearch && (
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            {filteredGroups.length} result{filteredGroups.length !== 1 && 's'}{' '}
-            found
-          </p>
+        ) : (
+          <div className="px-3 py-1">
+            <FlatView
+              groups={groups}
+              activeSegmentId={activeSegmentId}
+              searchQuery={debouncedSearch || undefined}
+              matchOffsets={matchOffsets}
+              activeMatchGlobalIndex={
+                matches.length > 0 ? activeMatchIndex : undefined
+              }
+              onSegmentClick={onSegmentClick}
+              scrollToSegment={scrollToSegment}
+            />
+          </div>
         )}
       </div>
-
-      <ScrollArea className="min-h-0 flex-1">
-        <div ref={containerRef} className="space-y-1 px-3 py-2">
-          {filteredGroups.length === 0 && debouncedSearch ? (
-            <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-              No results found.
-            </div>
-          ) : (
-            filteredGroups.map((group, i) => {
-              const isActive = i === activeGroupIndex;
-              const firstSegment = group.segments[0];
-              return (
-                <button
-                  key={firstSegment.id}
-                  type="button"
-                  data-segment-id={firstSegment.id}
-                  onClick={() => {
-                    onSegmentClick?.(firstSegment);
-                    scrollToSegment(firstSegment.id);
-                  }}
-                  className={cn(
-                    'flex w-full flex-col gap-1 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted/50',
-                    isActive && 'bg-muted'
-                  )}
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                      {formatTime(group.startTime)} –{' '}
-                      {formatTime(group.endTime)}
-                    </span>
-                    {group.speaker && (
-                      <span className="text-xs font-medium text-muted-foreground">
-                        {group.speaker}
-                      </span>
-                    )}
-                  </span>
-                  <p className="text-sm leading-relaxed text-foreground">
-                    {group.text}
-                  </p>
-                </button>
-              );
-            })
-          )}
-        </div>
-      </ScrollArea>
     </div>
   );
 }

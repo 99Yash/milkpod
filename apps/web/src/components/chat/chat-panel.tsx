@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState } from 'react';
-import { MessageSquareText, SendHorizonal } from 'lucide-react';
+import { MessageSquareText, SendHorizonal, Sparkles } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
 import { ScrollArea } from '~/components/ui/scroll-area';
@@ -17,6 +17,8 @@ interface ChatPanelProps {
   assetId?: string;
   collectionId?: string;
 }
+
+const SUGGESTIONS = ['Summarize', 'Key points', 'Action items'] as const;
 
 function usePersistedMessages(threadId?: string) {
   const [messages, setMessages] = useState<MilkpodMessage[] | undefined>(
@@ -100,13 +102,30 @@ export function ChatPanel({ threadId, assetId, collectionId }: ChatPanelProps) {
     <div className="flex h-full flex-col">
       <ScrollArea ref={scrollRef} className="flex-1 px-4">
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 py-12 text-center">
-            <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-              <MessageSquareText className="size-5 text-muted-foreground" />
+          <div className="flex h-full flex-col items-center justify-center gap-4 py-12 text-center">
+            <div className="flex size-12 items-center justify-center rounded-2xl bg-muted">
+              <MessageSquareText className="size-6 text-muted-foreground" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-medium text-foreground">Ask about this video</p>
-              <p className="text-xs text-muted-foreground">Get answers with timestamps from the transcript.</p>
+              <p className="text-sm font-medium text-foreground">
+                Ask about this video
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Get answers with timestamps from the transcript.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2">
+              {SUGGESTIONS.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => sendMessage({ text: suggestion })}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Sparkles className="size-3" />
+                  {suggestion}
+                </button>
+              ))}
             </div>
           </div>
         ) : (
@@ -126,7 +145,7 @@ export function ChatPanel({ threadId, assetId, collectionId }: ChatPanelProps) {
 
       <form
         onSubmit={handleSubmit}
-        className="border-t bg-background p-3"
+        className="shrink-0 border-t border-border/40 bg-background p-3"
       >
         <div className="flex items-end gap-2">
           <Textarea
@@ -134,11 +153,15 @@ export function ChatPanel({ threadId, assetId, collectionId }: ChatPanelProps) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about the video..."
-            className="min-h-[44px] max-h-[120px] resize-none"
+            className="min-h-[44px] max-h-[120px] resize-none border-border/40"
             rows={1}
             disabled={isLoading}
           />
-          <Button type="submit" size="icon" disabled={isLoading || !input.trim()}>
+          <Button
+            type="submit"
+            size="icon"
+            disabled={isLoading || !input.trim()}
+          >
             <SendHorizonal className="size-4" />
           </Button>
         </div>
