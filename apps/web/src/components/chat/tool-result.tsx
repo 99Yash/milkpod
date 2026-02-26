@@ -19,8 +19,11 @@ const COLLAPSE_THRESHOLD = 6;
 export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
   const isSearching =
     output.status === 'searching' || output.status === 'loading';
-  const segments = output.segments ?? [];
   const [expanded, setExpanded] = useState(false);
+
+  const segments = output.tool === 'retrieve'
+    ? output.segments.map((s) => ({ id: s.segmentId, text: s.text, startTime: s.startTime, endTime: s.endTime, speaker: s.speaker }))
+    : output.segments;
 
   const shouldCollapse = segments.length > COLLAPSE_THRESHOLD;
   const visibleSegments =
@@ -49,8 +52,7 @@ export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
       {visibleSegments.length > 0 && (
         <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto">
           {visibleSegments.map((segment) => {
-            const segmentKey =
-              'segmentId' in segment ? segment.segmentId : segment.id;
+            const segmentKey = segment.id;
 
             return (
               <div

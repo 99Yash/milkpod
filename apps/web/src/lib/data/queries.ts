@@ -75,9 +75,13 @@ function isMessageRole(s: string): s is MessageRole {
 type PartRow = typeof qaMessageParts.$inferSelect;
 type Part = MilkpodMessage['parts'][number];
 
+// Cast to Part is required because the Part union contains dynamically generated
+// tool discriminators (e.g. `tool-retrieve_segments`) from InferUITools that
+// can't be statically matched here. Each branch ensures all required fields are
+// present so the shape is correct at runtime.
 function deserializePart(row: PartRow): Part {
   if (row.type === 'text' || row.type === 'reasoning') {
-    return { type: row.type, text: row.textContent ?? '' } as Part;
+    return { type: row.type, text: row.textContent ?? '', state: 'done' } as Part;
   }
   if (row.type === 'step-start') {
     return { type: 'step-start' } as Part;
@@ -87,7 +91,7 @@ function deserializePart(row: PartRow): Part {
       type: 'dynamic-tool',
       toolName: row.toolName ?? '',
       toolCallId: row.toolCallId ?? '',
-      state: row.toolState ?? 'output-available',
+      state: (row.toolState ?? 'output-available') as 'output-available',
       input: row.toolInput,
       output: row.toolOutput,
     } as Part;
@@ -95,13 +99,14 @@ function deserializePart(row: PartRow): Part {
   if (row.type.startsWith('tool-')) {
     return {
       type: row.type,
+      toolName: row.toolName ?? '',
       toolCallId: row.toolCallId ?? '',
-      state: row.toolState ?? 'output-available',
+      state: (row.toolState ?? 'output-available') as 'output-available',
       input: row.toolInput,
       output: row.toolOutput,
     } as Part;
   }
-  return { type: 'text', text: '' } as Part;
+  return { type: 'text', text: '', state: 'done' } as Part;
 }
 
 export async function getLatestChatThread(
@@ -147,14 +152,13 @@ export async function getLatestChatThread(
 
   const partsByMessage = Map.groupBy(partRows, (r) => r.messageId);
 
-  const messages = messageRows.flatMap<MilkpodMessage>((row) => {
-    if (!isMessageRole(row.role)) return [];
-    return {
+  const messages: MilkpodMessage[] = messageRows
+    .filter((row) => isMessageRole(row.role))
+    .map((row) => ({
       id: row.id,
-      role: row.role,
+      role: row.role as MessageRole,
       parts: (partsByMessage.get(row.id) ?? []).map(deserializePart),
-    };
-  });
+    }));
 
   return { threadId: thread.id, messages };
 }

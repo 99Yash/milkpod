@@ -35,6 +35,7 @@ export interface ToolContext {
 // --- Tool output types ---
 
 export interface RetrieveSegmentsOutput {
+  tool: 'retrieve';
   status: 'searching' | 'found';
   query: string;
   segments: RelevantSegment[];
@@ -50,12 +51,14 @@ export interface ContextSegment {
 }
 
 export interface GetTranscriptContextOutput {
+  tool: 'context';
   status: 'loading' | 'loaded';
   segments: ContextSegment[];
   message: string;
 }
 
 export interface ReadTranscriptOutput {
+  tool: 'read';
   status: 'loading' | 'loaded';
   totalSegments: number;
   segments: ContextSegment[];
@@ -72,6 +75,7 @@ export function isToolOutput(val: unknown): val is ToolOutput {
   if (typeof val !== 'object' || val === null) return false;
   const obj = val as Record<string, unknown>;
   return (
+    (obj.tool === 'retrieve' || obj.tool === 'context' || obj.tool === 'read') &&
     typeof obj.status === 'string' &&
     typeof obj.message === 'string' &&
     Array.isArray(obj.segments)

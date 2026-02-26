@@ -23,8 +23,8 @@ import {
 import { ChatPanel } from '~/components/chat/chat-panel';
 import { TranscriptViewer } from './transcript-viewer';
 import type { AssetWithTranscript, AssetStatus } from '@milkpod/api/types';
-import type { MilkpodMessage } from '@milkpod/ai/types';
 import { isProcessingStatus } from '@milkpod/api/types';
+import type { InitialThread } from '~/components/chat/chat-panel';
 import {
   useAssetEvents,
   type AssetStatusEvent,
@@ -33,7 +33,7 @@ import {
 interface AssetDetailProps {
   assetId: string;
   initialAsset: AssetWithTranscript;
-  initialThread?: { threadId: string; messages: MilkpodMessage[] } | null;
+  initialThread?: InitialThread;
 }
 
 const statusLabels: Record<AssetStatus, string> = {

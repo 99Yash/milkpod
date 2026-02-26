@@ -34,15 +34,13 @@ const transcriptContextInput = z.object({
 // --- Tool Set Factory ---
 
 export function createQAToolSet(context: ToolContext = {}) {
-  const retrieveSegmentsTool = tool<
-    z.infer<typeof retrieveSegmentsInput>,
-    RetrieveSegmentsOutput
-  >({
+  const retrieveSegmentsTool = tool({
     description:
       'Search the transcript for segments relevant to the question. Always use this before answering a question about the video/audio content.',
     inputSchema: retrieveSegmentsInput,
     execute: async function* ({ query }): AsyncGenerator<RetrieveSegmentsOutput> {
       yield {
+        tool: 'retrieve',
         status: 'searching',
         query,
         segments: [],
@@ -56,6 +54,7 @@ export function createQAToolSet(context: ToolContext = {}) {
       });
 
       yield {
+        tool: 'retrieve',
         status: 'found',
         query,
         segments,
@@ -64,10 +63,7 @@ export function createQAToolSet(context: ToolContext = {}) {
     },
   });
 
-  const getTranscriptContextTool = tool<
-    z.infer<typeof transcriptContextInput>,
-    GetTranscriptContextOutput
-  >({
+  const getTranscriptContextTool = tool({
     description:
       'Fetch surrounding transcript segments for a specific timestamp window. Use this to get more context around a known segment.',
     inputSchema: transcriptContextInput,
@@ -78,6 +74,7 @@ export function createQAToolSet(context: ToolContext = {}) {
       windowSeconds,
     }): AsyncGenerator<GetTranscriptContextOutput> {
       yield {
+        tool: 'context',
         status: 'loading',
         segments: [],
         message: 'Loading transcript context...',
@@ -91,6 +88,7 @@ export function createQAToolSet(context: ToolContext = {}) {
       );
 
       yield {
+        tool: 'context',
         status: 'loaded',
         segments,
         message: `Loaded ${segments.length} context segment${segments.length === 1 ? '' : 's'}.`,
@@ -99,15 +97,13 @@ export function createQAToolSet(context: ToolContext = {}) {
   });
 
   const readTranscriptInput = z.object({});
-  const readTranscriptTool = tool<
-    z.infer<typeof readTranscriptInput>,
-    ReadTranscriptOutput
-  >({
+  const readTranscriptTool = tool({
     description:
       'Read a broad overview of the entire transcript. Use this for synthesis tasks like summarizing, listing key points, extracting action items, or identifying themes — any task that requires understanding the full content rather than searching for a specific topic.',
     inputSchema: readTranscriptInput,
     execute: async function* (): AsyncGenerator<ReadTranscriptOutput> {
       yield {
+        tool: 'read',
         status: 'loading',
         totalSegments: 0,
         segments: [],
@@ -116,6 +112,7 @@ export function createQAToolSet(context: ToolContext = {}) {
 
       if (!context.assetId) {
         yield {
+          tool: 'read',
           status: 'loaded',
           totalSegments: 0,
           segments: [],
@@ -128,6 +125,7 @@ export function createQAToolSet(context: ToolContext = {}) {
 
       if (!overview) {
         yield {
+          tool: 'read',
           status: 'loaded',
           totalSegments: 0,
           segments: [],
@@ -137,6 +135,7 @@ export function createQAToolSet(context: ToolContext = {}) {
       }
 
       yield {
+        tool: 'read',
         status: 'loaded',
         totalSegments: overview.totalSegments,
         segments: overview.sampledSegments,
