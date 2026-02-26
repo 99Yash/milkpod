@@ -42,7 +42,7 @@ export const app = new Elysia({ name: 'api' })
 
     return { status: allOk ? 'ok' : 'error', checks };
   })
-  .mount('/api/auth', auth().handler)
+  .mount(auth().handler)
   .use(rateLimiter)
   .use(chat)
   .use(assets)
