@@ -46,7 +46,9 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       }
 
       // Fire-and-forget pipeline
-      orchestratePipeline(asset.id, body.url, userId);
+      orchestratePipeline(asset.id, body.url, userId).catch((err) => {
+        console.error(`Pipeline failed for asset ${asset.id}:`, err);
+      });
 
       return asset;
     },
