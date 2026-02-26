@@ -160,7 +160,7 @@ export function ChapteredView({
         onChapterClick={handleChapterClick}
       />
 
-      <div className="px-3 py-1">
+      <div className="px-5 py-2">
         <Accordion
           type="multiple"
           value={expandedChapters}
@@ -179,15 +179,15 @@ export function ChapteredView({
                 value={chapter.id}
                 data-chapter-id={chapter.id}
                 className={cn(
-                  'group/chapter border-b border-border/40 transition-opacity',
+                  'group/chapter border-b border-border/50 transition-opacity',
                   dimmed && 'opacity-40',
                 )}
               >
-                <AccordionTrigger className="min-w-0 gap-2 py-2.5 hover:no-underline">
+                <AccordionTrigger className="min-w-0 gap-2 py-3 hover:no-underline">
                   <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                     <span
                       className={cn(
-                        'shrink-0 rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground',
+                        'shrink-0 rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground',
                         isActiveChapter && 'bg-foreground/10 text-foreground',
                       )}
                     >
@@ -195,16 +195,16 @@ export function ChapteredView({
                       {formatTime(chapter.endTime)}
                     </span>
                     {searchQuery && matchCount > 0 && (
-                      <span className="shrink-0 rounded-full bg-yellow-200/60 px-1.5 py-0.5 text-[10px] font-medium tabular-nums dark:bg-yellow-500/30">
+                      <span className="shrink-0 rounded-full bg-yellow-200/60 px-1.5 py-0.5 text-[11px] font-medium tabular-nums dark:bg-yellow-500/30">
                         {matchCount}
                       </span>
                     )}
-                    <span className="truncate text-[11px] text-muted-foreground group-data-[state=open]/chapter:hidden">
+                    <span className="truncate text-xs text-muted-foreground group-data-[state=open]/chapter:hidden">
                       {chapter.preview}
                     </span>
                   </div>
                 </AccordionTrigger>
-                <AccordionContent className="pb-1">
+                <AccordionContent className="pb-2">
                   {chapter.groups.map((group) => {
                     const isActive =
                       !!activeSegmentId &&

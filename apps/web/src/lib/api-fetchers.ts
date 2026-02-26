@@ -97,6 +97,25 @@ export async function fetchSharedResource(
 }
 
 // ---------------------------------------------------------------------------
+// Threads
+// ---------------------------------------------------------------------------
+
+// Eden doesn't strip `status()` error branches from the data union, so a cast
+// is needed after the error guard. The actual runtime values are correct.
+export async function fetchLatestThreadForAsset(
+  assetId: string
+): Promise<{ id: string } | null> {
+  const { data, error } = await api.api.threads.get({
+    query: { assetId },
+  });
+  if (error || !data || !Array.isArray(data) || data.length === 0)
+    return null;
+  const thread = data[0];
+  if (!thread || typeof thread !== 'object' || !('id' in thread)) return null;
+  return { id: String(thread.id) };
+}
+
+// ---------------------------------------------------------------------------
 // Chat messages
 // ---------------------------------------------------------------------------
 

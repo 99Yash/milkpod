@@ -22,7 +22,7 @@ export function ChapterProgressBar({
   if (totalDuration <= 0) return null;
 
   return (
-    <div className="flex h-2 w-full shrink-0 gap-px overflow-hidden px-3" role="navigation" aria-label="Chapter navigation">
+    <div className="flex h-2.5 w-full shrink-0 gap-px overflow-hidden px-5" role="navigation" aria-label="Chapter navigation">
       {chapters.map((chapter) => {
         const width =
           ((chapter.endTime - chapter.startTime) / totalDuration) * 100;

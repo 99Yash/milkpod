@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useMemo } from 'react';
 import { useChat, type UseChatHelpers } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { clientEnv } from '@milkpod/env/client';
@@ -47,16 +47,22 @@ export function useMilkpodChat({
     [assetId, collectionId]
   );
 
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: `${SERVER_URL}/api/chat`,
+        credentials: 'include',
+        fetch: customFetch,
+        body,
+      }),
+    [customFetch, body]
+  );
+
   const chat = useChat<MilkpodMessage>({
-    id: threadId,
+    ...(threadId != null && { id: threadId }),
     messages: initialMessages,
     messageMetadataSchema: chatMetadataSchema,
-    transport: new DefaultChatTransport({
-      api: `${SERVER_URL}/api/chat`,
-      credentials: 'include',
-      fetch: customFetch,
-      body,
-    }),
+    transport,
   });
 
   return {
