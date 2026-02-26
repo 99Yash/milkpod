@@ -1,8 +1,8 @@
-import 'dotenv/config';
 import { cors } from '@elysiajs/cors';
 import { node } from '@elysiajs/node';
 import { app, closeConnections } from '@milkpod/api';
 import { serverEnv } from '@milkpod/env/server';
+import 'dotenv/config';
 import { Elysia } from 'elysia';
 
 const server = new Elysia({ adapter: node() })
@@ -20,7 +20,7 @@ const server = new Elysia({ adapter: node() })
     console.log('Server is running on http://localhost:3001');
   });
 
-// Graceful shutdown — drain in-flight requests, then close DB pool
+// Graceful shutdown: drain in-flight requests, then close DB pool
 async function shutdown(signal: string) {
   console.log(`\n${signal} received, shutting down gracefully...`);
 
