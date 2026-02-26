@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { MessageSquareText, SendHorizonal, Sparkles } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
@@ -15,15 +15,15 @@ import {
   fetchLatestThreadForAsset,
 } from '~/lib/api-fetchers';
 
+export type InitialThread =
+  | { status: 'loaded'; threadId: string; messages: MilkpodMessage[] }
+  | { status: 'empty' };
+
 interface ChatPanelProps {
   threadId?: string;
   assetId?: string;
   collectionId?: string;
-  /** Server-fetched thread data. `null` = no thread exists, `undefined` = not fetched server-side. */
-  initialThread?: {
-    threadId: string;
-    messages: MilkpodMessage[];
-  } | null;
+  initialThread?: InitialThread;
 }
 
 const SUGGESTIONS = ['Summarize', 'Key points', 'Action items'] as const;
@@ -31,19 +31,20 @@ const SUGGESTIONS = ['Summarize', 'Key points', 'Action items'] as const;
 function useRestoredThread(
   assetId?: string,
   explicitThreadId?: string,
-  initialThread?: { threadId: string; messages: MilkpodMessage[] } | null,
+  initialThread?: InitialThread,
 ) {
-  const [threadId, setThreadId] = useState<string | undefined>(
-    initialThread?.threadId ?? explicitThreadId
-  );
+  const [threadId, setThreadId] = useState<string | undefined>(() => {
+    if (initialThread?.status === 'loaded') return initialThread.threadId;
+    return explicitThreadId;
+  });
   const [messages, setMessages] = useState<MilkpodMessage[] | undefined>(
-    initialThread?.messages
+    () => (initialThread?.status === 'loaded' ? initialThread.messages : undefined),
   );
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // Server already provided initial data — skip client fetch
-    if (initialThread !== undefined) return;
+    // Server already resolved thread state — skip client fetch
+    if (initialThread) return;
 
     // If an explicit threadId is provided, load messages directly
     if (explicitThreadId) {
@@ -66,13 +67,10 @@ function useRestoredThread(
       .then(async (thread) => {
         if (!thread) return;
         const result = await fetchChatMessages(thread.id);
-        // Set both together so useChat sees the id and messages in the same render
         if (result) setMessages(result.messages);
         setThreadId(thread.id);
       })
-      .catch(() => {
-        // No existing thread — start fresh
-      })
+      .catch(() => toast.error('Failed to restore chat history'))
       .finally(() => setIsLoading(false));
   }, [assetId, explicitThreadId, initialThread]);
 
@@ -115,20 +113,26 @@ export function ChatPanel({
     }
   }, [messages]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed || isLoading) return;
-    setInput('');
-    sendMessage({ text: trimmed });
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
       e.preventDefault();
-      handleSubmit(e);
-    }
-  };
+      const trimmed = input.trim();
+      if (!trimmed || isLoading) return;
+      setInput('');
+      sendMessage({ text: trimmed });
+    },
+    [input, isLoading, sendMessage],
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit(e);
+      }
+    },
+    [handleSubmit],
+  );
 
   if (isLoadingHistory) {
     return (

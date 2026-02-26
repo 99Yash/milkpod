@@ -57,8 +57,7 @@ export function FlatView({
         behavior: 'smooth',
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSegmentId]);
+  }, [activeSegmentId, activeGroupIndex, virtualizer]);
 
   // Scroll to active search match via virtualizer
   const activeMatchRowIndex = useMemo(() => {
@@ -75,8 +74,7 @@ export function FlatView({
         behavior: 'smooth',
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMatchGroupId]);
+  }, [activeMatchGroupId, activeMatchRowIndex, virtualizer]);
 
   if (filteredGroups.length === 0 && searchQuery) {
     return (
