@@ -21,7 +21,7 @@ type CaptionTrack = {
 const VIDEO_ID_RE =
   /(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
 
-const CAPTION_RE = /<p t="(\d+)" d="(\d+)">([\s\S]*?)<\/p>/g;
+const CAPTION_RE = /<p t="(\d+)" d="(\d+)"[^>]*>([\s\S]*?)<\/p>/g;
 
 const INNERTUBE_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
 const ANDROID_USER_AGENT =
@@ -40,7 +40,9 @@ export async function resolveYouTubeMetadata(
   const id = extractVideoId(url);
 
   const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-  const response = await fetch(oembedUrl);
+  const response = await fetch(oembedUrl, {
+    signal: AbortSignal.timeout(15_000),
+  });
 
   if (!response.ok) {
     throw new Error(`YouTube oEmbed failed (${response.status})`);
@@ -86,6 +88,7 @@ async function fetchCaptionTracks(videoId: string): Promise<CaptionTrack[]> {
         },
         videoId,
       }),
+      signal: AbortSignal.timeout(30_000),
     }
   );
 
@@ -129,10 +132,12 @@ function parseTimedTextXml(xml: string): CaptionItem[] {
   let match: RegExpExecArray | null;
 
   while ((match = CAPTION_RE.exec(xml)) !== null) {
+    const text = match[3]!.replace(/<[^>]+>/g, '').trim();
+    if (!text) continue;
     items.push({
       offset: Number(match[1]),
       duration: Number(match[2]),
-      text: match[3]!,
+      text,
     });
   }
 
@@ -148,6 +153,7 @@ export async function fetchYouTubeTranscript(
 
   const res = await fetch(track.baseUrl, {
     headers: { 'User-Agent': ANDROID_USER_AGENT },
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {

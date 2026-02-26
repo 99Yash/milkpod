@@ -112,7 +112,9 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     await IngestService.resetForRetry(asset.id);
 
     // Fire-and-forget pipeline retry
-    orchestratePipeline(asset.id, asset.sourceUrl, user.id);
+    orchestratePipeline(asset.id, asset.sourceUrl, user.id).catch((err) => {
+      console.error(`Pipeline failed for asset ${asset.id}:`, err);
+    });
 
     return { message: 'Retry started' };
   }, { auth: true });
