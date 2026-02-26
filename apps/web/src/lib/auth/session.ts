@@ -4,7 +4,10 @@ import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { route } from '~/lib/routes';
 
-export type SessionSnapshot = Awaited<ReturnType<typeof auth.api.getSession>>;
+type AuthInstance = ReturnType<typeof auth>;
+export type SessionSnapshot = Awaited<
+  ReturnType<AuthInstance['api']['getSession']>
+>;
 
 type AuthenticatedSession = NonNullable<SessionSnapshot> & {
   user: NonNullable<NonNullable<SessionSnapshot>['user']>;
@@ -13,7 +16,7 @@ type AuthenticatedSession = NonNullable<SessionSnapshot> & {
 export const getServerSession = cache(async () => {
   try {
     const requestHeaders = await headers();
-    const session = await auth.api.getSession({ headers: requestHeaders });
+    const session = await auth().api.getSession({ headers: requestHeaders });
     return session ?? null;
   } catch {
     return null;
