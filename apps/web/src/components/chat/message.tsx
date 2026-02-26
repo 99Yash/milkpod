@@ -39,6 +39,7 @@ function ReasoningBlock({ text }: { text: string }) {
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const fallbackOutput: RetrieveSegmentsOutput = {
+    tool: 'retrieve',
     status: 'searching',
     query: '',
     segments: [],

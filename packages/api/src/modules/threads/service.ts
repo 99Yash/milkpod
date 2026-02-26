@@ -1,6 +1,6 @@
 import { db } from '@milkpod/db';
 import { qaThreads, qaMessages } from '@milkpod/db/schemas';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import type { ThreadModel } from './model';
 
 export abstract class ThreadService {
@@ -23,6 +23,18 @@ export abstract class ThreadService {
       .from(qaThreads)
       .where(eq(qaThreads.userId, userId))
       .orderBy(qaThreads.createdAt);
+  }
+
+  static async getLatestForAsset(assetId: string, userId: string) {
+    const [thread] = await db()
+      .select()
+      .from(qaThreads)
+      .where(
+        and(eq(qaThreads.assetId, assetId), eq(qaThreads.userId, userId))
+      )
+      .orderBy(desc(qaThreads.createdAt))
+      .limit(1);
+    return thread ?? null;
   }
 
   static async getById(id: string, userId: string) {

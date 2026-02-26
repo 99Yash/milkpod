@@ -1,4 +1,4 @@
-import { and, cosineDistance, desc, eq, gt, ne, sql } from 'drizzle-orm';
+import { and, asc, cosineDistance, count, desc, eq, gt, ne, sql } from 'drizzle-orm';
 import { db } from '@milkpod/db';
 import {
   embeddings,
@@ -90,6 +90,84 @@ export async function findRelevantSegments(
   }
 
   return results;
+}
+
+export interface TranscriptOverview {
+  transcriptId: string;
+  totalSegments: number;
+  sampledSegments: {
+    id: string;
+    text: string;
+    startTime: number;
+    endTime: number;
+    speaker: string | null;
+  }[];
+}
+
+/**
+ * Returns an evenly-sampled overview of the full transcript.
+ * Used for broad tasks like summarization, key points, and action items
+ * where vector search isn't appropriate.
+ */
+export async function getTranscriptOverview(
+  assetId: string,
+  maxSegments = 60
+): Promise<TranscriptOverview | null> {
+  // Find the transcript for this asset
+  const [transcript] = await db()
+    .select({ id: transcripts.id })
+    .from(transcripts)
+    .where(eq(transcripts.assetId, assetId))
+    .limit(1);
+
+  if (!transcript) return null;
+
+  // Get total count
+  const countResult = await db()
+    .select({ total: count() })
+    .from(transcriptSegments)
+    .where(eq(transcriptSegments.transcriptId, transcript.id));
+
+  const total = countResult[0]?.total ?? 0;
+  if (total === 0) return null;
+
+  // If total is within budget, return all segments
+  if (total <= maxSegments) {
+    const segments = await db()
+      .select({
+        id: transcriptSegments.id,
+        text: transcriptSegments.text,
+        startTime: transcriptSegments.startTime,
+        endTime: transcriptSegments.endTime,
+        speaker: transcriptSegments.speaker,
+      })
+      .from(transcriptSegments)
+      .where(eq(transcriptSegments.transcriptId, transcript.id))
+      .orderBy(asc(transcriptSegments.startTime));
+
+    return { transcriptId: transcript.id, totalSegments: total, sampledSegments: segments };
+  }
+
+  // Evenly sample using modular arithmetic on segment_index
+  const step = Math.floor(total / maxSegments);
+  const segments = await db()
+    .select({
+      id: transcriptSegments.id,
+      text: transcriptSegments.text,
+      startTime: transcriptSegments.startTime,
+      endTime: transcriptSegments.endTime,
+      speaker: transcriptSegments.speaker,
+    })
+    .from(transcriptSegments)
+    .where(
+      and(
+        eq(transcriptSegments.transcriptId, transcript.id),
+        sql`${transcriptSegments.segmentIndex} % ${step} = 0`
+      )
+    )
+    .orderBy(asc(transcriptSegments.startTime));
+
+  return { transcriptId: transcript.id, totalSegments: total, sampledSegments: segments };
 }
 
 export async function getTranscriptContext(

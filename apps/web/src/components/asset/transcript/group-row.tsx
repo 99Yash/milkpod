@@ -33,21 +33,21 @@ export function GroupRow({
         scrollToSegment(firstSegment.id);
       }}
       className={cn(
-        'flex w-full min-w-0 gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted/50',
-        isActive && 'bg-muted/60 ring-1 ring-border/60',
+        'flex w-full min-w-0 gap-4 rounded-xl border border-transparent px-3 py-3 text-left transition-colors hover:border-border/40 hover:bg-muted/40',
+        isActive && 'bg-muted/60 border-border/70 ring-1 ring-border/40',
       )}
     >
-      <span className="flex w-20 shrink-0 flex-col gap-0.5 pt-0.5">
-        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+      <span className="flex w-24 shrink-0 flex-col gap-1 pt-0.5">
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {formatTime(group.startTime)}
         </span>
         {group.speaker && (
-          <span className="truncate text-[11px] font-medium text-muted-foreground/80">
+          <span className="truncate text-xs font-medium text-muted-foreground/80">
             {group.speaker}
           </span>
         )}
       </span>
-      <p className="min-w-0 flex-1 break-words text-[13px] leading-relaxed text-foreground">
+      <p className="min-w-0 flex-1 break-words text-sm leading-6 text-foreground">
         {searchQuery ? (
           <HighlightedText
             text={group.text}

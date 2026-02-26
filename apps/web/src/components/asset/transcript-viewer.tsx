@@ -83,14 +83,14 @@ export function TranscriptViewer({
   }, []);
 
   useEffect(() => {
-    if (activeSegmentId) {
+    if (activeSegmentId && viewMode !== 'flat') {
       scrollToSegment(activeSegmentId);
     }
-  }, [activeSegmentId, scrollToSegment]);
+  }, [activeSegmentId, scrollToSegment, viewMode]);
 
-  // Scroll to active match when it changes
+  // Scroll to active match when it changes (chaptered view only; FlatView handles its own)
   useEffect(() => {
-    if (matches.length === 0) return;
+    if (matches.length === 0 || viewMode === 'flat') return;
 
     const timer = setTimeout(() => {
       const el = containerRef.current?.querySelector(
@@ -99,7 +99,7 @@ export function TranscriptViewer({
       el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, SCROLL_TO_MATCH_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [activeMatchIndex, matches.length]);
+  }, [activeMatchIndex, matches.length, viewMode]);
 
   const handleNextMatch = useCallback(() => {
     if (matches.length === 0) return;
@@ -150,19 +150,19 @@ export function TranscriptViewer({
             scrollToSegment={scrollToSegment}
           />
         ) : (
-          <div className="px-3 py-1">
-            <FlatView
-              groups={groups}
-              activeSegmentId={activeSegmentId}
-              searchQuery={debouncedSearch || undefined}
-              matchOffsets={matchOffsets}
-              activeMatchGlobalIndex={
-                matches.length > 0 ? activeMatchIndex : undefined
-              }
-              onSegmentClick={onSegmentClick}
-              scrollToSegment={scrollToSegment}
-            />
-          </div>
+          <FlatView
+            groups={groups}
+            activeSegmentId={activeSegmentId}
+            searchQuery={debouncedSearch || undefined}
+            matchOffsets={matchOffsets}
+            activeMatchGlobalIndex={
+              matches.length > 0 ? activeMatchIndex : undefined
+            }
+            activeMatchGroupId={activeMatchGroupId ?? undefined}
+            onSegmentClick={onSegmentClick}
+            scrollToSegment={scrollToSegment}
+            scrollContainerRef={containerRef}
+          />
         )}
       </div>
     </div>

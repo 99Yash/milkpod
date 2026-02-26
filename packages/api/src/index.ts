@@ -1,7 +1,7 @@
 import { auth } from '@milkpod/auth';
 import { db } from '@milkpod/db';
-import { sql } from 'drizzle-orm';
 export { closeConnections } from '@milkpod/db';
+import { sql } from 'drizzle-orm';
 import { Elysia } from 'elysia';
 import { requestLogger } from './middleware/logger';
 import { rateLimiter } from './middleware/rate-limit';
@@ -42,19 +42,7 @@ export const app = new Elysia({ name: 'api' })
 
     return { status: allOk ? 'ok' : 'error', checks };
   })
-  .all('/api/auth/*', ({ request, set }) => {
-    if (request.method === 'GET' || request.method === 'POST') {
-      return auth.handler(request);
-    }
-
-    if (request.method === 'OPTIONS') {
-      set.status = 204;
-      return null;
-    }
-
-    set.status = 405;
-    return 'Method Not Allowed';
-  })
+  .mount('/api/auth', auth().handler)
   .use(rateLimiter)
   .use(chat)
   .use(assets)

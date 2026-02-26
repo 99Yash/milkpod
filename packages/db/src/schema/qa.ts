@@ -5,20 +5,24 @@ import { collections } from './collections';
 import { mediaAssets } from './media-assets';
 import { transcriptSegments } from './transcript-segments';
 
-export const qaThreads = pgTable('qa_thread', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => createId('thrd')),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  assetId: text('asset_id')
-    .references(() => mediaAssets.id, { onDelete: 'set null' }),
-  collectionId: text('collection_id')
-    .references(() => collections.id, { onDelete: 'set null' }),
-  title: text('title'),
-  ...lifecycle_dates,
-});
+export const qaThreads = pgTable(
+  'qa_thread',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId('thrd')),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    assetId: text('asset_id')
+      .references(() => mediaAssets.id, { onDelete: 'set null' }),
+    collectionId: text('collection_id')
+      .references(() => collections.id, { onDelete: 'set null' }),
+    title: text('title'),
+    ...lifecycle_dates,
+  },
+  (t) => [index('qa_thread_asset_user_idx').on(t.assetId, t.userId)],
+);
 
 export const qaMessages = pgTable(
   'qa_message',

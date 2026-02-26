@@ -18,7 +18,7 @@ export interface ChatRequest {
   threadId?: string;
   assetId?: string;
   collectionId?: string;
-  onFinish?: (params: { messages: MilkpodMessage[] }) => Promise<void>;
+  onFinish?: (params: { messages: MilkpodMessage[]; responseMessage: MilkpodMessage }) => Promise<void>;
   headers?: Record<string, string>;
 }
 
