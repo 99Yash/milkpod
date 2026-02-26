@@ -38,14 +38,21 @@ export abstract class IngestService {
   }
 
   static async resetForRetry(assetId: string) {
-    await db()
-      .update(mediaAssets)
-      .set({
-        status: 'queued',
-        lastError: null,
-        attempts: 0,
-      })
-      .where(eq(mediaAssets.id, assetId));
+    await db().transaction(async (tx) => {
+      // Delete old transcripts (segments + embeddings cascade via FK)
+      await tx
+        .delete(transcripts)
+        .where(eq(transcripts.assetId, assetId));
+
+      await tx
+        .update(mediaAssets)
+        .set({
+          status: 'queued',
+          lastError: null,
+          attempts: 0,
+        })
+        .where(eq(mediaAssets.id, assetId));
+    });
   }
 
   static async storeTranscript(

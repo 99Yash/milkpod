@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { isToolOrDynamicToolUIPart } from 'ai';
 import { ChevronDown } from 'lucide-react';
+import { Streamdown } from 'streamdown';
 import { isToolOutput } from '@milkpod/ai/types';
 import type { MilkpodMessage, RetrieveSegmentsOutput } from '@milkpod/ai/types';
 import { cn } from '~/lib/utils';
@@ -11,6 +12,7 @@ import { ToolResult } from './tool-result';
 
 interface ChatMessageProps {
   message: MilkpodMessage;
+  isStreaming?: boolean;
 }
 
 function ReasoningBlock({ text }: { text: string }) {
@@ -36,7 +38,7 @@ function ReasoningBlock({ text }: { text: string }) {
   );
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const fallbackOutput: RetrieveSegmentsOutput = {
     tool: 'retrieve',
@@ -63,9 +65,13 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
           if (part.type === 'text') {
             return (
-              <div key={i} className="whitespace-pre-wrap text-sm leading-relaxed">
+              <Streamdown
+                key={i}
+                isAnimating={isStreaming}
+                className="text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+              >
                 {part.text}
-              </div>
+              </Streamdown>
             );
           }
 
