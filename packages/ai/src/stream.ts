@@ -32,7 +32,7 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
   try {
     validatedMessages = await validateUIMessages<MilkpodMessage>({
       messages: req.messages,
-      metadataSchema: chatMetadataSchema,
+      metadataSchema: chatMetadataSchema.optional(),
       tools,
     });
   } catch (error) {
