@@ -13,6 +13,7 @@ import {
 } from '~/components/dashboard/dashboard-panel';
 import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
+import { toast } from 'sonner';
 import type { Asset, AssetStatus } from '@milkpod/api/types';
 import { isProcessingStatus } from '@milkpod/api/types';
 import { AddToCollectionDialog } from './add-to-collection-dialog';
@@ -95,7 +96,15 @@ export function AssetCard({
     e.stopPropagation();
     setRetrying(true);
     try {
-      await api.api.assets({ id: asset.id }).retry.post();
+      const { error } = await api.api.assets({ id: asset.id }).retry.post();
+      if (error) {
+        const msg =
+          typeof error === 'object' && error !== null && 'message' in error
+            ? String((error as { message: string }).message)
+            : 'Retry failed';
+        toast.error(msg);
+        return;
+      }
       onRetry?.();
     } finally {
       setRetrying(false);

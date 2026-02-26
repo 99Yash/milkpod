@@ -174,8 +174,16 @@ export function ChatPanel({
           </div>
         ) : (
           <div className="space-y-1 py-4">
-            {messages.map((message) => (
-              <ChatMessage key={message.id} message={message} />
+            {messages.map((message, i) => (
+              <ChatMessage
+                key={message.id}
+                message={message}
+                isStreaming={
+                  isLoading &&
+                  message.role === 'assistant' &&
+                  i === messages.length - 1
+                }
+              />
             ))}
             {isLoading && messages.at(-1)?.role !== 'assistant' && (
               <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
