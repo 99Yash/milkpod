@@ -1,8 +1,8 @@
+import 'dotenv/config';
 import { cors } from '@elysiajs/cors';
 import { node } from '@elysiajs/node';
 import { app, closeConnections } from '@milkpod/api';
 import { serverEnv } from '@milkpod/env/server';
-import 'dotenv/config';
 import { Elysia } from 'elysia';
 
 const server = new Elysia({ adapter: node() })
