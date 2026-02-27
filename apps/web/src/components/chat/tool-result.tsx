@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { ToolOutput } from '@milkpod/ai/types';
-import { Badge } from '~/components/ui/badge';
 import { Spinner } from '~/components/ui/spinner';
 import { cn } from '~/lib/utils';
 import { formatTime } from '~/lib/format';
@@ -50,32 +49,21 @@ export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
       </div>
 
       {visibleSegments.length > 0 && (
-        <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto">
-          {visibleSegments.map((segment) => {
-            const segmentKey = segment.id;
-
-            return (
-              <div
-                key={segmentKey}
-                className={cn(
-                  'flex gap-2 rounded-md border bg-background p-2 text-sm',
-                  isStreaming && 'animate-pulse'
-                )}
-              >
-                <Badge variant="secondary" className="shrink-0 font-mono text-xs">
-                  {formatTime(segment.startTime)}
-                </Badge>
-                {segment.speaker && (
-                  <span className="shrink-0 font-medium text-xs text-muted-foreground">
-                    {segment.speaker}:
-                  </span>
-                )}
-                <p className="line-clamp-2 text-muted-foreground">
-                  {segment.text}
-                </p>
-              </div>
-            );
-          })}
+        <div className="mt-1.5 max-h-48 space-y-0.5 overflow-y-auto text-xs text-muted-foreground">
+          {visibleSegments.map((segment) => (
+            <div
+              key={segment.id}
+              className={cn(
+                'flex gap-2 py-0.5',
+                isStreaming && 'animate-pulse'
+              )}
+            >
+              <span className="shrink-0 font-mono tabular-nums">
+                {formatTime(segment.startTime)}
+              </span>
+              <span className="line-clamp-1">{segment.text}</span>
+            </div>
+          ))}
         </div>
       )}
 
