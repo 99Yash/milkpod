@@ -28,18 +28,15 @@ export function GroupRow({
 }: GroupRowProps) {
   const firstSegment = group.segments[0];
 
-  // For server matches, build an expanded regex (e.g. "level 3" → /level|3|three/gi)
-  const highlightRegex = useMemo(
-    () => (isServerMatch && searchQuery ? buildHighlightRegex(searchQuery) : null),
-    [isServerMatch, searchQuery]
-  );
+  const highlightRegex = useMemo(() => {
+    if (!searchQuery) return null;
+    if (isServerMatch) return buildHighlightRegex(searchQuery);
+    const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(${escaped})`, 'gi');
+  }, [isServerMatch, searchQuery]);
 
-  // Determine which regex to use for highlighting
-  const hasHighlight = isServerMatch
-    ? highlightRegex !== null && highlightRegex.test(group.text)
-    : !!searchQuery && group.text.toLowerCase().includes(searchQuery.toLowerCase());
+  const hasHighlight = highlightRegex !== null && highlightRegex.test(group.text);
 
-  // Reset lastIndex after .test()
   if (highlightRegex) highlightRegex.lastIndex = 0;
 
   return (
@@ -71,17 +68,10 @@ export function GroupRow({
         )}
       </span>
       <p className="min-w-0 flex-1 break-words text-sm leading-6 text-foreground">
-        {hasHighlight ? (
+        {hasHighlight && highlightRegex ? (
           <HighlightedText
             text={group.text}
-            regex={
-              isServerMatch && highlightRegex
-                ? highlightRegex
-                : new RegExp(
-                    `(${searchQuery!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`,
-                    'gi'
-                  )
-            }
+            regex={highlightRegex}
             globalOffset={matchGlobalOffset ?? 0}
             activeGlobalIndex={activeMatchGlobalIndex}
           />

@@ -35,18 +35,6 @@ export abstract class ThreadService {
       .orderBy(desc(qaThreads.createdAt));
   }
 
-  static async getLatestForAsset(assetId: string, userId: string) {
-    const [thread] = await db()
-      .select()
-      .from(qaThreads)
-      .where(
-        and(eq(qaThreads.assetId, assetId), eq(qaThreads.userId, userId))
-      )
-      .orderBy(desc(qaThreads.createdAt))
-      .limit(1);
-    return thread ?? null;
-  }
-
   static async getById(id: string, userId: string) {
     const [thread] = await db()
       .select()

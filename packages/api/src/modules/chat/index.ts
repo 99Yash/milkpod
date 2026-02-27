@@ -41,12 +41,14 @@ export const chat = new Elysia({ prefix: '/api/chat' })
 
       // Auto-create thread if none provided
       let threadId = body.threadId;
+      let isNewThread = false;
       if (!threadId) {
         const thread = await ThreadService.create(userId, {
           assetId: body.assetId,
           collectionId: body.collectionId,
         });
         threadId = thread!.id;
+        isNewThread = true;
       }
 
       // Save the incoming user message (last in the array)
@@ -55,10 +57,11 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         await ChatService.saveMessages(threadId, [lastMessage]);
 
         // Auto-title untitled threads from the first user message
-        const thread = await ThreadService.getById(threadId, userId);
-        if (thread && !thread.title) {
+        const needsTitle = isNewThread
+          || !(await ThreadService.getById(threadId, userId))?.title;
+        if (needsTitle) {
           const textPart = lastMessage.parts?.find(
-            (p: { type: string }) => p.type === 'text',
+            (p) => p.type === 'text',
           );
           if (textPart && 'text' in textPart && typeof textPart.text === 'string') {
             const title =

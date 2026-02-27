@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
+import NumberFlow from '@number-flow/react';
 import type { ToolOutput } from '@milkpod/ai/types';
-import { Badge } from '~/components/ui/badge';
 import { Spinner } from '~/components/ui/spinner';
 import { cn } from '~/lib/utils';
 import { formatTime } from '~/lib/format';
@@ -14,87 +14,80 @@ interface ToolResultProps {
   isStreaming: boolean;
 }
 
-const COLLAPSE_THRESHOLD = 6;
+function getLabel(output: ToolOutput) {
+  switch (output.tool) {
+    case 'retrieve':
+      return output.status === 'searching'
+        ? { prefix: 'Searching', count: 0, suffix: '' }
+        : { prefix: 'Found', count: output.segments.length, suffix: 'relevant segments' };
+    case 'context':
+      return output.status === 'loading'
+        ? { prefix: 'Loading context', count: 0, suffix: '' }
+        : { prefix: 'Loaded', count: output.segments.length, suffix: 'context segments' };
+    case 'read':
+      return output.status === 'loading'
+        ? { prefix: 'Reading transcript', count: 0, suffix: '' }
+        : { prefix: 'Loaded', count: output.segments.length, suffix: `of ${output.totalSegments} segments` };
+  }
+}
 
 export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
-  const isSearching =
+  const isLoading =
     output.status === 'searching' || output.status === 'loading';
   const [expanded, setExpanded] = useState(false);
+  const label = getLabel(output);
 
   const segments = output.tool === 'retrieve'
     ? output.segments.map((s) => ({ id: s.segmentId, text: s.text, startTime: s.startTime, endTime: s.endTime, speaker: s.speaker }))
     : output.segments;
 
-  const shouldCollapse = segments.length > COLLAPSE_THRESHOLD;
-  const visibleSegments =
-    shouldCollapse && !expanded
-      ? segments.slice(0, COLLAPSE_THRESHOLD)
-      : segments;
-
   return (
-    <div className="my-2 rounded-lg border bg-muted/30 p-3">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        {isSearching || isStreaming ? (
-          <Spinner className="size-3.5" />
-        ) : (
-          <svg
-            className="size-3.5"
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path d="M11.5 7a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Zm-.82 4.74a6 6 0 1 1 1.06-1.06l3.04 3.04a.75.75 0 1 1-1.06 1.06l-3.04-3.04Z" />
-          </svg>
+    <div className="my-1">
+      <button
+        type="button"
+        onClick={() => segments.length > 0 && setExpanded((v) => !v)}
+        className={cn(
+          'flex items-center gap-1.5 text-xs text-muted-foreground transition-colors',
+          segments.length > 0 && 'cursor-pointer hover:text-foreground'
         )}
-        <span>{output.message}</span>
-      </div>
-
-      {visibleSegments.length > 0 && (
-        <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto">
-          {visibleSegments.map((segment) => {
-            const segmentKey = segment.id;
-
-            return (
-              <div
-                key={segmentKey}
-                className={cn(
-                  'flex gap-2 rounded-md border bg-background p-2 text-sm',
-                  isStreaming && 'animate-pulse'
-                )}
-              >
-                <Badge variant="secondary" className="shrink-0 font-mono text-xs">
-                  {formatTime(segment.startTime)}
-                </Badge>
-                {segment.speaker && (
-                  <span className="shrink-0 font-medium text-xs text-muted-foreground">
-                    {segment.speaker}:
-                  </span>
-                )}
-                <p className="line-clamp-2 text-muted-foreground">
-                  {segment.text}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {shouldCollapse && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ChevronDown
+      >
+        {isLoading || isStreaming ? (
+          <Spinner className="size-3" />
+        ) : (
+          <ChevronRight
             className={cn(
-              'size-3 transition-transform',
-              expanded && 'rotate-180'
+              'size-3 transition-transform duration-200',
+              expanded && 'rotate-90'
             )}
           />
-          {expanded
-            ? 'Show less'
-            : `Show ${segments.length - COLLAPSE_THRESHOLD} more`}
-        </button>
+        )}
+        <span>
+          {label.prefix}
+          {label.count > 0 && (
+            <>
+              {' '}
+              <NumberFlow value={label.count} trend={1} />
+              {' '}
+            </>
+          )}
+          {label.suffix}
+        </span>
+      </button>
+
+      {expanded && segments.length > 0 && (
+        <div className="ml-4.5 mt-1 max-h-48 space-y-0.5 overflow-y-auto text-xs text-muted-foreground">
+          {segments.map((segment) => (
+            <div
+              key={segment.id}
+              className="flex gap-2 py-0.5"
+            >
+              <span className="shrink-0 font-mono tabular-nums">
+                {formatTime(segment.startTime)}
+              </span>
+              <span className="line-clamp-1">{segment.text}</span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

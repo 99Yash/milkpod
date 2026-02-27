@@ -1,41 +1,15 @@
 'use client';
 
-import { useState } from 'react';
 import { isToolOrDynamicToolUIPart } from 'ai';
-import { ChevronDown } from 'lucide-react';
 import { Streamdown } from 'streamdown';
 import { isToolOutput } from '@milkpod/ai/types';
 import type { MilkpodMessage, RetrieveSegmentsOutput } from '@milkpod/ai/types';
 import { cn } from '~/lib/utils';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible';
 import { ToolResult } from './tool-result';
 
 interface ChatMessageProps {
   message: MilkpodMessage;
   isStreaming?: boolean;
-}
-
-function ReasoningBlock({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
-        <ChevronDown
-          className={cn(
-            'size-3 transition-transform duration-200',
-            !open && '-rotate-90'
-          )}
-        />
-        Thinking
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <pre className="mt-1.5 whitespace-pre-wrap text-xs text-muted-foreground leading-relaxed">
-          {text}
-        </pre>
-      </CollapsibleContent>
-    </Collapsible>
-  );
 }
 
 export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
@@ -59,9 +33,7 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
         )}
       >
         {message.parts.map((part, i) => {
-          if (part.type === 'reasoning') {
-            return <ReasoningBlock key={i} text={part.text} />;
-          }
+          if (part.type === 'reasoning') return null;
 
           if (part.type === 'text') {
             return (
