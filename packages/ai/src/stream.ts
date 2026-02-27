@@ -4,6 +4,7 @@ import {
   stepCountIs,
   validateUIMessages,
   RetryError,
+  generateId,
 } from 'ai';
 import type { MilkpodMessage } from './types';
 import { chatModel } from './provider';
@@ -13,13 +14,63 @@ import { chatMetadataSchema } from './schemas';
 import { AIError } from './errors';
 import { checkInput, createRefusalResponse } from './guardrails';
 
+type MessagePart = MilkpodMessage['parts'][number];
+
 export interface ChatRequest {
   messages: MilkpodMessage[];
   threadId?: string;
   assetId?: string;
   collectionId?: string;
-  onFinish?: (params: { messages: MilkpodMessage[]; responseMessage: MilkpodMessage }) => Promise<void>;
+  onFinish?: (params: { responseMessage: MilkpodMessage }) => Promise<void>;
   headers?: Record<string, string>;
+}
+
+/**
+ * Reconstruct a persistable UIMessage from streamText step results.
+ *
+ * toUIMessageStreamResponse's onFinish relies on the client fully consuming
+ * the stream (TransformStream flush), which doesn't fire reliably with
+ * @elysiajs/node. streamText's onFinish fires server-side regardless.
+ */
+type StepContent = {
+  type: string;
+  text?: string;
+  toolCallId?: string;
+  toolName?: string;
+  input?: unknown;
+  output?: unknown;
+};
+
+function buildResponseMessage(steps: readonly { content: readonly StepContent[] }[]): MilkpodMessage {
+  const parts: MessagePart[] = [];
+
+  for (const step of steps) {
+    parts.push({ type: 'step-start' } as MessagePart);
+
+    for (const content of step.content) {
+      if (content.type === 'text' && content.text) {
+        parts.push({ type: 'text', text: content.text } as MessagePart);
+      } else if (content.type === 'reasoning') {
+        parts.push({ type: 'reasoning', text: content.text } as MessagePart);
+      } else if (content.type === 'tool-call') {
+        const toolResult = step.content.find(
+          (c) => c.type === 'tool-result' && 'toolCallId' in c && c.toolCallId === content.toolCallId,
+        );
+        // Type assertion required: building a static tool UI part from model-level
+        // content. The discriminated union can't be satisfied from a dynamic `type`.
+        parts.push({
+          type: `tool-${content.toolName}`,
+          toolCallId: content.toolCallId,
+          toolName: content.toolName,
+          state: 'output-available',
+          input: content.input,
+          output: toolResult && 'output' in toolResult ? toolResult.output : undefined,
+        } as unknown as MessagePart);
+      }
+    }
+  }
+
+  return { id: generateId(), role: 'assistant', parts };
 }
 
 export async function createChatStream(req: ChatRequest): Promise<Response> {
@@ -60,13 +111,16 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
     onError: (error) => {
       console.error('[AI Stream Error]', error);
     },
+    onFinish: async ({ steps }) => {
+      if (!req.onFinish) return;
+      await req.onFinish({ responseMessage: buildResponseMessage(steps) });
+    },
   });
 
   return result.toUIMessageStreamResponse<MilkpodMessage>({
     headers: req.headers,
     sendReasoning: true,
     originalMessages: validatedMessages,
-    onFinish: req.onFinish,
     messageMetadata: ({ part }) => {
       if (part.type !== 'finish') return undefined;
 
