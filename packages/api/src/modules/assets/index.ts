@@ -91,16 +91,17 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     async ({ params, query, user }) => {
       const asset = await AssetService.getById(params.id, user.id);
       if (!asset) return status(404, { message: 'Asset not found' });
+      const limit = query.limit ? Math.min(Math.max(Number(query.limit) || 50, 1), 100) : undefined;
       return TranscriptSearchService.search(
         params.id,
         query.q,
-        query.limit ? Number(query.limit) : undefined
+        limit
       );
     },
     {
       auth: true,
       query: t.Object({
-        q: t.String(),
+        q: t.String({ minLength: 1 }),
         limit: t.Optional(t.String()),
       }),
     }

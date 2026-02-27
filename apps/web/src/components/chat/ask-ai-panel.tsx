@@ -11,14 +11,12 @@ import {
   createThread,
   deleteThread,
   fetchThreadsForAsset,
-  fetchChatMessages,
 } from '~/lib/api-fetchers';
 import {
   getLocalStorageItem,
   setLocalStorageItem,
 } from '~/lib/utils';
 import type { InitialThread } from './chat-panel';
-import type { MilkpodMessage } from '@milkpod/ai/types';
 
 interface AskAiPanelProps {
   assetId: string;
@@ -44,8 +42,9 @@ export function AskAiPanel({
     return getLocalStorageItem('THREAD_SIDEBAR_OPEN', true) ?? true;
   });
 
-  // Track the current chat's threadId to detect auto-creation
   const chatThreadIdRef = useRef<string | undefined>(activeThreadId);
+  const threadsRef = useRef(threads);
+  threadsRef.current = threads;
 
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((prev) => {
@@ -76,39 +75,37 @@ export function AskAiPanel({
         toast.error('Failed to delete thread');
         return;
       }
-      setThreads((prev) => {
-        const next = prev.filter((t) => t.id !== threadId);
-        // If we deleted the active thread, switch to next available
-        if (threadId === activeThreadId) {
-          setActiveThreadId(next[0]?.id);
-        }
-        return next;
+      setThreads((prev) => prev.filter((t) => t.id !== threadId));
+      setActiveThreadId((prev) => {
+        if (prev !== threadId) return prev;
+        const remaining = threadsRef.current.filter((t) => t.id !== threadId);
+        return remaining[0]?.id;
       });
     },
-    [activeThreadId],
+    [],
   );
 
-  // Detect when chat auto-creates a thread (threadId transitions from
-  // undefined to a value) and refresh the sidebar list.
   const handleThreadIdChange = useCallback(
     (newThreadId: string | undefined) => {
       if (
         newThreadId &&
         newThreadId !== chatThreadIdRef.current &&
-        !threads.some((t) => t.id === newThreadId)
+        !threadsRef.current.some((t) => t.id === newThreadId)
       ) {
-        // A new thread was auto-created — refresh the list
-        fetchThreadsForAsset(assetId).then((updated) => {
-          setThreads(updated);
-          setActiveThreadId(newThreadId);
-        });
+        fetchThreadsForAsset(assetId)
+          .then((updated) => {
+            setThreads(updated);
+            setActiveThreadId(newThreadId);
+          })
+          .catch(() => {
+            toast.error('Failed to refresh threads');
+          });
       }
       chatThreadIdRef.current = newThreadId;
     },
-    [assetId, threads],
+    [assetId],
   );
 
-  // Build initialThread for the active thread
   const activeInitialThread: InitialThread | undefined =
     activeThreadId && initialThread?.status === 'loaded' && initialThread.threadId === activeThreadId
       ? initialThread
