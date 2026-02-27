@@ -7,4 +7,4 @@ export const EMBEDDING_MODEL_NAME = 'text-embedding-3-small';
 export const EMBEDDING_DIMENSIONS = 1536;
 
 export const embeddingModel: EmbeddingModel =
-  openai.textEmbeddingModel(EMBEDDING_MODEL_NAME);
+  openai.embeddingModel(EMBEDDING_MODEL_NAME);
