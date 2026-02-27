@@ -7,7 +7,7 @@ export type AssetTab = 'transcript' | 'ask-ai';
 
 interface AssetTabBarProps {
   activeTab: AssetTab;
-  onTabChange: (tab: AssetTab) => void;
+  onTabChange: (tab: AssetTab) => void | Promise<URLSearchParams>;
 }
 
 const tabs: { id: AssetTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [

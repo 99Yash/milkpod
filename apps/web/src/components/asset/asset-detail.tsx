@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
+import { useQueryState, parseAsStringLiteral } from 'nuqs';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -51,7 +52,10 @@ export function AssetDetail({ assetId, initialAsset, initialThread, initialThrea
   const [progressMessage, setProgressMessage] = useState<
     string | undefined
   >();
-  const [activeTab, setActiveTab] = useState<AssetTab>('transcript');
+  const [activeTab, setActiveTab] = useQueryState(
+    'tab',
+    parseAsStringLiteral(['transcript', 'ask-ai'] as const).withDefault('transcript'),
+  );
 
   // SSE: update status and progress in real-time
   useAssetEvents(
