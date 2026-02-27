@@ -37,6 +37,15 @@ export function AskAiPanel({
       return threads[0]?.id;
     },
   );
+  // Track the thread ID driving the ChatPanel separately so that
+  // auto-created threads (from sending the first message) don't
+  // remount the panel and kill the in-progress stream.
+  const [panelThreadId, setPanelThreadId] = useState<string | undefined>(
+    () => {
+      if (initialThread?.status === 'loaded') return initialThread.threadId;
+      return threads[0]?.id;
+    },
+  );
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     return getLocalStorageItem('THREAD_SIDEBAR_OPEN', true) ?? true;
@@ -56,6 +65,7 @@ export function AskAiPanel({
 
   const handleSelectThread = useCallback((threadId: string) => {
     setActiveThreadId(threadId);
+    setPanelThreadId(threadId);
   }, []);
 
   const handleNewThread = useCallback(async () => {
@@ -66,6 +76,7 @@ export function AskAiPanel({
     }
     setThreads((prev) => [thread, ...prev]);
     setActiveThreadId(thread.id);
+    setPanelThreadId(thread.id);
   }, [assetId]);
 
   const handleDeleteThread = useCallback(
@@ -76,11 +87,12 @@ export function AskAiPanel({
         return;
       }
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
-      setActiveThreadId((prev) => {
-        if (prev !== threadId) return prev;
+      const fallback = () => {
         const remaining = threadsRef.current.filter((t) => t.id !== threadId);
         return remaining[0]?.id;
-      });
+      };
+      setActiveThreadId((prev) => (prev !== threadId ? prev : fallback()));
+      setPanelThreadId((prev) => (prev !== threadId ? prev : fallback()));
     },
     [],
   );
@@ -107,7 +119,7 @@ export function AskAiPanel({
   );
 
   const activeInitialThread: InitialThread | undefined =
-    activeThreadId && initialThread?.status === 'loaded' && initialThread.threadId === activeThreadId
+    panelThreadId && initialThread?.status === 'loaded' && initialThread.threadId === panelThreadId
       ? initialThread
       : undefined;
 
@@ -124,8 +136,8 @@ export function AskAiPanel({
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <ChatPanel
-          key={activeThreadId ?? '__empty__'}
-          threadId={activeThreadId}
+          key={panelThreadId ?? '__empty__'}
+          threadId={panelThreadId}
           assetId={assetId}
           initialThread={activeInitialThread}
           onThreadIdChange={handleThreadIdChange}
