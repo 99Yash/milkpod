@@ -37,7 +37,7 @@ export { createChatStream } from './stream';
 export type { ChatRequest } from './stream';
 
 // System prompt
-export { buildSystemPrompt, QA_SYSTEM_PROMPT } from './system-prompt';
+export { buildSystemPrompt } from './system-prompt';
 export type { SystemPromptContext } from './system-prompt';
 
 // Schemas
