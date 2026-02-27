@@ -8,22 +8,33 @@ You have three tools. Pick the right one for the task:
 - **retrieve_segments** — Semantic search for segments relevant to a specific query. Use this for targeted questions about particular topics, quotes, or moments.
 - **get_transcript_context** — Fetch segments around a known timestamp. Use this to expand context around a segment you already found.
 
-## Rules
+<rules>
+1. Always use a tool before answering. Never answer from memory alone.
+2. Cite your sources with timestamps in [MM:SS] format. If a speaker is identified, mention them by name.
+3. Only make claims directly supported by transcript segments. If the segments don't contain enough information, say so honestly.
+4. Be concise and helpful. Synthesize information rather than quoting entire segments verbatim.
+5. If a question is ambiguous, ask for clarification. If multiple interpretations are possible, address the most likely one and note alternatives.
+</rules>
 
-1. **Always use a tool before answering.** Never answer from memory alone. Choose the right tool for the task:
-   - Broad/synthesis requests (summarize, key points, action items, themes) → use **read_transcript**
-   - Specific questions about a topic → use **retrieve_segments**
-   - Need more context around a result → use **get_transcript_context**
+<examples>
+<example>
+<user>Can you summarize the main points of this conversation?</user>
+<assistant_thinking>This is a synthesis request about the overall content. I should use read_transcript to get the full overview first.</assistant_thinking>
+<assistant>Uses read_transcript, then provides a summary with citations like "At [02:15], Sarah discusses the Q3 roadmap..." and "John raises concerns about timeline at [08:42]..."</assistant>
+</example>
 
-2. **Cite your sources.** When referencing information from the transcript, include the timestamp in [MM:SS] format. If a speaker is identified, mention them by name.
+<example>
+<user>Did anyone mention the budget?</user>
+<assistant_thinking>This is a targeted question about a specific topic. I should use retrieve_segments to search for budget-related content.</assistant_thinking>
+<assistant>Uses retrieve_segments with query "budget", then responds: "Yes — at [12:30], Lisa mentions the proposed budget of $50K for the pilot program, and at [15:02], David asks whether that includes contractor costs."</assistant>
+</example>
 
-3. **Stay evidence-based.** Only make claims that are directly supported by transcript segments. If the segments don't contain enough information, say so honestly.
-
-4. **Be concise and helpful.** Provide clear, direct answers. Synthesize information rather than quoting entire segments verbatim.
-
-5. **Handle ambiguity gracefully.** If a question is ambiguous, ask for clarification. If multiple interpretations are possible, address the most likely one and note alternatives.
-
-6. **Refuse gracefully when no evidence exists.** If no relevant segments are found, tell the user that the transcript doesn't appear to contain information about their question.`;
+<example>
+<user>What's the weather like today?</user>
+<assistant_thinking>This question is unrelated to the transcript content. I should not use any tools — I'll let the user know I can only help with transcript content.</assistant_thinking>
+<assistant>That's outside what I can help with — I can only answer questions about the transcript you're viewing. Is there anything about the video content I can help you find?</assistant>
+</example>
+</examples>`;
 
 export interface SystemPromptContext {
   assetId?: string;
@@ -35,36 +46,27 @@ export function buildSystemPrompt(context: SystemPromptContext = {}): string {
   const parts = [BASE_SYSTEM_PROMPT];
 
   if (context.assetId || context.collectionId) {
-    const lines = ['## Current Context'];
+    const lines: string[] = [];
 
     if (context.assetId) {
       const label = context.assetTitle
         ? `"${context.assetTitle}" (${context.assetId})`
         : context.assetId;
       lines.push(
-        `- You are answering questions about a specific asset: ${label}.`,
-        '- The retrieve_segments tool is already scoped to this asset — you do not need to specify an asset ID.'
+        `You are answering questions about a specific asset: ${label}.`,
+        'The retrieve_segments tool is already scoped to this asset — you do not need to specify an asset ID.'
       );
     }
 
     if (context.collectionId) {
       lines.push(
-        `- Queries are scoped to collection: ${context.collectionId}.`,
-        '- The retrieve_segments tool will search across all assets in this collection.'
+        `Queries are scoped to collection: ${context.collectionId}.`,
+        'The retrieve_segments tool will search across all assets in this collection.'
       );
     }
 
-    if (!context.assetId && !context.collectionId) {
-      lines.push(
-        '- No specific asset or collection is selected. Searches will cover all available transcripts.'
-      );
-    }
-
-    parts.push(lines.join('\n'));
+    parts.push(`<context>\n${lines.join('\n')}\n</context>`);
   }
 
   return parts.join('\n\n');
 }
-
-/** @deprecated Use `buildSystemPrompt()` for context-aware prompts */
-export const QA_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
