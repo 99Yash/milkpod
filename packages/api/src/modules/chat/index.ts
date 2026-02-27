@@ -62,7 +62,11 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         collectionId: body.collectionId,
         headers: { 'X-Thread-Id': threadId },
         onFinish: async ({ responseMessage }) => {
-          await ChatService.saveMessages(threadId!, [responseMessage]);
+          try {
+            await ChatService.saveMessages(threadId!, [responseMessage]);
+          } catch (err) {
+            console.error(`[chat] Failed to save assistant message for thread ${threadId}:`, err);
+          }
         },
       });
     },
