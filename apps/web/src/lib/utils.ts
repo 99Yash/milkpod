@@ -131,16 +131,17 @@ export function getLocalStorageItem<K extends LocalStorageKey>(
   key: K,
   defaultValue?: LocalStorageValue<K>,
 ): LocalStorageValue<K> | undefined {
+  type V = LocalStorageValue<K>;
   const schema = LOCAL_STORAGE_SCHEMAS[key];
   const serializedValue = localStorage.getItem(key);
 
   if (serializedValue === null) {
     if (defaultValue !== undefined) {
       const defaultResult = schema.safeParse(defaultValue);
-      return defaultResult.success ? defaultResult.data : undefined;
+      return defaultResult.success ? (defaultResult.data as V) : undefined;
     }
     const schemaDefaultResult = schema.safeParse(undefined);
-    return schemaDefaultResult.success ? schemaDefaultResult.data : undefined;
+    return schemaDefaultResult.success ? (schemaDefaultResult.data as V) : undefined;
   }
 
   let parsedValue: unknown;
@@ -153,7 +154,7 @@ export function getLocalStorageItem<K extends LocalStorageKey>(
 
   const validationResult = schema.safeParse(parsedValue);
   if (validationResult.success) {
-    return validationResult.data;
+    return validationResult.data as V;
   }
 
   console.warn(
@@ -163,11 +164,11 @@ export function getLocalStorageItem<K extends LocalStorageKey>(
 
   if (defaultValue !== undefined) {
     const defaultResult = schema.safeParse(defaultValue);
-    return defaultResult.success ? defaultResult.data : undefined;
+    return defaultResult.success ? (defaultResult.data as V) : undefined;
   }
 
   const schemaDefaultResult = schema.safeParse(undefined);
-  return schemaDefaultResult.success ? schemaDefaultResult.data : undefined;
+  return schemaDefaultResult.success ? (schemaDefaultResult.data as V) : undefined;
 }
 
 export function removeLocalStorageItem(key: LocalStorageKey): void {

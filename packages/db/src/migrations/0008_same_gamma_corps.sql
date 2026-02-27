@@ -1,0 +1,1 @@
+CREATE INDEX "transcript_segment_search_idx" ON "transcript_segment" USING gin (to_tsvector('english', "text"));

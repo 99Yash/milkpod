@@ -18,6 +18,7 @@ interface ChapteredViewProps {
   chapters: Chapter[];
   activeSegmentId?: string;
   searchQuery?: string;
+  serverMatchedGroupIds?: Set<string> | null;
   matchOffsets: Map<string, number>;
   activeMatchGlobalIndex?: number;
   activeMatchGroupId?: string;
@@ -70,10 +71,15 @@ function findActiveChapterId(
   return undefined;
 }
 
+function getServerMatchCount(chapter: Chapter, ids: Set<string>): number {
+  return chapter.groups.filter((g) => ids.has(g.segments[0].id)).length;
+}
+
 export function ChapteredView({
   chapters,
   activeSegmentId,
   searchQuery,
+  serverMatchedGroupIds,
   matchOffsets,
   activeMatchGlobalIndex,
   activeMatchGroupId,
@@ -99,7 +105,11 @@ export function ChapteredView({
         wasSearchingRef.current = true;
       }
       const matching = chapters
-        .filter((ch) => getMatchCount(ch, searchQuery) > 0)
+        .filter((ch) =>
+          serverMatchedGroupIds
+            ? getServerMatchCount(ch, serverMatchedGroupIds) > 0
+            : getMatchCount(ch, searchQuery) > 0
+        )
         .map((ch) => ch.id);
       setExpandedChapters(matching);
     } else if (wasSearchingRef.current) {
@@ -109,7 +119,7 @@ export function ChapteredView({
     // Intentionally excludes `expandedChapters` — we only read it to snapshot
     // pre-search state; including it would cause an infinite loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, chapters]);
+  }, [searchQuery, chapters, serverMatchedGroupIds]);
 
   // Active segment tracking: auto-expand its chapter
   useEffect(() => {
@@ -168,7 +178,9 @@ export function ChapteredView({
         >
           {chapters.map((chapter) => {
             const matchCount = searchQuery
-              ? getMatchCount(chapter, searchQuery)
+              ? serverMatchedGroupIds
+                ? getServerMatchCount(chapter, serverMatchedGroupIds)
+                : getMatchCount(chapter, searchQuery)
               : 0;
             const isActiveChapter = chapter.id === activeChapterId;
             const dimmed = searchQuery && matchCount === 0;
@@ -217,6 +229,7 @@ export function ChapteredView({
                         group={group}
                         isActive={isActive}
                         searchQuery={searchQuery}
+                        isServerMatch={serverMatchedGroupIds?.has(group.segments[0].id) ?? false}
                         matchGlobalOffset={matchOffsets.get(
                           group.segments[0].id,
                         )}

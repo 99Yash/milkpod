@@ -49,6 +49,30 @@ export async function fetchAssetDetail(
   return data as AssetWithTranscript;
 }
 
+export interface TranscriptSearchResult {
+  segmentId: string;
+  text: string;
+  startTime: number;
+  endTime: number;
+  speaker: string | null;
+  rank: number;
+  source: 'fts' | 'semantic';
+}
+
+export async function searchTranscript(
+  assetId: string,
+  query: string,
+  limit?: number
+): Promise<TranscriptSearchResult[]> {
+  const { data, error } = await api.api
+    .assets({ id: assetId })
+    .search.get({
+      query: { q: query, ...(limit ? { limit: String(limit) } : {}) },
+    });
+  if (error || !data || !Array.isArray(data)) return [];
+  return data as TranscriptSearchResult[];
+}
+
 // ---------------------------------------------------------------------------
 // Collections
 // ---------------------------------------------------------------------------
@@ -100,19 +124,42 @@ export async function fetchSharedResource(
 // Threads
 // ---------------------------------------------------------------------------
 
+export async function fetchThreadsForAsset(
+  assetId: string
+): Promise<{ id: string; title: string | null; createdAt: string }[]> {
+  const { data, error } = await api.api.threads.get({
+    query: { assetId },
+  });
+  if (error || !data || !Array.isArray(data)) return [];
+  // Eden types createdAt as Date but JSON serialization sends it as string
+  return data as unknown as { id: string; title: string | null; createdAt: string }[];
+}
+
 // Eden doesn't strip `status()` error branches from the data union, so a cast
 // is needed after the error guard. The actual runtime values are correct.
 export async function fetchLatestThreadForAsset(
   assetId: string
 ): Promise<{ id: string } | null> {
-  const { data, error } = await api.api.threads.get({
-    query: { assetId },
-  });
-  if (error || !data || !Array.isArray(data) || data.length === 0)
-    return null;
-  const thread = data[0];
-  if (!thread || typeof thread !== 'object' || !('id' in thread)) return null;
-  return { id: String(thread.id) };
+  const threads = await fetchThreadsForAsset(assetId);
+  if (threads.length === 0) return null;
+  return { id: threads[0]!.id };
+}
+
+export async function createThread(body: {
+  assetId?: string;
+  collectionId?: string;
+  title?: string;
+}): Promise<{ id: string; title: string | null; createdAt: string } | null> {
+  const { data, error } = await api.api.threads.post(body);
+  if (error || !data) return null;
+  return data as unknown as { id: string; title: string | null; createdAt: string };
+}
+
+export async function deleteThread(
+  threadId: string
+): Promise<boolean> {
+  const { error } = await api.api.threads({ id: threadId }).delete();
+  return !error;
 }
 
 // ---------------------------------------------------------------------------

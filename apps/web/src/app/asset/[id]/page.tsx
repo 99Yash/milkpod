@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { notFound } from 'next/navigation';
 import { getServerSession, assertAuthenticated } from '~/lib/auth/session';
-import { getAssetWithTranscript, getLatestChatThread } from '~/lib/data/queries';
+import { getAssetWithTranscript, getLatestChatThread, getThreadsForAsset } from '~/lib/data/queries';
 import { AssetDetail } from '~/components/asset/asset-detail';
 import type { InitialThread } from '~/components/chat/chat-panel';
 
@@ -16,9 +16,10 @@ export default async function AssetPage({ params }: AssetPageProps) {
   assertAuthenticated(session);
 
   const { id } = await params;
-  const [asset, thread] = await Promise.all([
+  const [asset, thread, threads] = await Promise.all([
     getAssetWithTranscript(id, session.user.id),
     getLatestChatThread(id, session.user.id),
+    getThreadsForAsset(id, session.user.id),
   ]);
 
   if (!asset) notFound();
@@ -27,5 +28,18 @@ export default async function AssetPage({ params }: AssetPageProps) {
     ? { status: 'loaded', threadId: thread.threadId, messages: thread.messages }
     : { status: 'empty' };
 
-  return <AssetDetail assetId={id} initialAsset={asset} initialThread={initialThread} />;
+  const initialThreads = threads.map((t) => ({
+    id: t.id,
+    title: t.title,
+    createdAt: t.createdAt.toISOString(),
+  }));
+
+  return (
+    <AssetDetail
+      assetId={id}
+      initialAsset={asset}
+      initialThread={initialThread}
+      initialThreads={initialThreads}
+    />
+  );
 }

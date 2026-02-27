@@ -1,7 +1,8 @@
-import { Elysia, status } from 'elysia';
+import { Elysia, status, t } from 'elysia';
 import { authMacro } from '../../middleware/auth';
 import { AssetModel } from './model';
 import { AssetService } from './service';
+import { TranscriptSearchService } from './search-service';
 import { IngestService } from '../ingest/service';
 import { orchestratePipeline } from '../ingest/pipeline';
 import { assetEvents, type AssetStatusEvent } from '../../events/asset-events';
@@ -85,6 +86,25 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     if (!asset) return status(404, { message: 'Asset not found' });
     return asset;
   }, { auth: true })
+  .get(
+    '/:id/search',
+    async ({ params, query, user }) => {
+      const asset = await AssetService.getById(params.id, user.id);
+      if (!asset) return status(404, { message: 'Asset not found' });
+      return TranscriptSearchService.search(
+        params.id,
+        query.q,
+        query.limit ? Number(query.limit) : undefined
+      );
+    },
+    {
+      auth: true,
+      query: t.Object({
+        q: t.String(),
+        limit: t.Optional(t.String()),
+      }),
+    }
+  )
   .patch(
     '/:id',
     async ({ params, body, user }) => {

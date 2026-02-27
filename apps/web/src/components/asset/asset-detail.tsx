@@ -5,8 +5,6 @@ import Link from 'next/link';
 import {
   ArrowLeft,
   Clock,
-  FileText,
-  MessageSquareText,
   Mic,
   User,
 } from 'lucide-react';
@@ -20,11 +18,13 @@ import {
   DashboardPanel,
   DashboardPanelContent,
 } from '~/components/dashboard/dashboard-panel';
-import { ChatPanel } from '~/components/chat/chat-panel';
+import { AskAiPanel } from '~/components/chat/ask-ai-panel';
 import { TranscriptViewer } from './transcript-viewer';
+import { AssetTabBar, type AssetTab } from './asset-tab-bar';
 import type { AssetWithTranscript, AssetStatus } from '@milkpod/api/types';
 import { isProcessingStatus } from '@milkpod/api/types';
 import type { InitialThread } from '~/components/chat/chat-panel';
+import type { ThreadListItem } from '~/components/chat/thread-sidebar';
 import {
   useAssetEvents,
   type AssetStatusEvent,
@@ -34,6 +34,7 @@ interface AssetDetailProps {
   assetId: string;
   initialAsset: AssetWithTranscript;
   initialThread?: InitialThread;
+  initialThreads: ThreadListItem[];
 }
 
 const statusLabels: Record<AssetStatus, string> = {
@@ -45,11 +46,12 @@ const statusLabels: Record<AssetStatus, string> = {
   failed: 'Failed',
 };
 
-export function AssetDetail({ assetId, initialAsset, initialThread }: AssetDetailProps) {
+export function AssetDetail({ assetId, initialAsset, initialThread, initialThreads }: AssetDetailProps) {
   const [asset, setAsset] = useState<AssetWithTranscript>(initialAsset);
   const [progressMessage, setProgressMessage] = useState<
     string | undefined
   >();
+  const [activeTab, setActiveTab] = useState<AssetTab>('transcript');
 
   // SSE: update status and progress in real-time
   useAssetEvents(
@@ -145,33 +147,22 @@ export function AssetDetail({ assetId, initialAsset, initialThread }: AssetDetai
         </div>
       </div>
 
-      {/* Main content: transcript + chat */}
+      {/* Main content: tabs */}
       {isReady && asset.segments.length > 0 ? (
-        <div className="grid min-h-[500px] flex-1 gap-4 lg:min-h-0 lg:grid-cols-[1fr_400px]">
-          {/* Transcript panel */}
-          <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/40">
-            <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2.5">
-              <FileText className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-medium text-foreground">
-                Transcript
-              </h2>
-              <span className="ml-auto text-xs text-muted-foreground">
-                {asset.segments.length} segments
-              </span>
-            </div>
-            <div className="min-h-0 flex-1">
-              <TranscriptViewer segments={asset.segments} />
-            </div>
-          </div>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <AssetTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
-          {/* Chat panel */}
-          <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/40">
-            <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2.5">
-              <MessageSquareText className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-medium text-foreground">Ask AI</h2>
+          {activeTab === 'transcript' ? (
+            <div className="min-h-0 flex-1 overflow-hidden rounded-b-xl border-x border-b border-border/40">
+              <TranscriptViewer assetId={assetId} segments={asset.segments} />
             </div>
-            <ChatPanel assetId={assetId} initialThread={initialThread} />
-          </div>
+          ) : (
+            <AskAiPanel
+              assetId={assetId}
+              initialThreads={initialThreads}
+              initialThread={initialThread}
+            />
+          )}
         </div>
       ) : isReady && asset.segments.length === 0 ? (
         <DashboardPanel>

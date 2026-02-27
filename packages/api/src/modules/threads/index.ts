@@ -16,11 +16,7 @@ export const threads = new Elysia({ prefix: '/api/threads' })
     '/',
     async ({ query, user }) => {
       if (query.assetId) {
-        const thread = await ThreadService.getLatestForAsset(
-          query.assetId,
-          user.id
-        );
-        return thread ? [thread] : [];
+        return ThreadService.listForAsset(query.assetId, user.id);
       }
       return ThreadService.list(user.id);
     },
