@@ -6,10 +6,11 @@ export type AuthOptionsType = z.infer<typeof authOptionsSchema>;
 
 export const LOCAL_STORAGE_SCHEMAS = {
   LAST_AUTH_METHOD: authOptionsSchema,
+  THREAD_SIDEBAR_OPEN: z.boolean(),
 } as const;
 
 export type LocalStorageKey = keyof typeof LOCAL_STORAGE_SCHEMAS;
-export const LAST_AUTH_METHOD_KEY: LocalStorageKey = 'LAST_AUTH_METHOD';
+export const LAST_AUTH_METHOD_KEY = 'LAST_AUTH_METHOD' as const;
 
 export type LocalStorageValue<K extends LocalStorageKey> = z.infer<
   (typeof LOCAL_STORAGE_SCHEMAS)[K] & z.ZodTypeAny

@@ -53,6 +53,21 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       const lastMessage = body.messages.at(-1);
       if (lastMessage && lastMessage.role === 'user') {
         await ChatService.saveMessages(threadId, [lastMessage]);
+
+        // Auto-title untitled threads from the first user message
+        const thread = await ThreadService.getById(threadId, userId);
+        if (thread && !thread.title) {
+          const textPart = lastMessage.parts?.find(
+            (p: { type: string }) => p.type === 'text',
+          );
+          if (textPart && 'text' in textPart && typeof textPart.text === 'string') {
+            const title =
+              textPart.text.length > 80
+                ? textPart.text.slice(0, 77) + '...'
+                : textPart.text;
+            await ThreadService.update(threadId, userId, { title });
+          }
+        }
       }
 
       return createChatStream({

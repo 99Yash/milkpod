@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { index, integer, pgTable, real, text } from 'drizzle-orm/pg-core';
 import { createId, lifecycle_dates } from '../helpers';
 import { transcripts } from './transcripts';
@@ -24,5 +25,6 @@ export const transcriptSegments = pgTable(
       t.transcriptId,
       t.startTime
     ),
+    index('transcript_segment_search_idx').using('gin', sql`to_tsvector('english', ${t.text})`),
   ]
 );

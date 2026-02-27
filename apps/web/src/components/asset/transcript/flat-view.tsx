@@ -8,6 +8,7 @@ interface FlatViewProps {
   groups: CoalescedGroup[];
   activeSegmentId?: string;
   searchQuery?: string;
+  serverMatchedGroupIds?: Set<string> | null;
   matchOffsets: Map<string, number>;
   activeMatchGlobalIndex?: number;
   activeMatchGroupId?: string;
@@ -20,6 +21,7 @@ export function FlatView({
   groups,
   activeSegmentId,
   searchQuery,
+  serverMatchedGroupIds,
   matchOffsets,
   activeMatchGlobalIndex,
   activeMatchGroupId,
@@ -29,9 +31,14 @@ export function FlatView({
 }: FlatViewProps) {
   const filteredGroups = useMemo(() => {
     if (!searchQuery) return groups;
+    // Server search: filter to server-matched groups
+    if (serverMatchedGroupIds) {
+      return groups.filter((g) => serverMatchedGroupIds.has(g.segments[0].id));
+    }
+    // Client-side: literal substring match
     const q = searchQuery.toLowerCase();
     return groups.filter((g) => g.text.toLowerCase().includes(q));
-  }, [groups, searchQuery]);
+  }, [groups, searchQuery, serverMatchedGroupIds]);
 
   const activeGroupIndex = useMemo(() => {
     if (!activeSegmentId) return -1;
@@ -112,6 +119,7 @@ export function FlatView({
               group={group}
               isActive={virtualRow.index === activeGroupIndex}
               searchQuery={searchQuery}
+              isServerMatch={serverMatchedGroupIds?.has(group.segments[0].id) ?? false}
               matchGlobalOffset={matchOffsets.get(group.segments[0].id)}
               activeMatchGlobalIndex={activeMatchGlobalIndex}
               onSegmentClick={onSegmentClick}

@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import type { TranscriptSegment } from '@milkpod/api/types';
 import { cn } from '~/lib/utils';
+import { buildHighlightRegex } from '~/lib/number-words';
 import type { CoalescedGroup } from './types';
 import { formatTime } from './types';
 
@@ -7,6 +9,7 @@ interface GroupRowProps {
   group: CoalescedGroup;
   isActive: boolean;
   searchQuery?: string;
+  isServerMatch?: boolean;
   matchGlobalOffset?: number;
   activeMatchGlobalIndex?: number;
   onSegmentClick?: (segment: TranscriptSegment) => void;
@@ -17,6 +20,7 @@ export function GroupRow({
   group,
   isActive,
   searchQuery,
+  isServerMatch,
   matchGlobalOffset,
   activeMatchGlobalIndex,
   onSegmentClick,
@@ -24,10 +28,29 @@ export function GroupRow({
 }: GroupRowProps) {
   const firstSegment = group.segments[0];
 
+  // For server matches, build an expanded regex (e.g. "level 3" → /level|3|three/gi)
+  const highlightRegex = useMemo(
+    () => (isServerMatch && searchQuery ? buildHighlightRegex(searchQuery) : null),
+    [isServerMatch, searchQuery]
+  );
+
+  // Determine which regex to use for highlighting
+  const hasHighlight = isServerMatch
+    ? highlightRegex !== null && highlightRegex.test(group.text)
+    : !!searchQuery && group.text.toLowerCase().includes(searchQuery.toLowerCase());
+
+  // Reset lastIndex after .test()
+  if (highlightRegex) highlightRegex.lastIndex = 0;
+
   return (
     <button
       type="button"
       data-segment-id={firstSegment.id}
+      data-active-match={
+        isServerMatch && matchGlobalOffset === activeMatchGlobalIndex
+          ? true
+          : undefined
+      }
       onClick={() => {
         onSegmentClick?.(firstSegment);
         scrollToSegment(firstSegment.id);
@@ -48,10 +71,17 @@ export function GroupRow({
         )}
       </span>
       <p className="min-w-0 flex-1 break-words text-sm leading-6 text-foreground">
-        {searchQuery ? (
+        {hasHighlight ? (
           <HighlightedText
             text={group.text}
-            query={searchQuery}
+            regex={
+              isServerMatch && highlightRegex
+                ? highlightRegex
+                : new RegExp(
+                    `(${searchQuery!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`,
+                    'gi'
+                  )
+            }
             globalOffset={matchGlobalOffset ?? 0}
             activeGlobalIndex={activeMatchGlobalIndex}
           />
@@ -65,19 +95,15 @@ export function GroupRow({
 
 function HighlightedText({
   text,
-  query,
+  regex,
   globalOffset,
   activeGlobalIndex,
 }: {
   text: string;
-  query: string;
+  regex: RegExp;
   globalOffset: number;
   activeGlobalIndex?: number;
 }) {
-  if (!query) return <>{text}</>;
-
-  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`(${escaped})`, 'gi');
   const parts = text.split(regex);
 
   let occurrenceIndex = 0;

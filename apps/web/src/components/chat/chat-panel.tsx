@@ -24,6 +24,7 @@ interface ChatPanelProps {
   assetId?: string;
   collectionId?: string;
   initialThread?: InitialThread;
+  onThreadIdChange?: (threadId: string | undefined) => void;
 }
 
 const SUGGESTIONS = ['Summarize', 'Key points', 'Action items'] as const;
@@ -82,6 +83,7 @@ export function ChatPanel({
   assetId,
   collectionId,
   initialThread,
+  onThreadIdChange,
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -92,7 +94,7 @@ export function ChatPanel({
     isLoading: isLoadingHistory,
   } = useRestoredThread(assetId, explicitThreadId, initialThread);
 
-  const { messages, sendMessage, status, error } = useMilkpodChat({
+  const { messages, sendMessage, status, error, threadId: chatThreadId } = useMilkpodChat({
     threadId: restoredThreadId,
     assetId,
     collectionId,
@@ -100,6 +102,11 @@ export function ChatPanel({
   });
 
   const isLoading = status === 'streaming' || status === 'submitted';
+
+  // Notify parent when the chat auto-creates a thread
+  useEffect(() => {
+    onThreadIdChange?.(chatThreadId);
+  }, [chatThreadId, onThreadIdChange]);
 
   useEffect(() => {
     if (error) {
@@ -145,61 +152,63 @@ export function ChatPanel({
   return (
     <div className="flex h-full flex-col">
       <ScrollArea ref={scrollRef} className="min-h-0 flex-1 px-4">
-        {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 py-12 text-center">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-muted">
-              <MessageSquareText className="size-6 text-muted-foreground" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-foreground">
-                Ask about this video
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Get answers with timestamps from the transcript.
-              </p>
-            </div>
-            <div className="flex flex-wrap justify-center gap-2">
-              {SUGGESTIONS.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => sendMessage({ text: suggestion })}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <Sparkles className="size-3" />
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-1 py-4">
-            {messages.map((message, i) => (
-              <ChatMessage
-                key={message.id}
-                message={message}
-                isStreaming={
-                  isLoading &&
-                  message.role === 'assistant' &&
-                  i === messages.length - 1
-                }
-              />
-            ))}
-            {isLoading && messages.at(-1)?.role !== 'assistant' && (
-              <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-                <Spinner className="size-4" />
-                <span>Thinking...</span>
+        <div className="mx-auto max-w-3xl">
+          {messages.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-4 py-12 text-center">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-muted">
+                <MessageSquareText className="size-6 text-muted-foreground" />
               </div>
-            )}
-          </div>
-        )}
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  Ask about this video
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Get answers with timestamps from the transcript.
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                {SUGGESTIONS.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => sendMessage({ text: suggestion })}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Sparkles className="size-3" />
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1 py-4">
+              {messages.map((message, i) => (
+                <ChatMessage
+                  key={message.id}
+                  message={message}
+                  isStreaming={
+                    isLoading &&
+                    message.role === 'assistant' &&
+                    i === messages.length - 1
+                  }
+                />
+              ))}
+              {isLoading && messages.at(-1)?.role !== 'assistant' && (
+                <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                  <Spinner className="size-4" />
+                  <span>Thinking...</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </ScrollArea>
 
       <form
         onSubmit={handleSubmit}
         className="shrink-0 border-t border-border/40 bg-background/70 p-3"
       >
-        <div className="relative">
+        <div className="relative mx-auto max-w-3xl">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

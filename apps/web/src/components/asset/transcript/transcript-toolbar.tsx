@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { Search, X, List, BookOpen, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, X, List, BookOpen, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import type { ViewMode } from './types';
 
@@ -13,6 +13,7 @@ interface TranscriptToolbarProps {
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   showViewToggle: boolean;
+  isSearching?: boolean;
 }
 
 export function TranscriptToolbar({
@@ -25,6 +26,7 @@ export function TranscriptToolbar({
   viewMode,
   onViewModeChange,
   showViewToggle,
+  isSearching,
 }: TranscriptToolbarProps) {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -62,9 +64,13 @@ export function TranscriptToolbar({
           {hasSearch && (
             <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
               <span className="px-1 text-xs tabular-nums text-muted-foreground">
-                {totalMatches > 0
-                  ? `${activeMatchIndex + 1}/${totalMatches}`
-                  : '0/0'}
+                {isSearching ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : totalMatches > 0 ? (
+                  `${activeMatchIndex + 1}/${totalMatches}`
+                ) : (
+                  '0/0'
+                )}
               </span>
               <button
                 type="button"

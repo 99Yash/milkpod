@@ -66,6 +66,21 @@ export async function getCollections(userId: string): Promise<Collection[]> {
     .orderBy(collections.createdAt);
 }
 
+export async function getThreadsForAsset(
+  assetId: string,
+  userId: string,
+): Promise<{ id: string; title: string | null; createdAt: Date }[]> {
+  return db()
+    .select({
+      id: qaThreads.id,
+      title: qaThreads.title,
+      createdAt: qaThreads.createdAt,
+    })
+    .from(qaThreads)
+    .where(and(eq(qaThreads.assetId, assetId), eq(qaThreads.userId, userId)))
+    .orderBy(desc(qaThreads.createdAt));
+}
+
 type MessageRole = MilkpodMessage['role'];
 
 function isMessageRole(s: string): s is MessageRole {

@@ -8,17 +8,25 @@ import { analyzeContent, detectChapters } from './transcript/chapter-detection';
 import { TranscriptToolbar } from './transcript/transcript-toolbar';
 import { FlatView } from './transcript/flat-view';
 import { ChapteredView } from './transcript/chaptered-view';
+import {
+  searchTranscript,
+  type TranscriptSearchResult,
+} from '~/lib/api-fetchers';
+import { buildHighlightRegex } from '~/lib/number-words';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SCROLL_TO_MATCH_DELAY_MS = 160; // Wait for accordion expansion in chaptered view
+const SERVER_SEARCH_MIN_LENGTH = 3;
 
 interface TranscriptViewerProps {
+  assetId?: string;
   segments: TranscriptSegment[];
   activeSegmentId?: string;
   onSegmentClick?: (segment: TranscriptSegment) => void;
 }
 
 export function TranscriptViewer({
+  assetId,
   segments,
   activeSegmentId,
   onSegmentClick,
@@ -27,11 +35,40 @@ export function TranscriptViewer({
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+  const [isSearching, setIsSearching] = useState(false);
+  const [serverResults, setServerResults] = useState<
+    TranscriptSearchResult[] | null
+  >(null);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(id);
   }, [search]);
+
+  // Server-side search for queries >= 3 chars (requires assetId)
+  useEffect(() => {
+    if (!assetId || debouncedSearch.length < SERVER_SEARCH_MIN_LENGTH) {
+      setServerResults(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsSearching(true);
+
+    searchTranscript(assetId, debouncedSearch).then((results) => {
+      if (cancelled) return;
+      setServerResults(results);
+      setIsSearching(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setServerResults(null);
+      setIsSearching(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId, debouncedSearch]);
 
   const groups = useMemo(() => coalesceSegments(segments), [segments]);
   const profile = useMemo(() => analyzeContent(groups), [groups]);
@@ -45,6 +82,29 @@ export function TranscriptViewer({
 
   const showViewToggle = groups.length > 5;
 
+  // Build a lookup from segment ID → group ID for server results
+  const segmentToGroupId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const group of groups) {
+      const groupId = group.segments[0].id;
+      for (const seg of group.segments) {
+        map.set(seg.id, groupId);
+      }
+    }
+    return map;
+  }, [groups]);
+
+  // Set of group IDs matched by server search (for non-literal highlighting)
+  const serverMatchedGroupIds = useMemo(() => {
+    if (!serverResults) return null;
+    const set = new Set<string>();
+    for (const r of serverResults) {
+      const gid = segmentToGroupId.get(r.segmentId);
+      if (gid) set.add(gid);
+    }
+    return set;
+  }, [serverResults, segmentToGroupId]);
+
   // Compute all match positions (as group IDs) and per-group offsets
   const { matches, matchOffsets } = useMemo(() => {
     const matchList: string[] = [];
@@ -52,6 +112,27 @@ export function TranscriptViewer({
 
     if (!debouncedSearch) return { matches: matchList, matchOffsets: offsets };
 
+    // Server-side results: walk groups in timeline order, count occurrences with expanded regex
+    if (serverMatchedGroupIds) {
+      const regex = buildHighlightRegex(debouncedSearch);
+      for (const group of groups) {
+        const id = group.segments[0].id;
+        if (!serverMatchedGroupIds.has(id)) continue;
+        offsets.set(id, matchList.length);
+        // Count how many times the expanded pattern matches in this group
+        if (regex) {
+          regex.lastIndex = 0;
+          let count = 0;
+          while (regex.exec(group.text)) count++;
+          for (let i = 0; i < Math.max(count, 1); i++) matchList.push(id);
+        } else {
+          matchList.push(id);
+        }
+      }
+      return { matches: matchList, matchOffsets: offsets };
+    }
+
+    // Client-side indexOf for short queries
     const q = debouncedSearch.toLowerCase();
     for (const group of groups) {
       const id = group.segments[0].id;
@@ -66,7 +147,7 @@ export function TranscriptViewer({
     }
 
     return { matches: matchList, matchOffsets: offsets };
-  }, [groups, debouncedSearch]);
+  }, [groups, debouncedSearch, serverMatchedGroupIds]);
 
   // Reset active match index when search changes
   useEffect(() => {
@@ -101,6 +182,7 @@ export function TranscriptViewer({
     return () => clearTimeout(timer);
   }, [activeMatchIndex, matches.length, viewMode]);
 
+
   const handleNextMatch = useCallback(() => {
     if (matches.length === 0) return;
     setActiveMatchIndex((prev) => (prev + 1) % matches.length);
@@ -133,6 +215,7 @@ export function TranscriptViewer({
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         showViewToggle={showViewToggle}
+        isSearching={isSearching}
       />
 
       <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide">
@@ -141,6 +224,7 @@ export function TranscriptViewer({
             chapters={chapters}
             activeSegmentId={activeSegmentId}
             searchQuery={debouncedSearch || undefined}
+            serverMatchedGroupIds={serverMatchedGroupIds}
             matchOffsets={matchOffsets}
             activeMatchGlobalIndex={
               matches.length > 0 ? activeMatchIndex : undefined
@@ -154,6 +238,7 @@ export function TranscriptViewer({
             groups={groups}
             activeSegmentId={activeSegmentId}
             searchQuery={debouncedSearch || undefined}
+            serverMatchedGroupIds={serverMatchedGroupIds}
             matchOffsets={matchOffsets}
             activeMatchGlobalIndex={
               matches.length > 0 ? activeMatchIndex : undefined
