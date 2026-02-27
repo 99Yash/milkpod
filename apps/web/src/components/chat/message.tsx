@@ -20,7 +20,7 @@ function ReasoningBlock({ text }: { text: string }) {
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+      <CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
         <ChevronDown
           className={cn(
             'size-3 transition-transform duration-200',
