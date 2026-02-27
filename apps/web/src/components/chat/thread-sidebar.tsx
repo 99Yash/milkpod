@@ -92,9 +92,16 @@ function ThreadItem({
   onDelete: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
       className={cn(
         'group relative flex w-full flex-col gap-0.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
         isActive
@@ -113,6 +120,7 @@ function ThreadItem({
         <AlertDialogTrigger asChild>
           <button
             type="button"
+            aria-label="Delete conversation"
             onClick={(e) => e.stopPropagation()}
             className="absolute top-1.5 right-1.5 rounded-sm p-0.5 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
           >
@@ -140,7 +148,7 @@ function ThreadItem({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </button>
+    </div>
   );
 }
 
@@ -153,7 +161,6 @@ export function ThreadSidebar({
   onNewThread,
   onDeleteThread,
 }: ThreadSidebarProps) {
-  // Desktop sidebar
   return (
     <>
       {/* Desktop: inline sidebar */}

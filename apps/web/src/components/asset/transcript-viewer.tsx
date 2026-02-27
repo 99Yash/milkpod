@@ -45,7 +45,6 @@ export function TranscriptViewer({
     return () => clearTimeout(id);
   }, [search]);
 
-  // Server-side search for queries >= 3 chars (requires assetId)
   useEffect(() => {
     if (!assetId || debouncedSearch.length < SERVER_SEARCH_MIN_LENGTH) {
       setServerResults(null);
@@ -82,7 +81,6 @@ export function TranscriptViewer({
 
   const showViewToggle = groups.length > 5;
 
-  // Build a lookup from segment ID → group ID for server results
   const segmentToGroupId = useMemo(() => {
     const map = new Map<string, string>();
     for (const group of groups) {
@@ -94,7 +92,6 @@ export function TranscriptViewer({
     return map;
   }, [groups]);
 
-  // Set of group IDs matched by server search (for non-literal highlighting)
   const serverMatchedGroupIds = useMemo(() => {
     if (!serverResults) return null;
     const set = new Set<string>();
@@ -112,14 +109,12 @@ export function TranscriptViewer({
 
     if (!debouncedSearch) return { matches: matchList, matchOffsets: offsets };
 
-    // Server-side results: walk groups in timeline order, count occurrences with expanded regex
     if (serverMatchedGroupIds) {
       const regex = buildHighlightRegex(debouncedSearch);
       for (const group of groups) {
         const id = group.segments[0].id;
         if (!serverMatchedGroupIds.has(id)) continue;
         offsets.set(id, matchList.length);
-        // Count how many times the expanded pattern matches in this group
         if (regex) {
           regex.lastIndex = 0;
           let count = 0;
@@ -132,7 +127,6 @@ export function TranscriptViewer({
       return { matches: matchList, matchOffsets: offsets };
     }
 
-    // Client-side indexOf for short queries
     const q = debouncedSearch.toLowerCase();
     for (const group of groups) {
       const id = group.segments[0].id;
@@ -181,7 +175,6 @@ export function TranscriptViewer({
     }, SCROLL_TO_MATCH_DELAY_MS);
     return () => clearTimeout(timer);
   }, [activeMatchIndex, matches.length, viewMode]);
-
 
   const handleNextMatch = useCallback(() => {
     if (matches.length === 0) return;
