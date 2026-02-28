@@ -109,3 +109,4 @@ Key differences from older versions:
 - `ELEVENLABS_API_KEY` - Optional, required for ElevenLabs transcription in ingest flows
 - `OPENAI_API_KEY` - Used by `@ai-sdk/openai` in `@milkpod/ai` (provider reads from process env)
 - `GOOGLE_GENERATIVE_AI_API_KEY` - Used by `@ai-sdk/google` in `@milkpod/ai` (provider reads from process env)
+- `ADMIN_EMAILS` - Comma-separated list of admin email addresses; these users bypass daily word quota limits

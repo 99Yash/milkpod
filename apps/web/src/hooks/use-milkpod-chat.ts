@@ -42,9 +42,15 @@ export function useMilkpodChat({
       if (id) {
         threadIdRef.current = id;
       }
-      const remaining = response.headers.get('X-Words-Remaining');
-      if (remaining !== null) {
-        setWordsRemaining(Number(remaining));
+      const isAdmin = response.headers.get('X-Is-Admin') === 'true';
+      if (isAdmin) {
+        setWordsRemaining(null);
+      } else {
+        const remaining = response.headers.get('X-Words-Remaining');
+        if (remaining !== null) {
+          const parsed = Number(remaining);
+          setWordsRemaining(Number.isFinite(parsed) ? parsed : null);
+        }
       }
       return response;
     },
