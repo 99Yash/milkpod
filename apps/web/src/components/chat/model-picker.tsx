@@ -78,7 +78,7 @@ export function ModelPicker({ value, onChange }: ModelPickerProps) {
           <ChevronDown className="size-3" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[420px] p-0" align="start">
+      <PopoverContent className="h-[200px] w-[420px] p-0" side="top" align="start">
         <div className="flex">
           <Command className="w-[200px] border-r">
             <CommandList>
