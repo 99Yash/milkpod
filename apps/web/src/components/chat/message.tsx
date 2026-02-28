@@ -10,7 +10,7 @@ import { ToolResult } from './tool-result';
 import { TimestampLink } from './timestamp-link';
 import { useAssetSource } from './asset-source-context';
 
-const TIMESTAMP_RE = /\[(\d{1,2}(?::\d{2}){1,2})\](?!\()/g;
+const TIMESTAMP_RE = /\[(\d+(?::\d{2}){1,2})\](?!\()/g;
 
 function parseSeconds(ts: string): number {
   const parts = ts.split(':').map(Number);

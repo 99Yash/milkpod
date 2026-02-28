@@ -56,13 +56,12 @@ export function AskAiPanel({
     return getLocalStorageItem('THREAD_SIDEBAR_OPEN', true) ?? true;
   });
 
-  // Sync URL on mount when a thread is active but not yet in the URL
+  // Sync URL when a thread is active but not yet in the URL
   useEffect(() => {
     if (!threadParam && activeThreadId) {
       setThreadParam(activeThreadId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [threadParam, activeThreadId, setThreadParam]);
 
   const chatThreadIdRef = useRef<string | undefined>(activeThreadId);
   const threadsRef = useRef(threads);
