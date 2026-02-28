@@ -67,14 +67,19 @@ export abstract class UsageService {
     return Math.max(0, row?.words_added ?? 0);
   }
 
-  static async recordUsage(userId: string, wordCount: number): Promise<void> {
+  /**
+   * Release unused reserved words back to the budget.
+   * Called after streaming when actual usage < reserved amount.
+   */
+  static async releaseWords(userId: string, wordCount: number): Promise<void> {
+    if (wordCount <= 0) return;
     const today = todayUTC();
-    await db()
-      .insert(dailyUsage)
-      .values({ userId, usageDate: today, wordsUsed: wordCount })
-      .onConflictDoUpdate({
-        target: [dailyUsage.userId, dailyUsage.usageDate],
-        set: { wordsUsed: sql`${dailyUsage.wordsUsed} + ${wordCount}` },
-      });
+    await db().execute(sql`
+      UPDATE daily_usage
+      SET words_used = GREATEST(words_used - ${wordCount}, 0),
+          updated_at = NOW()
+      WHERE user_id = ${userId}
+        AND usage_date = ${today}
+    `);
   }
 }

@@ -15,20 +15,19 @@ export const chat = new Elysia({ prefix: '/api/chat' })
     async ({ body, user }) => {
       const userId = user.id;
       const admin = isAdminEmail(user.email);
-
-      // Check daily word quota and cap the response to remaining budget
-      // Admins bypass quota entirely
-      const remaining = admin
-        ? Infinity
-        : await UsageService.getRemainingWords(userId);
-      if (remaining <= 0) {
-        return status(429, { message: 'Daily word limit reached. Resets at midnight UTC.' });
-      }
-
       const requestedLimit = Math.min(body.wordLimit ?? HARD_WORD_CAP, HARD_WORD_CAP);
-      const cappedWordLimit = admin
-        ? requestedLimit
-        : Math.min(requestedLimit, remaining);
+
+      // Atomically reserve words from the daily budget before streaming.
+      // Admins bypass quota entirely.
+      let reserved: number;
+      if (admin) {
+        reserved = requestedLimit;
+      } else {
+        reserved = await UsageService.reserveWords(userId, requestedLimit);
+        if (reserved <= 0) {
+          return status(429, { message: 'Daily word limit reached. Resets at midnight UTC.' });
+        }
+      }
 
       // Verify ownership of referenced resources
       if (body.threadId) {
@@ -95,7 +94,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         assetId: body.assetId,
         collectionId: body.collectionId,
         modelId: body.modelId,
-        wordLimit: cappedWordLimit,
+        wordLimit: reserved,
         headers: { 'X-Thread-Id': threadId },
         onFinish: async ({ responseMessage, wordCount }) => {
           try {
@@ -103,21 +102,26 @@ export const chat = new Elysia({ prefix: '/api/chat' })
           } catch (err) {
             console.error(`[chat] Failed to save assistant message for thread ${threadId}:`, err);
           }
+          // Release unused reserved words back to the budget
           if (!admin) {
-            try {
-              await UsageService.recordUsage(userId, wordCount);
-            } catch (err) {
-              console.error(`[chat] Failed to record usage for user ${userId}:`, err);
+            const unused = reserved - wordCount;
+            if (unused > 0) {
+              try {
+                await UsageService.releaseWords(userId, unused);
+              } catch (err) {
+                console.error(`[chat] Failed to release unused words for user ${userId}:`, err);
+              }
             }
           }
         },
       });
 
-      // Set pre-response remaining as a best-effort hint. The client
-      // should call /api/usage/remaining after the stream ends for the
-      // accurate post-response value (headers can't be mutated once
-      // streaming starts).
-      response.headers.set('X-Words-Remaining', String(Math.max(0, remaining - cappedWordLimit)));
+      if (admin) {
+        response.headers.set('X-Is-Admin', 'true');
+      } else {
+        const remaining = await UsageService.getRemainingWords(userId);
+        response.headers.set('X-Words-Remaining', String(remaining));
+      }
 
       return response;
     },
