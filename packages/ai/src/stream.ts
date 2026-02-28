@@ -123,7 +123,7 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
   const model = resolveModel(parsedModelId);
   const effectiveWordLimit =
     req.wordLimit != null
-      ? Math.min(req.wordLimit, HARD_WORD_CAP)
+      ? Math.max(1, Math.min(req.wordLimit, HARD_WORD_CAP))
       : HARD_WORD_CAP;
 
   const result = streamText({
@@ -131,7 +131,7 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
     system: buildSystemPrompt({
       assetId: req.assetId,
       collectionId: req.collectionId,
-      wordLimit: req.wordLimit,
+      wordLimit: effectiveWordLimit,
     }),
     messages: modelMessages,
     tools,

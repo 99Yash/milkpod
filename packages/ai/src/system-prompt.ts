@@ -73,7 +73,7 @@ export function buildSystemPrompt(context: SystemPromptContext = {}): string {
 
   const effectiveLimit =
     context.wordLimit != null
-      ? Math.min(context.wordLimit, HARD_WORD_CAP)
+      ? Math.max(1, Math.min(context.wordLimit, HARD_WORD_CAP))
       : HARD_WORD_CAP;
 
   parts.push(

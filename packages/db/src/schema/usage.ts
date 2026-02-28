@@ -1,4 +1,4 @@
-import { date, index, integer, pgTable, text, unique } from 'drizzle-orm/pg-core';
+import { date, integer, pgTable, text, unique } from 'drizzle-orm/pg-core';
 import { createId, lifecycle_dates } from '../helpers';
 import { user } from './auth';
 
@@ -17,6 +17,5 @@ export const dailyUsage = pgTable(
   },
   (t) => [
     unique('daily_usage_user_date_uniq').on(t.userId, t.usageDate),
-    index('daily_usage_user_date_idx').on(t.userId, t.usageDate),
   ],
 );
