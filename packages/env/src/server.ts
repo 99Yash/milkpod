@@ -11,6 +11,7 @@ const serverEnvSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().min(1, 'GOOGLE_CLIENT_ID is required'),
   GOOGLE_CLIENT_SECRET: z.string().min(1, 'GOOGLE_CLIENT_SECRET is required'),
   ELEVENLABS_API_KEY: z.string().optional(),
+  ADMIN_EMAILS: z.string().optional().default(''),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

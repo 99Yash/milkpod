@@ -6,7 +6,7 @@ import { ChatService } from './service';
 import { ThreadService } from '../threads/service';
 import { AssetService } from '../assets/service';
 import { CollectionService } from '../collections/service';
-import { UsageService } from '../usage/service';
+import { isAdminEmail, UsageService } from '../usage/service';
 
 export const chat = new Elysia({ prefix: '/api/chat' })
   .use(authMacro)
@@ -14,15 +14,21 @@ export const chat = new Elysia({ prefix: '/api/chat' })
     '/',
     async ({ body, user }) => {
       const userId = user.id;
+      const admin = isAdminEmail(user.email);
 
       // Check daily word quota and cap the response to remaining budget
-      const remaining = await UsageService.getRemainingWords(userId);
+      // Admins bypass quota entirely
+      const remaining = admin
+        ? Infinity
+        : await UsageService.getRemainingWords(userId);
       if (remaining <= 0) {
         return status(429, { message: 'Daily word limit reached. Resets at midnight UTC.' });
       }
 
       const requestedLimit = Math.min(body.wordLimit ?? HARD_WORD_CAP, HARD_WORD_CAP);
-      const cappedWordLimit = Math.min(requestedLimit, remaining);
+      const cappedWordLimit = admin
+        ? requestedLimit
+        : Math.min(requestedLimit, remaining);
 
       // Verify ownership of referenced resources
       if (body.threadId) {
@@ -97,10 +103,12 @@ export const chat = new Elysia({ prefix: '/api/chat' })
           } catch (err) {
             console.error(`[chat] Failed to save assistant message for thread ${threadId}:`, err);
           }
-          try {
-            await UsageService.recordUsage(userId, wordCount);
-          } catch (err) {
-            console.error(`[chat] Failed to record usage for user ${userId}:`, err);
+          if (!admin) {
+            try {
+              await UsageService.recordUsage(userId, wordCount);
+            } catch (err) {
+              console.error(`[chat] Failed to record usage for user ${userId}:`, err);
+            }
           }
         },
       });
