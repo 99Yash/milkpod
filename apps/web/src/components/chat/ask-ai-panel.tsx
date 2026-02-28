@@ -60,10 +60,12 @@ export function AskAiPanel({
       ?? (initialThread?.status === 'loaded' ? initialThread.threadId : undefined)
       ?? threads[0]?.id);
 
-  const [sidebarOpen, setSidebarOpen] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return getLocalStorageItem('THREAD_SIDEBAR_OPEN', true) ?? true;
-  });
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    const stored = getLocalStorageItem('THREAD_SIDEBAR_OPEN', true);
+    if (stored != null) setSidebarOpen(stored);
+  }, []);
 
   // Sync URL when a thread is active but not yet in the URL
   useEffect(() => {
