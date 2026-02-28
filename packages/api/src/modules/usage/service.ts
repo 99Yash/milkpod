@@ -3,9 +3,17 @@ import { dailyUsage } from '@milkpod/db/schemas';
 import { createId } from '@milkpod/db/helpers';
 import { and, eq, sql } from 'drizzle-orm';
 import { DAILY_WORD_BUDGET } from '@milkpod/ai';
+import { serverEnv } from '@milkpod/env/server';
 
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+export function isAdminEmail(email: string): boolean {
+  const raw = serverEnv().ADMIN_EMAILS;
+  if (!raw) return false;
+  const list = raw.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+  return list.includes(email.toLowerCase());
 }
 
 export abstract class UsageService {
