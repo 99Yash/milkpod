@@ -1,5 +1,5 @@
 import { Elysia, status, t } from 'elysia';
-import { createChatStream, generateThreadTitle, VALID_MODEL_IDS } from '@milkpod/ai';
+import { createChatStream, generateThreadTitle } from '@milkpod/ai';
 import { authMacro } from '../../middleware/auth';
 import { ChatModel } from './model';
 import { ChatService } from './service';
@@ -14,11 +14,6 @@ export const chat = new Elysia({ prefix: '/api/chat' })
     '/',
     async ({ body, user }) => {
       const userId = user.id;
-
-      // Validate model ID
-      if (body.modelId && !VALID_MODEL_IDS.includes(body.modelId)) {
-        return status(400, { message: `Invalid model: ${body.modelId}` });
-      }
 
       // Check daily word quota
       const remaining = await UsageService.getRemainingWords(userId);

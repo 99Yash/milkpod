@@ -6,6 +6,7 @@ import { DefaultChatTransport } from 'ai';
 import { clientEnv } from '@milkpod/env/client';
 import { chatMetadataSchema } from '@milkpod/ai/schemas';
 import type { MilkpodMessage } from '@milkpod/ai/types';
+import type { ModelId } from '@milkpod/ai/models';
 
 const SERVER_URL = clientEnv().NEXT_PUBLIC_SERVER_URL;
 
@@ -20,7 +21,7 @@ export function useMilkpodChat({
   threadId?: string;
   assetId?: string;
   collectionId?: string;
-  modelId?: string;
+  modelId?: ModelId;
   wordLimit?: number | null;
   initialMessages?: MilkpodMessage[];
 } = {}): UseChatHelpers<MilkpodMessage> & {

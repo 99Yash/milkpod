@@ -15,13 +15,11 @@ import { buildSystemPrompt } from './system-prompt';
 import { chatMetadataSchema } from './schemas';
 import { AIError } from './errors';
 import { checkInput, createRefusalResponse } from './guardrails';
-import { DEFAULT_MODEL_ID } from './models';
+import { DEFAULT_MODEL_ID, modelIdSchema, type ModelId } from './models';
 import { HARD_WORD_CAP, wordLimitToMaxTokens } from './limits';
 
-function resolveModel(id: string): LanguageModel {
+function resolveModel(id: ModelId): LanguageModel {
   const sep = id.indexOf(':');
-  if (sep === -1) throw new Error(`Invalid model ID (expected "provider:model"): ${id}`);
-
   const provider = id.slice(0, sep);
   const model = id.slice(sep + 1);
 
@@ -42,7 +40,7 @@ export interface ChatRequest {
   threadId?: string;
   assetId?: string;
   collectionId?: string;
-  modelId?: string;
+  modelId?: ModelId;
   wordLimit?: number | null;
   onFinish?: (params: { responseMessage: MilkpodMessage; wordCount: number }) => Promise<void>;
   headers?: Record<string, string>;
@@ -121,7 +119,8 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
 
   const modelMessages = await convertToModelMessages(validatedMessages);
   const startTime = Date.now();
-  const model = resolveModel(req.modelId ?? DEFAULT_MODEL_ID);
+  const parsedModelId = modelIdSchema.parse(req.modelId ?? DEFAULT_MODEL_ID);
+  const model = resolveModel(parsedModelId);
   const effectiveWordLimit =
     req.wordLimit != null
       ? Math.min(req.wordLimit, HARD_WORD_CAP)

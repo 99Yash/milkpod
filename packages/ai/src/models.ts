@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export interface ModelDescriptor {
   id: string;
   name: string;
@@ -19,12 +21,39 @@ export const MODEL_REGISTRY: ModelDescriptor[] = [
     isDefault: true,
   },
   {
+    id: 'openai:gpt-4.1',
+    name: 'GPT-4.1',
+    provider: 'OpenAI',
+    description: 'Strong all-rounder. Great for detailed answers with good speed.',
+    speed: 4,
+    intelligence: 4,
+    isDefault: false,
+  },
+  {
     id: 'openai:gpt-4.1-mini',
     name: 'GPT-4.1 Mini',
     provider: 'OpenAI',
     description: 'Fast and efficient. Great for quick lookups and simple questions.',
     speed: 5,
     intelligence: 3,
+    isDefault: false,
+  },
+  {
+    id: 'openai:o4-mini',
+    name: 'o4 Mini',
+    provider: 'OpenAI',
+    description: 'Compact reasoning model. Thinks step-by-step for accurate answers.',
+    speed: 4,
+    intelligence: 4,
+    isDefault: false,
+  },
+  {
+    id: 'google:gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro',
+    provider: 'Google',
+    description: 'Google\'s most capable model. Excellent at long-context understanding.',
+    speed: 3,
+    intelligence: 5,
     isDefault: false,
   },
   {
@@ -36,8 +65,22 @@ export const MODEL_REGISTRY: ModelDescriptor[] = [
     intelligence: 4,
     isDefault: false,
   },
+  {
+    id: 'google:gemini-2.0-flash',
+    name: 'Gemini 2.0 Flash',
+    provider: 'Google',
+    description: 'Lightweight and quick. Best for simple lookups and summaries.',
+    speed: 5,
+    intelligence: 3,
+    isDefault: false,
+  },
 ];
 
 export const DEFAULT_MODEL_ID = MODEL_REGISTRY.find((m) => m.isDefault)!.id;
 
-export const VALID_MODEL_IDS = MODEL_REGISTRY.map((m) => m.id);
+// Non-empty tuple cast is safe — MODEL_REGISTRY always has at least one entry.
+export const VALID_MODEL_IDS = MODEL_REGISTRY.map((m) => m.id) as [string, ...string[]];
+
+export const modelIdSchema = z.enum(VALID_MODEL_IDS);
+
+export type ModelId = z.infer<typeof modelIdSchema>;
