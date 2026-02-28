@@ -51,8 +51,8 @@ export { checkInput, createRefusalResponse } from './guardrails';
 export type { GuardrailResult } from './guardrails';
 
 // Models
-export { MODEL_REGISTRY, DEFAULT_MODEL_ID, VALID_MODEL_IDS } from './models';
-export type { ModelDescriptor } from './models';
+export { MODEL_REGISTRY, DEFAULT_MODEL_ID, VALID_MODEL_IDS, modelIdSchema } from './models';
+export type { ModelDescriptor, ModelId } from './models';
 
 // Limits
 export {
