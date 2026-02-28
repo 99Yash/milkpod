@@ -45,7 +45,12 @@ function useRestoredThread(
   const [messages, setMessages] = useState<MilkpodMessage[] | undefined>(
     () => (initialThread?.status === 'loaded' ? initialThread.messages : undefined),
   );
-  const [isLoading, setIsLoading] = useState(false);
+  // Start in the loading state when a client-side fetch will be needed so
+  // the spinner renders on the very first frame (before the effect fires).
+  const [isLoading, setIsLoading] = useState(() => {
+    if (initialThread) return false;
+    return !!explicitThreadId || !!assetId;
+  });
 
   useEffect(() => {
     // Server already resolved thread state — skip client fetch
@@ -82,6 +87,13 @@ function useRestoredThread(
   return { threadId, messages, isLoading };
 }
 
+/**
+ * Outer shell: resolves thread data, shows a spinner while loading, then
+ * mounts ChatPanelContent once messages are ready. This guarantees
+ * useMilkpodChat/useChat always initialises with the correct messages
+ * (useChat treats its `messages` option as initial state, so passing
+ * `undefined` first and updating later doesn't work).
+ */
 export function ChatPanel({
   threadId: explicitThreadId,
   assetId,
@@ -89,23 +101,55 @@ export function ChatPanel({
   initialThread,
   onThreadIdChange,
 }: ChatPanelProps) {
-  const [input, setInput] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const { modelId, setModelId, wordLimit, setWordLimit } = useChatSettings();
-
   const {
     threadId: restoredThreadId,
     messages: persistedMessages,
     isLoading: isLoadingHistory,
   } = useRestoredThread(assetId, explicitThreadId, initialThread);
 
+  if (isLoadingHistory) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner className="size-6" />
+      </div>
+    );
+  }
+
+  return (
+    <ChatPanelContent
+      threadId={restoredThreadId}
+      assetId={assetId}
+      collectionId={collectionId}
+      initialMessages={persistedMessages}
+      onThreadIdChange={onThreadIdChange}
+    />
+  );
+}
+
+function ChatPanelContent({
+  threadId,
+  assetId,
+  collectionId,
+  initialMessages,
+  onThreadIdChange,
+}: {
+  threadId?: string;
+  assetId?: string;
+  collectionId?: string;
+  initialMessages?: MilkpodMessage[];
+  onThreadIdChange?: (threadId: string | undefined) => void;
+}) {
+  const [input, setInput] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { modelId, setModelId, wordLimit, setWordLimit } = useChatSettings();
+
   const { messages, sendMessage, status, error, threadId: chatThreadId, wordsRemaining } = useMilkpodChat({
-    threadId: restoredThreadId,
+    threadId,
     assetId,
     collectionId,
     modelId,
     wordLimit,
-    initialMessages: persistedMessages,
+    initialMessages,
   });
 
   const isLoading = status === 'streaming' || status === 'submitted';
@@ -147,14 +191,6 @@ export function ChatPanel({
     },
     [handleSubmit],
   );
-
-  if (isLoadingHistory) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Spinner className="size-6" />
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-full flex-col">
