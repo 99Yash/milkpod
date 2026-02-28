@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback, useEffect, useMemo } from 'react';
+import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import { useChat, type UseChatHelpers } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { clientEnv } from '@milkpod/env/client';
@@ -13,14 +13,22 @@ export function useMilkpodChat({
   threadId,
   assetId,
   collectionId,
+  modelId,
+  wordLimit,
   initialMessages,
 }: {
   threadId?: string;
   assetId?: string;
   collectionId?: string;
+  modelId?: string;
+  wordLimit?: number | null;
   initialMessages?: MilkpodMessage[];
-} = {}): UseChatHelpers<MilkpodMessage> & { threadId: string | undefined } {
+} = {}): UseChatHelpers<MilkpodMessage> & {
+  threadId: string | undefined;
+  wordsRemaining: number | null;
+} {
   const threadIdRef = useRef<string | undefined>(threadId);
+  const [wordsRemaining, setWordsRemaining] = useState<number | null>(null);
 
   useEffect(() => {
     threadIdRef.current = threadId;
@@ -33,9 +41,13 @@ export function useMilkpodChat({
       if (id) {
         threadIdRef.current = id;
       }
+      const remaining = response.headers.get('X-Words-Remaining');
+      if (remaining !== null) {
+        setWordsRemaining(Number(remaining));
+      }
       return response;
     },
-    []
+    [],
   );
 
   const body = useCallback(
@@ -43,8 +55,10 @@ export function useMilkpodChat({
       threadId: threadIdRef.current,
       assetId,
       collectionId,
+      modelId,
+      wordLimit,
     }),
-    [assetId, collectionId]
+    [assetId, collectionId, modelId, wordLimit],
   );
 
   const transport = useMemo(
@@ -55,7 +69,7 @@ export function useMilkpodChat({
         fetch: customFetch,
         body,
       }),
-    [customFetch, body]
+    [customFetch, body],
   );
 
   const chat = useChat<MilkpodMessage>({
@@ -68,5 +82,6 @@ export function useMilkpodChat({
   return {
     ...chat,
     threadId: threadIdRef.current,
+    wordsRemaining,
   };
 }
