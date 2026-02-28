@@ -7,6 +7,8 @@ export type AuthOptionsType = z.infer<typeof authOptionsSchema>;
 export const LOCAL_STORAGE_SCHEMAS = {
   LAST_AUTH_METHOD: authOptionsSchema,
   THREAD_SIDEBAR_OPEN: z.boolean(),
+  CHAT_MODEL_ID: z.string().default('openai:gpt-5.2'),
+  CHAT_WORD_LIMIT: z.union([z.number(), z.null()]).default(250),
 } as const;
 
 export type LocalStorageKey = keyof typeof LOCAL_STORAGE_SCHEMAS;

@@ -1,11 +1,12 @@
 import { Elysia, status, t } from 'elysia';
-import { createChatStream, generateThreadTitle } from '@milkpod/ai';
+import { createChatStream, generateThreadTitle, VALID_MODEL_IDS } from '@milkpod/ai';
 import { authMacro } from '../../middleware/auth';
 import { ChatModel } from './model';
 import { ChatService } from './service';
 import { ThreadService } from '../threads/service';
 import { AssetService } from '../assets/service';
 import { CollectionService } from '../collections/service';
+import { UsageService } from '../usage/service';
 
 export const chat = new Elysia({ prefix: '/api/chat' })
   .use(authMacro)
@@ -13,6 +14,17 @@ export const chat = new Elysia({ prefix: '/api/chat' })
     '/',
     async ({ body, user }) => {
       const userId = user.id;
+
+      // Validate model ID
+      if (body.modelId && !VALID_MODEL_IDS.includes(body.modelId)) {
+        return status(400, { message: `Invalid model: ${body.modelId}` });
+      }
+
+      // Check daily word quota
+      const remaining = await UsageService.getRemainingWords(userId);
+      if (remaining <= 0) {
+        return status(429, { message: 'Daily word limit reached. Resets at midnight UTC.' });
+      }
 
       // Verify ownership of referenced resources
       if (body.threadId) {
@@ -73,20 +85,32 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         }
       }
 
-      return createChatStream({
+      const response = await createChatStream({
         messages: body.messages,
         threadId,
         assetId: body.assetId,
         collectionId: body.collectionId,
+        modelId: body.modelId,
+        wordLimit: body.wordLimit,
         headers: { 'X-Thread-Id': threadId },
-        onFinish: async ({ responseMessage }) => {
+        onFinish: async ({ responseMessage, wordCount }) => {
           try {
             await ChatService.saveMessages(threadId!, [responseMessage]);
           } catch (err) {
             console.error(`[chat] Failed to save assistant message for thread ${threadId}:`, err);
           }
+          try {
+            await UsageService.recordUsage(userId, wordCount);
+          } catch (err) {
+            console.error(`[chat] Failed to record usage for user ${userId}:`, err);
+          }
         },
       });
+
+      const wordsRemaining = await UsageService.getRemainingWords(userId);
+      response.headers.set('X-Words-Remaining', String(wordsRemaining));
+
+      return response;
     },
     { auth: true, body: ChatModel.send }
   )

@@ -8,7 +8,11 @@ import { ScrollArea } from '~/components/ui/scroll-area';
 import { Spinner } from '~/components/ui/spinner';
 import { toast } from 'sonner';
 import { useMilkpodChat } from '~/hooks/use-milkpod-chat';
+import { useChatSettings } from '~/hooks/use-chat-settings';
 import { ChatMessage } from './message';
+import { ModelPicker } from './model-picker';
+import { WordLimitPicker } from './word-limit-picker';
+import { DailyQuota } from './daily-quota';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 import {
   fetchChatMessages,
@@ -87,6 +91,7 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { modelId, setModelId, wordLimit, setWordLimit } = useChatSettings();
 
   const {
     threadId: restoredThreadId,
@@ -94,10 +99,12 @@ export function ChatPanel({
     isLoading: isLoadingHistory,
   } = useRestoredThread(assetId, explicitThreadId, initialThread);
 
-  const { messages, sendMessage, status, error, threadId: chatThreadId } = useMilkpodChat({
+  const { messages, sendMessage, status, error, threadId: chatThreadId, wordsRemaining } = useMilkpodChat({
     threadId: restoredThreadId,
     assetId,
     collectionId,
+    modelId,
+    wordLimit,
     initialMessages: persistedMessages,
   });
 
@@ -226,6 +233,13 @@ export function ChatPanel({
           >
             <SendHorizonal className="size-4" />
           </Button>
+        </div>
+        <div className="mx-auto mt-1.5 flex max-w-3xl items-center gap-1">
+          <ModelPicker value={modelId} onChange={setModelId} />
+          <WordLimitPicker value={wordLimit} onChange={setWordLimit} />
+          <div className="ml-auto">
+            <DailyQuota remaining={wordsRemaining} />
+          </div>
         </div>
       </form>
     </div>

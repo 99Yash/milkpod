@@ -1,3 +1,5 @@
+import { HARD_WORD_CAP } from './limits';
+
 const BASE_SYSTEM_PROMPT = `You are Milkpod, an AI assistant that helps users understand video and audio content by analyzing transcripts.
 
 ## Tools
@@ -40,6 +42,7 @@ export interface SystemPromptContext {
   assetId?: string;
   assetTitle?: string;
   collectionId?: string;
+  wordLimit?: number | null;
 }
 
 export function buildSystemPrompt(context: SystemPromptContext = {}): string {
@@ -67,6 +70,15 @@ export function buildSystemPrompt(context: SystemPromptContext = {}): string {
 
     parts.push(`<context>\n${lines.join('\n')}\n</context>`);
   }
+
+  const effectiveLimit =
+    context.wordLimit != null
+      ? Math.min(context.wordLimit, HARD_WORD_CAP)
+      : HARD_WORD_CAP;
+
+  parts.push(
+    `<response_length>Keep your response under ${effectiveLimit} words. Be concise and prioritize the most important information.</response_length>`
+  );
 
   return parts.join('\n\n');
 }
