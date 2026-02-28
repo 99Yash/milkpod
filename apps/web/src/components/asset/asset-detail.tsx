@@ -24,6 +24,7 @@ import { TranscriptViewer } from './transcript-viewer';
 import { AssetTabBar, type AssetTab } from './asset-tab-bar';
 import type { AssetWithTranscript, AssetStatus } from '@milkpod/api/types';
 import { isProcessingStatus } from '@milkpod/api/types';
+import { AssetSourceProvider } from '~/components/chat/asset-source-context';
 import type { InitialThread } from '~/components/chat/chat-panel';
 import type { ThreadListItem } from '~/components/chat/thread-sidebar';
 import {
@@ -161,11 +162,17 @@ export function AssetDetail({ assetId, initialAsset, initialThread, initialThrea
               <TranscriptViewer assetId={assetId} segments={asset.segments} />
             </div>
           ) : (
-            <AskAiPanel
-              assetId={assetId}
-              initialThreads={initialThreads}
-              initialThread={initialThread}
-            />
+            <AssetSourceProvider
+              sourceUrl={asset.sourceUrl}
+              sourceType={asset.sourceType}
+              sourceId={asset.sourceId}
+            >
+              <AskAiPanel
+                assetId={assetId}
+                initialThreads={initialThreads}
+                initialThread={initialThread}
+              />
+            </AssetSourceProvider>
           )}
         </div>
       ) : isReady && asset.segments.length === 0 ? (

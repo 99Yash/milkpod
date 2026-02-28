@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useQueryState } from 'nuqs';
 import { toast } from 'sonner';
 import { ChatPanel } from './chat-panel';
 import {
@@ -33,17 +34,19 @@ export function AskAiPanel({
 }: AskAiPanelProps) {
   const [threads, setThreads] =
     useState<ThreadListItem[]>(initialThreads);
-  const [activeThreadId, setActiveThreadId] = useState<string | undefined>(
-    () => {
-      if (initialThread?.status === 'loaded') return initialThread.threadId;
-      return threads[0]?.id;
-    },
-  );
+  const [threadParam, setThreadParam] = useQueryState('thread');
+
+  // Derive the active thread from URL param, falling back to SSR data or first thread
+  const activeThreadId = threadParam
+    ?? (initialThread?.status === 'loaded' ? initialThread.threadId : undefined)
+    ?? threads[0]?.id;
+
   // Track the thread ID driving the ChatPanel separately so that
   // auto-created threads (from sending the first message) don't
   // remount the panel and kill the in-progress stream.
   const [panelThreadId, setPanelThreadId] = useState<string | undefined>(
     () => {
+      if (threadParam) return threadParam;
       if (initialThread?.status === 'loaded') return initialThread.threadId;
       return threads[0]?.id;
     },
@@ -52,6 +55,13 @@ export function AskAiPanel({
     if (typeof window === 'undefined') return true;
     return getLocalStorageItem('THREAD_SIDEBAR_OPEN', true) ?? true;
   });
+
+  // Sync URL when a thread is active but not yet in the URL
+  useEffect(() => {
+    if (!threadParam && activeThreadId) {
+      setThreadParam(activeThreadId);
+    }
+  }, [threadParam, activeThreadId, setThreadParam]);
 
   const chatThreadIdRef = useRef<string | undefined>(activeThreadId);
   const threadsRef = useRef(threads);
@@ -66,9 +76,9 @@ export function AskAiPanel({
   }, []);
 
   const handleSelectThread = useCallback((threadId: string) => {
-    setActiveThreadId(threadId);
+    setThreadParam(threadId);
     setPanelThreadId(threadId);
-  }, []);
+  }, [setThreadParam]);
 
   const handleNewThread = useCallback(async () => {
     const thread = await createThread({ assetId });
@@ -77,9 +87,9 @@ export function AskAiPanel({
       return;
     }
     setThreads((prev) => [thread, ...prev]);
-    setActiveThreadId(thread.id);
+    setThreadParam(thread.id);
     setPanelThreadId(thread.id);
-  }, [assetId]);
+  }, [assetId, setThreadParam]);
 
   const handleDeleteThread = useCallback(
     async (threadId: string) => {
@@ -89,14 +99,12 @@ export function AskAiPanel({
         return;
       }
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
-      const fallback = () => {
-        const remaining = threadsRef.current.filter((t) => t.id !== threadId);
-        return remaining[0]?.id;
-      };
-      setActiveThreadId((prev) => (prev !== threadId ? prev : fallback()));
-      setPanelThreadId((prev) => (prev !== threadId ? prev : fallback()));
+      const remaining = threadsRef.current.filter((t) => t.id !== threadId);
+      const fallbackId = remaining[0]?.id;
+      setThreadParam((prev) => (prev === threadId ? (fallbackId ?? null) : prev));
+      setPanelThreadId((prev) => (prev === threadId ? fallbackId : prev));
     },
-    [],
+    [setThreadParam],
   );
 
   const handleRenameThread = useCallback(
@@ -137,7 +145,7 @@ export function AskAiPanel({
         fetchThreadsForAsset(assetId)
           .then((updated) => {
             setThreads(updated);
-            setActiveThreadId(newThreadId);
+            setThreadParam(newThreadId);
           })
           .catch(() => {
             toast.error('Failed to refresh threads');
@@ -145,7 +153,7 @@ export function AskAiPanel({
       }
       chatThreadIdRef.current = newThreadId;
     },
-    [assetId],
+    [assetId, setThreadParam],
   );
 
   const activeInitialThread: InitialThread | undefined =
