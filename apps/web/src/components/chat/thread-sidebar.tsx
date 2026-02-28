@@ -370,44 +370,55 @@ function MobileThreadSheet({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="flex md:hidden">
-      <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <div className="flex items-center gap-1 border-b border-border/40 px-2 py-1.5 md:hidden">
         <SheetTrigger asChild>
-          <Button variant="ghost" size="icon-sm" className="m-2">
+          <Button variant="ghost" size="icon-sm">
             <PanelLeftOpen className="size-4" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-72 p-0">
-          <SheetHeader className="border-b border-border/40">
-            <div className="flex items-center justify-between">
-              <SheetTitle className="text-sm">Threads</SheetTitle>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => {
-                  onNewThread();
-                  setOpen(false);
-                }}
-              >
-                <Plus className="size-3.5" />
-              </Button>
-            </div>
-          </SheetHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <ThreadList
-              threads={threads}
-              activeThreadId={activeThreadId}
-              onSelectThread={(id) => {
-                onSelectThread(id);
+        <span className="truncate text-xs font-medium text-muted-foreground">
+          Threads
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="ml-auto shrink-0"
+          onClick={onNewThread}
+        >
+          <Plus className="size-3.5" />
+        </Button>
+      </div>
+      <SheetContent side="left" className="w-[85vw] p-0" showClose={false}>
+        <SheetHeader className="border-b border-border/40">
+          <div className="flex items-center justify-between">
+            <SheetTitle className="text-sm">Threads</SheetTitle>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => {
+                onNewThread();
                 setOpen(false);
               }}
-              onDeleteThread={onDeleteThread}
-              onRenameThread={onRenameThread}
-              onRegenerateTitle={onRegenerateTitle}
-            />
+            >
+              <Plus className="size-3.5" />
+            </Button>
           </div>
-        </SheetContent>
-      </Sheet>
-    </div>
+        </SheetHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <ThreadList
+            threads={threads}
+            activeThreadId={activeThreadId}
+            onSelectThread={(id) => {
+              onSelectThread(id);
+              setOpen(false);
+            }}
+            onDeleteThread={onDeleteThread}
+            onRenameThread={onRenameThread}
+            onRegenerateTitle={onRegenerateTitle}
+          />
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
