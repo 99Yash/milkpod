@@ -1,11 +1,12 @@
 import { Elysia, status, t } from 'elysia';
-import { createChatStream, generateThreadTitle } from '@milkpod/ai';
+import { createChatStream, generateThreadTitle, HARD_WORD_CAP } from '@milkpod/ai';
 import { authMacro } from '../../middleware/auth';
 import { ChatModel } from './model';
 import { ChatService } from './service';
 import { ThreadService } from '../threads/service';
 import { AssetService } from '../assets/service';
 import { CollectionService } from '../collections/service';
+import { isAdminEmail, UsageService } from '../usage/service';
 
 export const chat = new Elysia({ prefix: '/api/chat' })
   .use(authMacro)
@@ -13,6 +14,20 @@ export const chat = new Elysia({ prefix: '/api/chat' })
     '/',
     async ({ body, user }) => {
       const userId = user.id;
+      const admin = isAdminEmail(user.email);
+      const requestedLimit = Math.min(body.wordLimit ?? HARD_WORD_CAP, HARD_WORD_CAP);
+
+      // Atomically reserve words from the daily budget before streaming.
+      // Admins bypass quota entirely.
+      let reserved: number;
+      if (admin) {
+        reserved = requestedLimit;
+      } else {
+        reserved = await UsageService.reserveWords(userId, requestedLimit);
+        if (reserved <= 0) {
+          return status(429, { message: 'Daily word limit reached. Resets at midnight UTC.' });
+        }
+      }
 
       // Verify ownership of referenced resources
       if (body.threadId) {
@@ -73,20 +88,42 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         }
       }
 
-      return createChatStream({
+      const response = await createChatStream({
         messages: body.messages,
         threadId,
         assetId: body.assetId,
         collectionId: body.collectionId,
+        modelId: body.modelId,
+        wordLimit: reserved,
         headers: { 'X-Thread-Id': threadId },
-        onFinish: async ({ responseMessage }) => {
+        onFinish: async ({ responseMessage, wordCount }) => {
           try {
             await ChatService.saveMessages(threadId!, [responseMessage]);
           } catch (err) {
             console.error(`[chat] Failed to save assistant message for thread ${threadId}:`, err);
           }
+          // Release unused reserved words back to the budget
+          if (!admin) {
+            const unused = reserved - wordCount;
+            if (unused > 0) {
+              try {
+                await UsageService.releaseWords(userId, unused);
+              } catch (err) {
+                console.error(`[chat] Failed to release unused words for user ${userId}:`, err);
+              }
+            }
+          }
         },
       });
+
+      if (admin) {
+        response.headers.set('X-Is-Admin', 'true');
+      } else {
+        const remaining = await UsageService.getRemainingWords(userId);
+        response.headers.set('X-Words-Remaining', String(remaining));
+      }
+
+      return response;
     },
     { auth: true, body: ChatModel.send }
   )

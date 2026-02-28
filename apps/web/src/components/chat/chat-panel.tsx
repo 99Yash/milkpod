@@ -8,7 +8,11 @@ import { ScrollArea } from '~/components/ui/scroll-area';
 import { Spinner } from '~/components/ui/spinner';
 import { toast } from 'sonner';
 import { useMilkpodChat } from '~/hooks/use-milkpod-chat';
+import { useChatSettings } from '~/hooks/use-chat-settings';
 import { ChatMessage } from './message';
+import { ModelPicker } from './model-picker';
+import { WordLimitPicker } from './word-limit-picker';
+import { DailyQuota } from './daily-quota';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 import {
   fetchChatMessages,
@@ -41,7 +45,12 @@ function useRestoredThread(
   const [messages, setMessages] = useState<MilkpodMessage[] | undefined>(
     () => (initialThread?.status === 'loaded' ? initialThread.messages : undefined),
   );
-  const [isLoading, setIsLoading] = useState(false);
+  // Start in the loading state when a client-side fetch will be needed so
+  // the spinner renders on the very first frame (before the effect fires).
+  const [isLoading, setIsLoading] = useState(() => {
+    if (initialThread) return false;
+    return !!explicitThreadId || !!assetId;
+  });
 
   useEffect(() => {
     // Server already resolved thread state — skip client fetch
@@ -78,6 +87,13 @@ function useRestoredThread(
   return { threadId, messages, isLoading };
 }
 
+/**
+ * Outer shell: resolves thread data, shows a spinner while loading, then
+ * mounts ChatPanelContent once messages are ready. This guarantees
+ * useMilkpodChat/useChat always initialises with the correct messages
+ * (useChat treats its `messages` option as initial state, so passing
+ * `undefined` first and updating later doesn't work).
+ */
 export function ChatPanel({
   threadId: explicitThreadId,
   assetId,
@@ -85,20 +101,55 @@ export function ChatPanel({
   initialThread,
   onThreadIdChange,
 }: ChatPanelProps) {
-  const [input, setInput] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
-
   const {
     threadId: restoredThreadId,
     messages: persistedMessages,
     isLoading: isLoadingHistory,
   } = useRestoredThread(assetId, explicitThreadId, initialThread);
 
-  const { messages, sendMessage, status, error, threadId: chatThreadId } = useMilkpodChat({
-    threadId: restoredThreadId,
+  if (isLoadingHistory) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner className="size-6" />
+      </div>
+    );
+  }
+
+  return (
+    <ChatPanelContent
+      threadId={restoredThreadId}
+      assetId={assetId}
+      collectionId={collectionId}
+      initialMessages={persistedMessages}
+      onThreadIdChange={onThreadIdChange}
+    />
+  );
+}
+
+function ChatPanelContent({
+  threadId,
+  assetId,
+  collectionId,
+  initialMessages,
+  onThreadIdChange,
+}: {
+  threadId?: string;
+  assetId?: string;
+  collectionId?: string;
+  initialMessages?: MilkpodMessage[];
+  onThreadIdChange?: (threadId: string | undefined) => void;
+}) {
+  const [input, setInput] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { modelId, setModelId, wordLimit, setWordLimit } = useChatSettings();
+
+  const { messages, sendMessage, status, error, threadId: chatThreadId, wordsRemaining } = useMilkpodChat({
+    threadId,
     assetId,
     collectionId,
-    initialMessages: persistedMessages,
+    modelId,
+    wordLimit,
+    initialMessages,
   });
 
   const isLoading = status === 'streaming' || status === 'submitted';
@@ -140,14 +191,6 @@ export function ChatPanel({
     },
     [handleSubmit],
   );
-
-  if (isLoadingHistory) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Spinner className="size-6" />
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-full flex-col">
@@ -226,6 +269,13 @@ export function ChatPanel({
           >
             <SendHorizonal className="size-4" />
           </Button>
+        </div>
+        <div className="mx-auto mt-1.5 flex max-w-3xl items-center gap-1">
+          <ModelPicker value={modelId} onChange={setModelId} />
+          <WordLimitPicker value={wordLimit} onChange={setWordLimit} />
+          <div className="ml-auto">
+            <DailyQuota remaining={wordsRemaining} />
+          </div>
         </div>
       </form>
     </div>

@@ -1,5 +1,7 @@
 import z from 'zod';
 import { GitHub, Google } from '~/components/ui/icons';
+import { modelIdSchema, DEFAULT_MODEL_ID } from '@milkpod/ai/models';
+import { DEFAULT_WORD_LIMIT } from '@milkpod/ai/limits';
 
 export const authOptionsSchema = z.enum(['EMAIL', 'GOOGLE', 'GITHUB']);
 export type AuthOptionsType = z.infer<typeof authOptionsSchema>;
@@ -7,6 +9,8 @@ export type AuthOptionsType = z.infer<typeof authOptionsSchema>;
 export const LOCAL_STORAGE_SCHEMAS = {
   LAST_AUTH_METHOD: authOptionsSchema,
   THREAD_SIDEBAR_OPEN: z.boolean(),
+  CHAT_MODEL_ID: modelIdSchema.default(DEFAULT_MODEL_ID),
+  CHAT_WORD_LIMIT: z.union([z.number(), z.null()]).default(DEFAULT_WORD_LIMIT),
 } as const;
 
 export type LocalStorageKey = keyof typeof LOCAL_STORAGE_SCHEMAS;

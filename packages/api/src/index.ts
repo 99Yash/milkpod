@@ -12,6 +12,7 @@ import { threads } from './modules/threads';
 import { ingest } from './modules/ingest';
 import { shares } from './modules/shares';
 import { podcasts } from './modules/podcasts';
+import { usage } from './modules/usage';
 
 export const app = new Elysia({ name: 'api' })
   .use(requestLogger)
@@ -50,7 +51,8 @@ export const app = new Elysia({ name: 'api' })
   .use(threads)
   .use(ingest)
   .use(shares)
-  .use(podcasts);
+  .use(podcasts)
+  .use(usage);
 
 export type App = typeof app;
 

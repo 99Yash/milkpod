@@ -23,6 +23,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ComponentProps,
@@ -57,6 +58,7 @@ import { AppShell } from '~/components/layouts/main';
 import { authClient } from '~/lib/auth/client';
 import { route } from '~/lib/routes';
 import { siteConfig } from '~/lib/site';
+import { api } from '~/lib/api';
 import { cn, getErrorMessage } from '~/lib/utils';
 
 type NavItem = {
@@ -262,29 +264,101 @@ function SidebarSections({
             </DashboardPanelContent>
           </DashboardPanel>
 
-          <DashboardPanel className="gap-3 py-4">
-            <DashboardPanelContent className="space-y-2 px-4 py-0">
-              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                <Gauge className="size-3.5" />
-                Plan usage
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Minutes transcribed</span>
-                  <span>0/60</span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-muted">
-                  <div className="h-full w-1/12 rounded-full bg-primary" />
-                </div>
-              </div>
-              <Button variant="outline" size="sm" className="w-full">
-                Upgrade
-              </Button>
-            </DashboardPanelContent>
-          </DashboardPanel>
+          <SidebarPlanUsage />
         </div>
       </div>
     </div>
+  );
+}
+
+function SidebarPlanUsage() {
+  const [usage, setUsage] = useState<{
+    remaining: number;
+    budget: number;
+    isAdmin: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.api.usage.remaining.get().then(({ data }) => {
+      if (!cancelled && data) {
+        setUsage(data);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!usage) {
+    return (
+      <DashboardPanel className="gap-3 py-4">
+        <DashboardPanelContent className="space-y-2 px-4 py-0">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <Gauge className="size-3.5" />
+            Plan usage
+          </div>
+          <div className="h-1.5 w-full animate-pulse rounded-full bg-muted" />
+        </DashboardPanelContent>
+      </DashboardPanel>
+    );
+  }
+
+  if (usage.isAdmin) {
+    return (
+      <DashboardPanel className="gap-3 py-4">
+        <DashboardPanelContent className="space-y-2 px-4 py-0">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <Gauge className="size-3.5" />
+            Plan usage
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Words today</span>
+            <Badge
+              variant="outline"
+              className="border-border/60 text-[10px] uppercase tracking-wide text-muted-foreground"
+            >
+              Unlimited
+            </Badge>
+          </div>
+        </DashboardPanelContent>
+      </DashboardPanel>
+    );
+  }
+
+  const used = usage.budget - usage.remaining;
+  const pct = Math.min(100, (used / usage.budget) * 100);
+  const isHigh = pct > 80;
+
+  return (
+    <DashboardPanel className="gap-3 py-4">
+      <DashboardPanelContent className="space-y-2 px-4 py-0">
+        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <Gauge className="size-3.5" />
+          Plan usage
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Words today</span>
+            <span className={cn(isHigh && 'text-destructive font-medium')}>
+              {used.toLocaleString()}/{usage.budget.toLocaleString()}
+            </span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-muted">
+            <div
+              className={cn(
+                'h-full rounded-full transition-all',
+                isHigh ? 'bg-destructive' : 'bg-primary',
+              )}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+        <Button variant="outline" size="sm" className="w-full">
+          Upgrade
+        </Button>
+      </DashboardPanelContent>
+    </DashboardPanel>
   );
 }
 
