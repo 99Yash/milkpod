@@ -29,6 +29,9 @@ const streamdownComponents: Components = {
   a: ({ href, children, node: _, ...rest }) => {
     if (typeof href === 'string' && href.startsWith('#t=')) {
       const seconds = Number(href.slice(3));
+      if (!Number.isFinite(seconds) || seconds < 0) {
+        return <a href={href} {...rest}>{children}</a>;
+      }
       return <TimestampLink seconds={seconds}>{children}</TimestampLink>;
     }
     return <a href={href} {...rest}>{children}</a>;

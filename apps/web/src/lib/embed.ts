@@ -46,7 +46,7 @@ function detectExternalEmbed(
 
   const sec = Math.floor(seconds);
 
-  if (hostname.includes('vimeo.com')) {
+  if (hostname === 'vimeo.com' || hostname.endsWith('.vimeo.com')) {
     const id = sourceId ?? pathname.split('/').filter(Boolean).pop();
     if (id) {
       return {
@@ -56,7 +56,7 @@ function detectExternalEmbed(
     }
   }
 
-  if (hostname.includes('dailymotion.com') || hostname.includes('dai.ly')) {
+  if (hostname === 'dailymotion.com' || hostname.endsWith('.dailymotion.com') || hostname === 'dai.ly') {
     const id = sourceId ?? pathname.split('/').filter(Boolean).pop();
     if (id) {
       return {
@@ -66,17 +66,30 @@ function detectExternalEmbed(
     }
   }
 
-  if (hostname.includes('twitch.tv')) {
+  if (hostname === 'twitch.tv' || hostname.endsWith('.twitch.tv')) {
     const id = sourceId ?? pathname.split('/').filter(Boolean).pop();
     if (id) {
       const h = Math.floor(sec / 3600);
       const m = Math.floor((sec % 3600) / 60);
       const s = sec % 60;
-      return {
-        type: 'embed',
-        url: `https://player.twitch.tv/?video=${encodeURIComponent(id)}&time=${h}h${m}m${s}s&parent=${window.location.hostname}`,
-      };
+      const parent =
+        typeof window !== 'undefined' && window.location
+          ? window.location.hostname
+          : null;
+      if (parent) {
+        return {
+          type: 'embed',
+          url: `https://player.twitch.tv/?video=${encodeURIComponent(id)}&time=${h}h${m}m${s}s&parent=${encodeURIComponent(parent)}`,
+        };
+      }
     }
+  }
+
+  try {
+    const scheme = new URL(sourceUrl).protocol;
+    if (scheme !== 'http:' && scheme !== 'https:') return null;
+  } catch {
+    return null;
   }
 
   return { type: 'link', url: sourceUrl };
