@@ -38,6 +38,7 @@ function detectExternalEmbed(
   let pathname: string;
   try {
     const parsed = new URL(sourceUrl);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
     hostname = parsed.hostname;
     pathname = parsed.pathname;
   } catch {
@@ -83,13 +84,6 @@ function detectExternalEmbed(
         };
       }
     }
-  }
-
-  try {
-    const scheme = new URL(sourceUrl).protocol;
-    if (scheme !== 'http:' && scheme !== 'https:') return null;
-  } catch {
-    return null;
   }
 
   return { type: 'link', url: sourceUrl };
