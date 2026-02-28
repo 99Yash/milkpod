@@ -174,7 +174,7 @@ export function AskAiPanel({
       : undefined;
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border/40">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/40 md:flex-row">
       <ThreadSidebar
         threads={threads}
         activeThreadId={activeThreadId}
