@@ -60,6 +60,7 @@ pnpm db:migrate       # Run migrations
 - Shared logic belongs in `packages/*`, consumed via `@milkpod/*` imports
 - Avoid deep relative imports across packages
 - Environment files: `apps/server/.env` and `apps/web/.env`
+- **Guard browser-only APIs in code that runs during SSR.** Next.js App Router server-renders `'use client'` components. Any access to `localStorage`, `window`, `document`, `navigator`, etc. must be behind a `typeof window !== 'undefined'` check or deferred to a `useEffect`. `useState` initializers run on the server too — never call browser APIs from them without a guard.
 
 ## Tree-Shaking & Package Boundaries
 
