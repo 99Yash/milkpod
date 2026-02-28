@@ -16,5 +16,5 @@ export const HARD_WORD_CAP = 1500;
 export const DAILY_WORD_BUDGET = 2000;
 
 export function wordLimitToMaxTokens(wordLimit: number): number {
-  return Math.ceil(wordLimit * 1.5);
+  return Math.ceil(wordLimit * 1.3);
 }

@@ -77,7 +77,7 @@ export function buildSystemPrompt(context: SystemPromptContext = {}): string {
       : HARD_WORD_CAP;
 
   parts.push(
-    `<response_length>Keep your response under ${effectiveLimit} words. Be concise and prioritize the most important information.</response_length>`
+    `<response_length>Your response MUST be under ${effectiveLimit} words. This is a strict limit — do not exceed it. If the limit is low, give a brief, direct answer with only the most essential information.</response_length>`
   );
 
   return parts.join('\n\n');
