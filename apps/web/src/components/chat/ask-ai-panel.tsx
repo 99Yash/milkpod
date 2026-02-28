@@ -9,7 +9,6 @@ import {
   type ThreadListItem,
 } from './thread-sidebar';
 import {
-  createThread,
   deleteThread,
   updateThread,
   regenerateThreadTitle,
@@ -20,6 +19,8 @@ import {
   setLocalStorageItem,
 } from '~/lib/utils';
 import type { InitialThread } from './chat-panel';
+
+const DRAFT_PREFIX = '__draft_';
 
 interface AskAiPanelProps {
   assetId: string;
@@ -36,11 +37,6 @@ export function AskAiPanel({
     useState<ThreadListItem[]>(initialThreads);
   const [threadParam, setThreadParam] = useQueryState('thread');
 
-  // Derive the active thread from URL param, falling back to SSR data or first thread
-  const activeThreadId = threadParam
-    ?? (initialThread?.status === 'loaded' ? initialThread.threadId : undefined)
-    ?? threads[0]?.id;
-
   // Track the thread ID driving the ChatPanel separately so that
   // auto-created threads (from sending the first message) don't
   // remount the panel and kill the in-progress stream.
@@ -51,10 +47,25 @@ export function AskAiPanel({
       return threads[0]?.id;
     },
   );
-  const [sidebarOpen, setSidebarOpen] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return getLocalStorageItem('THREAD_SIDEBAR_OPEN', true) ?? true;
-  });
+
+  const isDraft = panelThreadId != null && panelThreadId.startsWith(DRAFT_PREFIX);
+  // A draft is "pending" until the backend creates the real thread and updates the URL
+  const isDraftPending = isDraft && !threadParam;
+
+  // Derive the active thread from URL param, falling back to SSR data or first thread.
+  // During a pending draft, nothing is highlighted in the sidebar.
+  const activeThreadId = isDraftPending
+    ? undefined
+    : (threadParam
+      ?? (initialThread?.status === 'loaded' ? initialThread.threadId : undefined)
+      ?? threads[0]?.id);
+
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    const stored = getLocalStorageItem('THREAD_SIDEBAR_OPEN', true);
+    if (stored != null) setSidebarOpen(stored);
+  }, []);
 
   // Sync URL when a thread is active but not yet in the URL
   useEffect(() => {
@@ -66,6 +77,7 @@ export function AskAiPanel({
   const chatThreadIdRef = useRef<string | undefined>(activeThreadId);
   const threadsRef = useRef(threads);
   threadsRef.current = threads;
+  const draftCounterRef = useRef(0);
 
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((prev) => {
@@ -80,16 +92,11 @@ export function AskAiPanel({
     setPanelThreadId(threadId);
   }, [setThreadParam]);
 
-  const handleNewThread = useCallback(async () => {
-    const thread = await createThread({ assetId });
-    if (!thread) {
-      toast.error('Failed to create thread');
-      return;
-    }
-    setThreads((prev) => [thread, ...prev]);
-    setThreadParam(thread.id);
-    setPanelThreadId(thread.id);
-  }, [assetId, setThreadParam]);
+  const handleNewThread = useCallback(() => {
+    draftCounterRef.current += 1;
+    setPanelThreadId(`${DRAFT_PREFIX}${draftCounterRef.current}`);
+    setThreadParam(null);
+  }, [setThreadParam]);
 
   const handleDeleteThread = useCallback(
     async (threadId: string) => {
@@ -156,13 +163,18 @@ export function AskAiPanel({
     [assetId, setThreadParam],
   );
 
-  const activeInitialThread: InitialThread | undefined =
-    panelThreadId && initialThread?.status === 'loaded' && initialThread.threadId === panelThreadId
+  // For draft threads, pass undefined threadId so the backend auto-creates on first message.
+  // Pass { status: 'empty' } to prevent useRestoredThread from fetching.
+  const chatThreadId = isDraft ? undefined : panelThreadId;
+
+  const activeInitialThread: InitialThread | undefined = isDraft
+    ? { status: 'empty' as const }
+    : panelThreadId && initialThread?.status === 'loaded' && initialThread.threadId === panelThreadId
       ? initialThread
       : undefined;
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border/40">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/40 md:flex-row">
       <ThreadSidebar
         threads={threads}
         activeThreadId={activeThreadId}
@@ -177,7 +189,7 @@ export function AskAiPanel({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <ChatPanel
           key={panelThreadId ?? '__empty__'}
-          threadId={panelThreadId}
+          threadId={chatThreadId}
           assetId={assetId}
           initialThread={activeInitialThread}
           onThreadIdChange={handleThreadIdChange}

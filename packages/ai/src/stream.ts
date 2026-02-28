@@ -6,13 +6,32 @@ import {
   RetryError,
   generateId,
 } from 'ai';
+import type { LanguageModel } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import { google } from '@ai-sdk/google';
 import type { MilkpodMessage } from './types';
-import { chatModel } from './provider';
 import { createQAToolSet } from './tools';
 import { buildSystemPrompt } from './system-prompt';
 import { chatMetadataSchema } from './schemas';
 import { AIError } from './errors';
 import { checkInput, createRefusalResponse } from './guardrails';
+import { DEFAULT_MODEL_ID, modelIdSchema, type ModelId } from './models';
+import { HARD_WORD_CAP, wordLimitToMaxTokens } from './limits';
+
+function resolveModel(id: ModelId): LanguageModel {
+  const sep = id.indexOf(':');
+  const provider = id.slice(0, sep);
+  const model = id.slice(sep + 1);
+
+  switch (provider) {
+    case 'openai':
+      return openai(model);
+    case 'google':
+      return google(model);
+    default:
+      throw new Error(`Unknown provider: ${provider}`);
+  }
+}
 
 type MessagePart = MilkpodMessage['parts'][number];
 
@@ -21,7 +40,9 @@ export interface ChatRequest {
   threadId?: string;
   assetId?: string;
   collectionId?: string;
-  onFinish?: (params: { responseMessage: MilkpodMessage }) => Promise<void>;
+  modelId?: ModelId;
+  wordLimit?: number | null;
+  onFinish?: (params: { responseMessage: MilkpodMessage; wordCount: number }) => Promise<void>;
   headers?: Record<string, string>;
 }
 
@@ -98,22 +119,31 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
 
   const modelMessages = await convertToModelMessages(validatedMessages);
   const startTime = Date.now();
+  const parsedModelId = modelIdSchema.parse(req.modelId ?? DEFAULT_MODEL_ID);
+  const model = resolveModel(parsedModelId);
+  const effectiveWordLimit =
+    req.wordLimit != null
+      ? Math.max(1, Math.min(req.wordLimit, HARD_WORD_CAP))
+      : HARD_WORD_CAP;
 
   const result = streamText({
-    model: chatModel,
+    model,
     system: buildSystemPrompt({
       assetId: req.assetId,
       collectionId: req.collectionId,
+      wordLimit: effectiveWordLimit,
     }),
     messages: modelMessages,
     tools,
+    maxOutputTokens: wordLimitToMaxTokens(effectiveWordLimit),
     stopWhen: [stepCountIs(5)],
     onError: (error) => {
       console.error('[AI Stream Error]', error);
     },
-    onFinish: async ({ steps }) => {
+    onFinish: async ({ steps, text }) => {
       if (!req.onFinish) return;
-      await req.onFinish({ responseMessage: buildResponseMessage(steps) });
+      const wordCount = text.split(/\s+/).filter(Boolean).length;
+      await req.onFinish({ responseMessage: buildResponseMessage(steps), wordCount });
     },
   });
 
