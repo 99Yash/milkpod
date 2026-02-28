@@ -16,7 +16,7 @@ export namespace ChatModel {
     assetId: t.Optional(t.String()),
     collectionId: t.Optional(t.String()),
     modelId: t.Optional(t.Union(modelIdLiterals)),
-    wordLimit: t.Optional(t.Union([t.Number(), t.Null()])),
+    wordLimit: t.Optional(t.Union([t.Number({ minimum: 1 }), t.Null()])),
   });
   export type Send = typeof send.static;
 }

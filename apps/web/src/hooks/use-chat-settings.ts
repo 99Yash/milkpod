@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { DEFAULT_MODEL_ID, type ModelId } from '@milkpod/ai/models';
+import { DEFAULT_WORD_LIMIT } from '@milkpod/ai/limits';
 import { getLocalStorageItem, setLocalStorageItem } from '~/lib/utils';
 
 export function useChatSettings() {
@@ -10,7 +11,7 @@ export function useChatSettings() {
   );
 
   const [wordLimit, setWordLimitState] = useState<number | null>(
-    () => getLocalStorageItem('CHAT_WORD_LIMIT', 250) ?? 250,
+    () => getLocalStorageItem('CHAT_WORD_LIMIT', DEFAULT_WORD_LIMIT) ?? DEFAULT_WORD_LIMIT,
   );
 
   const setModelId = useCallback((id: ModelId) => {

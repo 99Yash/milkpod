@@ -1,5 +1,5 @@
 import { Elysia, status, t } from 'elysia';
-import { createChatStream, generateThreadTitle } from '@milkpod/ai';
+import { createChatStream, generateThreadTitle, HARD_WORD_CAP } from '@milkpod/ai';
 import { authMacro } from '../../middleware/auth';
 import { ChatModel } from './model';
 import { ChatService } from './service';
@@ -15,11 +15,14 @@ export const chat = new Elysia({ prefix: '/api/chat' })
     async ({ body, user }) => {
       const userId = user.id;
 
-      // Check daily word quota
+      // Check daily word quota and cap the response to remaining budget
       const remaining = await UsageService.getRemainingWords(userId);
       if (remaining <= 0) {
         return status(429, { message: 'Daily word limit reached. Resets at midnight UTC.' });
       }
+
+      const requestedLimit = body.wordLimit ?? HARD_WORD_CAP;
+      const cappedWordLimit = Math.min(requestedLimit, remaining);
 
       // Verify ownership of referenced resources
       if (body.threadId) {
@@ -86,7 +89,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         assetId: body.assetId,
         collectionId: body.collectionId,
         modelId: body.modelId,
-        wordLimit: body.wordLimit,
+        wordLimit: cappedWordLimit,
         headers: { 'X-Thread-Id': threadId },
         onFinish: async ({ responseMessage, wordCount }) => {
           try {
@@ -102,8 +105,11 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         },
       });
 
-      const wordsRemaining = await UsageService.getRemainingWords(userId);
-      response.headers.set('X-Words-Remaining', String(wordsRemaining));
+      // Set pre-response remaining as a best-effort hint. The client
+      // should call /api/usage/remaining after the stream ends for the
+      // accurate post-response value (headers can't be mutated once
+      // streaming starts).
+      response.headers.set('X-Words-Remaining', String(Math.max(0, remaining - cappedWordLimit)));
 
       return response;
     },
