@@ -96,6 +96,10 @@ packages/
 - Shared logic belongs in `packages/*` and should be consumed via `@milkpod/*`.
 - Avoid deep relative imports across packages.
 
+### SSR safety
+
+- **Guard browser-only APIs in code that runs during SSR.** Next.js App Router server-renders `'use client'` components. Any access to `localStorage`, `window`, `document`, `navigator`, etc. must be behind a `typeof window !== 'undefined'` check or deferred to a `useEffect`. `useState` initializers run on the server too — never call browser APIs from them without a guard.
+
 ## Tree-Shaking & package boundaries
 
 `@milkpod/ai` includes server-only dependencies (`@ai-sdk/openai`, `@ai-sdk/google`, `drizzle-orm`, `@milkpod/db`). Importing from the barrel (`@milkpod/ai`) in `apps/web` can pull Node.js modules (`pg` → `dns`) into the Next.js client bundle and break the build.

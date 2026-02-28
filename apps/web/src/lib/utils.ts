@@ -132,6 +132,7 @@ export function getLocalStorageItem<K extends LocalStorageKey>(
   defaultValue?: LocalStorageValue<K>,
 ): LocalStorageValue<K> | undefined {
   type V = LocalStorageValue<K>;
+  if (typeof window === 'undefined') return defaultValue;
   const schema = LOCAL_STORAGE_SCHEMAS[key];
   const serializedValue = localStorage.getItem(key);
 
