@@ -32,6 +32,9 @@ export type {
 } from './types';
 export { isToolOutput } from './types';
 
+// Title generation
+export { generateThreadTitle } from './title';
+
 // Streaming
 export { createChatStream } from './stream';
 export type { ChatRequest } from './stream';

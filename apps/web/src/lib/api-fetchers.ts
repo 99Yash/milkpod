@@ -155,6 +155,25 @@ export async function createThread(body: {
   return data as unknown as { id: string; title: string | null; createdAt: string };
 }
 
+export async function updateThread(
+  threadId: string,
+  body: { title?: string }
+): Promise<{ id: string; title: string | null; createdAt: string } | null> {
+  const { data, error } = await api.api.threads({ id: threadId }).patch(body);
+  if (error || !data) return null;
+  return data as unknown as { id: string; title: string | null; createdAt: string };
+}
+
+export async function regenerateThreadTitle(
+  threadId: string
+): Promise<{ id: string; title: string | null; createdAt: string } | null> {
+  const { data, error } = await api.api
+    .threads({ id: threadId })['generate-title']
+    .post();
+  if (error || !data) return null;
+  return data as unknown as { id: string; title: string | null; createdAt: string };
+}
+
 export async function deleteThread(
   threadId: string
 ): Promise<boolean> {

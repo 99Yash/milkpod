@@ -1,5 +1,5 @@
 import { Elysia, status, t } from 'elysia';
-import { createChatStream } from '@milkpod/ai';
+import { createChatStream, generateThreadTitle } from '@milkpod/ai';
 import { authMacro } from '../../middleware/auth';
 import { ChatModel } from './model';
 import { ChatService } from './service';
@@ -56,7 +56,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       if (lastMessage && lastMessage.role === 'user') {
         await ChatService.saveMessages(threadId, [lastMessage]);
 
-        // Auto-title untitled threads from the first user message
+        // Auto-title untitled threads using AI (fire-and-forget)
         const needsTitle = isNewThread
           || !(await ThreadService.getById(threadId, userId))?.title;
         if (needsTitle) {
@@ -64,11 +64,11 @@ export const chat = new Elysia({ prefix: '/api/chat' })
             (p) => p.type === 'text',
           );
           if (textPart && 'text' in textPart && typeof textPart.text === 'string') {
-            const title =
-              textPart.text.length > 80
-                ? textPart.text.slice(0, 77) + '...'
-                : textPart.text;
-            await ThreadService.update(threadId, userId, { title });
+            generateThreadTitle(textPart.text)
+              .then((title) => ThreadService.update(threadId, userId, { title }))
+              .catch((err) =>
+                console.error(`[chat] Failed to generate title for thread ${threadId}:`, err),
+              );
           }
         }
       }

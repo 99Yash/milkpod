@@ -10,6 +10,8 @@ import {
 import {
   createThread,
   deleteThread,
+  updateThread,
+  regenerateThreadTitle,
   fetchThreadsForAsset,
 } from '~/lib/api-fetchers';
 import {
@@ -97,6 +99,34 @@ export function AskAiPanel({
     [],
   );
 
+  const handleRenameThread = useCallback(
+    async (threadId: string, title: string) => {
+      const updated = await updateThread(threadId, { title });
+      if (!updated) {
+        toast.error('Failed to rename thread');
+        return;
+      }
+      setThreads((prev) =>
+        prev.map((t) => (t.id === threadId ? { ...t, title: updated.title } : t)),
+      );
+    },
+    [],
+  );
+
+  const handleRegenerateTitle = useCallback(
+    async (threadId: string) => {
+      const updated = await regenerateThreadTitle(threadId);
+      if (!updated) {
+        toast.error('Failed to generate title');
+        return;
+      }
+      setThreads((prev) =>
+        prev.map((t) => (t.id === threadId ? { ...t, title: updated.title } : t)),
+      );
+    },
+    [],
+  );
+
   const handleThreadIdChange = useCallback(
     (newThreadId: string | undefined) => {
       if (
@@ -133,6 +163,8 @@ export function AskAiPanel({
         onSelectThread={handleSelectThread}
         onNewThread={handleNewThread}
         onDeleteThread={handleDeleteThread}
+        onRenameThread={handleRenameThread}
+        onRegenerateTitle={handleRegenerateTitle}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <ChatPanel
