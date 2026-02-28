@@ -21,7 +21,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         return status(429, { message: 'Daily word limit reached. Resets at midnight UTC.' });
       }
 
-      const requestedLimit = body.wordLimit ?? HARD_WORD_CAP;
+      const requestedLimit = Math.min(body.wordLimit ?? HARD_WORD_CAP, HARD_WORD_CAP);
       const cappedWordLimit = Math.min(requestedLimit, remaining);
 
       // Verify ownership of referenced resources
