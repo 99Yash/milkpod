@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "catalog:",
+    "@ai-sdk/google": "catalog:",
     "@milkpod/db": "workspace:*",
     "ai": "catalog:",
     "drizzle-orm": "^0.44.2",

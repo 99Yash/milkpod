@@ -14,4 +14,5 @@ catalog:
   tsdown: ^0.15.5
   ai: ^6.0.0
   "@ai-sdk/openai": ^3.0.0
+  "@ai-sdk/google": ^3.0.0
   "@ai-sdk/react": ^3.0.0

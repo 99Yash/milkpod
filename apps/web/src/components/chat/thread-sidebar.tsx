@@ -1,15 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
+  Ellipsis,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Plus,
+  RefreshCw,
   Trash2,
 } from 'lucide-react';
 import { Button } from '~/components/ui/button';
-import { ScrollArea } from '~/components/ui/scroll-area';
 import {
   Sheet,
   SheetContent,
@@ -17,6 +19,13 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '~/components/ui/sheet';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +35,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '~/components/ui/alert-dialog';
 import { cn } from '~/lib/utils';
 import { formatRelativeDate } from '~/lib/format';
@@ -45,17 +53,28 @@ interface ThreadSidebarProps {
   onSelectThread: (threadId: string) => void;
   onNewThread: () => void;
   onDeleteThread: (threadId: string) => void;
+  onRenameThread: (threadId: string, title: string) => void;
+  onRegenerateTitle: (threadId: string) => void;
 }
+
+type ThreadListProps = Pick<
+  ThreadSidebarProps,
+  | 'threads'
+  | 'activeThreadId'
+  | 'onSelectThread'
+  | 'onDeleteThread'
+  | 'onRenameThread'
+  | 'onRegenerateTitle'
+>;
 
 function ThreadList({
   threads,
   activeThreadId,
   onSelectThread,
   onDeleteThread,
-}: Pick<
-  ThreadSidebarProps,
-  'threads' | 'activeThreadId' | 'onSelectThread' | 'onDeleteThread'
->) {
+  onRenameThread,
+  onRegenerateTitle,
+}: ThreadListProps) {
   if (threads.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
@@ -74,6 +93,8 @@ function ThreadList({
           isActive={thread.id === activeThreadId}
           onSelect={() => onSelectThread(thread.id)}
           onDelete={() => onDeleteThread(thread.id)}
+          onRename={(title) => onRenameThread(thread.id, title)}
+          onRegenerateTitle={() => onRegenerateTitle(thread.id)}
         />
       ))}
     </div>
@@ -85,48 +106,153 @@ function ThreadItem({
   isActive,
   onSelect,
   onDelete,
+  onRename,
+  onRegenerateTitle,
 }: {
   thread: ThreadListItem;
   isActive: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  onRename: (title: string) => void;
+  onRegenerateTitle: () => void;
 }) {
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
-      className={cn(
-        'group relative flex w-full flex-col gap-0.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
-        isActive
-          ? 'bg-accent text-accent-foreground'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-      )}
-    >
-      <span className="truncate pr-6 text-xs font-medium">
-        {thread.title || 'New conversation'}
-      </span>
-      <span className="text-[10px] text-muted-foreground">
-        {formatRelativeDate(thread.createdAt)}
-      </span>
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <button
-            type="button"
-            aria-label="Delete conversation"
-            onClick={(e) => e.stopPropagation()}
-            className="absolute top-1.5 right-1.5 rounded-sm p-0.5 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-          >
-            <Trash2 className="size-3" />
-          </button>
-        </AlertDialogTrigger>
+  useEffect(() => {
+    if (isEditing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [isEditing]);
+
+  const startEditing = useCallback(() => {
+    setEditValue(thread.title || '');
+    setIsEditing(true);
+  }, [thread.title]);
+
+  const commitRename = useCallback(() => {
+    const trimmed = editValue.trim();
+    setIsEditing(false);
+    if (trimmed && trimmed !== thread.title) {
+      onRename(trimmed);
+    }
+  }, [editValue, thread.title, onRename]);
+
+  const handleRegenerate = useCallback(async () => {
+    setIsRegenerating(true);
+    try {
+      await onRegenerateTitle();
+    } finally {
+      setIsRegenerating(false);
+    }
+  }, [onRegenerateTitle]);
+
+  if (isEditing) {
+    return (
+      <div
+        className={cn(
+          'flex w-full flex-col gap-0.5 rounded-md px-2.5 py-2',
+          isActive ? 'bg-accent' : 'bg-muted',
+        )}
+      >
+        <input
+          ref={inputRef}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitRename();
+            if (e.key === 'Escape') setIsEditing(false);
+          }}
+          className="w-full bg-transparent text-xs font-medium outline-none placeholder:text-muted-foreground"
+          placeholder="Thread title..."
+        />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onSelect}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect();
+          }
+        }}
+        className={cn(
+          'group relative flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
+          isActive
+            ? 'bg-accent text-accent-foreground'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+        )}
+      >
+        <div className="flex w-full min-w-0 items-center">
+          <span className="min-w-0 flex-1 truncate text-xs font-medium">
+            {isRegenerating ? 'Generating title...' : (thread.title || 'New conversation')}
+          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Thread options"
+                onClick={(e) => e.stopPropagation()}
+                className={cn(
+                  'ml-1 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground',
+                  isActive
+                    ? 'opacity-100'
+                    : 'opacity-0 group-hover:opacity-100',
+                )}
+              >
+                <Ellipsis className="size-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  startEditing();
+                }}
+              >
+                <Pencil className="mr-2 size-3.5" />
+                Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRegenerate();
+                }}
+              >
+                <RefreshCw className="mr-2 size-3.5" />
+                Regenerate title
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDeleteDialog(true);
+                }}
+              >
+                <Trash2 className="mr-2 size-3.5" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <span className="text-[10px] text-muted-foreground">
+          {formatRelativeDate(thread.createdAt)}
+        </span>
+      </div>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete conversation?</AlertDialogTitle>
@@ -137,18 +263,11 @@ function ThreadItem({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-            >
-              Delete
-            </AlertDialogAction>
+            <AlertDialogAction onClick={onDelete}>Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }
 
@@ -160,6 +279,8 @@ export function ThreadSidebar({
   onSelectThread,
   onNewThread,
   onDeleteThread,
+  onRenameThread,
+  onRegenerateTitle,
 }: ThreadSidebarProps) {
   return (
     <>
@@ -190,14 +311,16 @@ export function ThreadSidebar({
                 </Button>
               </div>
             </div>
-            <ScrollArea className="min-h-0 flex-1">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               <ThreadList
                 threads={threads}
                 activeThreadId={activeThreadId}
                 onSelectThread={onSelectThread}
                 onDeleteThread={onDeleteThread}
+                onRenameThread={onRenameThread}
+                onRegenerateTitle={onRegenerateTitle}
               />
-            </ScrollArea>
+            </div>
           </div>
         ) : (
           <div className="flex w-10 shrink-0 flex-col items-center gap-1 border-r border-border/40 py-2">
@@ -228,6 +351,8 @@ export function ThreadSidebar({
         onSelectThread={onSelectThread}
         onNewThread={onNewThread}
         onDeleteThread={onDeleteThread}
+        onRenameThread={onRenameThread}
+        onRegenerateTitle={onRegenerateTitle}
       />
     </>
   );
@@ -239,6 +364,8 @@ function MobileThreadSheet({
   onSelectThread,
   onNewThread,
   onDeleteThread,
+  onRenameThread,
+  onRegenerateTitle,
 }: Omit<ThreadSidebarProps, 'isOpen' | 'onToggle'>) {
   const [open, setOpen] = useState(false);
 
@@ -266,7 +393,7 @@ function MobileThreadSheet({
               </Button>
             </div>
           </SheetHeader>
-          <ScrollArea className="min-h-0 flex-1">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             <ThreadList
               threads={threads}
               activeThreadId={activeThreadId}
@@ -275,8 +402,10 @@ function MobileThreadSheet({
                 setOpen(false);
               }}
               onDeleteThread={onDeleteThread}
+              onRenameThread={onRenameThread}
+              onRegenerateTitle={onRegenerateTitle}
             />
-          </ScrollArea>
+          </div>
         </SheetContent>
       </Sheet>
     </div>
