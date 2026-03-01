@@ -53,25 +53,32 @@ export const app = new Elysia({ name: 'api' })
       const env = serverEnv();
       const { provider, callbackURL } = query;
 
-      const internalRes = await auth().handler(
-        new Request(new URL('/api/auth/sign-in/social', env.BETTER_AUTH_URL), {
+      // Make a real HTTP request to the auth endpoint so it goes through the
+      // full Elysia lifecycle (CORS, mount, etc.) instead of calling the
+      // handler directly which can hang in the Node adapter.
+      const res = await fetch(
+        `${env.BETTER_AUTH_URL}/api/auth/sign-in/social`,
+        {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: env.CORS_ORIGIN,
+          },
           body: JSON.stringify({ provider, callbackURL }),
-        }),
+        },
       );
 
-      const data = (await internalRes.json()) as {
+      const data = (await res.json()) as {
         url?: string;
         redirect?: boolean;
       };
       if (data.url && data.redirect) {
-        // Forward the state cookie(s) from Better Auth's response
-        const cookies = internalRes.headers.getSetCookie();
+        const cookies = res.headers.getSetCookie();
         if (cookies.length > 0) {
           set.headers['set-cookie'] = cookies.join(', ');
         }
-        set.redirect = data.url;
+        set.status = 302;
+        set.headers['Location'] = data.url;
         return;
       }
 
