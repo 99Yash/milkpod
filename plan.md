@@ -61,15 +61,15 @@ Ordered task list. Work through them in order. Each task references findings in 
 - ~~Add body size limit to the Elysia server config. Check Elysia docs for the right API — likely a plugin or server option~~
 - ~~Set a reasonable limit (e.g. 2MB for regular endpoints, 10MB for ingest if file uploads are planned)~~
 
-### Task 6: Fix word quota race condition
+### ~~Task 6: Fix word quota race condition~~ ✅
 
 **Refs**: SEC-2
 **Files**: `packages/api/src/modules/usage/service.ts`, `packages/api/src/modules/chat/index.ts`
 **What**:
 
-- In `reserveWords()`, use a serializable transaction or advisory lock to prevent concurrent reservations for the same user
-- Alternative: use a single atomic SQL statement that checks AND decrements in one step (CTE with `WHERE words_used + $amount <= daily_limit`)
-- Add row locking to `releaseWords()` to match `reserveWords()` behavior (DB-9)
+- ~~In `reserveWords()`, use a serializable transaction or advisory lock to prevent concurrent reservations for the same user~~
+- ~~Alternative: use a single atomic SQL statement that checks AND decrements in one step (CTE with `WHERE words_used + $amount <= daily_limit`)~~
+- ~~Add row locking to `releaseWords()` to match `reserveWords()` behavior (DB-9)~~
 
 ---
 
