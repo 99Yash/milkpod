@@ -1,6 +1,5 @@
 import { db } from '@milkpod/db';
 import { dailyUsage } from '@milkpod/db/schemas';
-import { createId } from '@milkpod/db/helpers';
 import { and, eq, sql } from 'drizzle-orm';
 import { DAILY_WORD_BUDGET } from '@milkpod/ai';
 import { serverEnv } from '@milkpod/env/server';
@@ -29,57 +28,69 @@ export abstract class UsageService {
   }
 
   /**
-   * Atomically reserve words for a request. Returns the number of words
-   * actually reserved (may be less than requested if near the cap).
-   * Returns 0 when the budget is exhausted — callers should reject the request.
+   * Atomically reserve words for a request. Uses a per-user advisory lock
+   * to serialize concurrent reservations — prevents the race condition where
+   * parallel requests both pass the budget check before either is counted.
+   * Returns the number of words actually reserved (may be less than requested
+   * if near the cap). Returns 0 when the budget is exhausted.
    */
   static async reserveWords(userId: string, wordCount: number): Promise<number> {
     const today = todayUTC();
     const toReserve = Math.max(0, wordCount);
     if (toReserve === 0) return 0;
 
-    // CTE snapshots the old words_used before the upsert so we can compute
-    // the exact delta. RETURNING only sees the post-update row, so without
-    // this the LEAST() clamp makes `newTotal - toReserve` unreliable
-    // (e.g. prev=1990, reserve=50, budget=2000 → new=2000, naive prev=1950).
-    const id = createId('usg');
-    const result = await db().execute(sql`
-      WITH prev AS (
-        SELECT words_used AS old_used
-        FROM daily_usage
-        WHERE user_id = ${userId}
-          AND usage_date = ${today}
-        FOR UPDATE
-      ),
-      upserted AS (
-        INSERT INTO daily_usage (id, user_id, usage_date, words_used, created_at, updated_at)
-        VALUES (${id}, ${userId}, ${today}, LEAST(${toReserve}, ${DAILY_WORD_BUDGET}), NOW(), NOW())
-        ON CONFLICT (user_id, usage_date) DO UPDATE
-        SET words_used = LEAST(daily_usage.words_used + ${toReserve}, ${DAILY_WORD_BUDGET}),
-            updated_at = NOW()
-        RETURNING words_used
-      )
-      SELECT upserted.words_used - COALESCE((SELECT old_used FROM prev), 0) AS words_added
-      FROM upserted
-    `);
+    return await db().transaction(async (tx) => {
+      // Advisory lock serializes all usage operations for this user.
+      // Prevents concurrent requests from double-spending the quota.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`usage:${userId}`}))`);
 
-    const row = result.rows[0] as { words_added: number } | undefined;
-    return Math.max(0, row?.words_added ?? 0);
+      const [row] = await tx
+        .select({ wordsUsed: dailyUsage.wordsUsed })
+        .from(dailyUsage)
+        .where(and(eq(dailyUsage.userId, userId), eq(dailyUsage.usageDate, today)));
+
+      const currentUsed = row?.wordsUsed ?? 0;
+      const available = Math.max(0, DAILY_WORD_BUDGET - currentUsed);
+      const toAdd = Math.min(toReserve, available);
+
+      if (toAdd <= 0) return 0;
+
+      if (row) {
+        await tx
+          .update(dailyUsage)
+          .set({ wordsUsed: currentUsed + toAdd })
+          .where(and(eq(dailyUsage.userId, userId), eq(dailyUsage.usageDate, today)));
+      } else {
+        await tx.insert(dailyUsage).values({
+          userId,
+          usageDate: today,
+          wordsUsed: toAdd,
+        });
+      }
+
+      return toAdd;
+    });
   }
 
   /**
    * Release unused reserved words back to the budget.
    * Called after streaming when actual usage < reserved amount.
+   * Uses the same advisory lock as reserveWords to prevent interleaving.
    */
   static async releaseWords(userId: string, wordCount: number): Promise<void> {
     if (wordCount <= 0) return;
     const today = todayUTC();
-    await db().execute(sql`
-      UPDATE daily_usage
-      SET words_used = GREATEST(words_used - ${wordCount}, 0),
-          updated_at = NOW()
-      WHERE user_id = ${userId}
-        AND usage_date = ${today}
-    `);
+
+    await db().transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`usage:${userId}`}))`);
+
+      await tx.execute(sql`
+        UPDATE daily_usage
+        SET words_used = GREATEST(words_used - ${wordCount}, 0),
+            updated_at = NOW()
+        WHERE user_id = ${userId}
+          AND usage_date = ${today}
+      `);
+    });
   }
 }

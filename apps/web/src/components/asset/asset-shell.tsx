@@ -47,6 +47,16 @@ export function AssetShell({ assetId, initialAsset, children }: AssetShellProps)
   const [asset, setAsset] = useState<AssetWithTranscript>(initialAsset);
   const [progressMessage, setProgressMessage] = useState<string | undefined>();
 
+  const refreshAsset = useCallback(() => {
+    fetchAssetDetail(assetId)
+      .then((result) => {
+        if (result) setAsset(result);
+      })
+      .catch(() => {
+        // silent — polling failures are not actionable
+      });
+  }, [assetId]);
+
   useAssetEvents(
     useCallback(
       (event: AssetStatusEvent) => {
@@ -69,6 +79,7 @@ export function AssetShell({ assetId, initialAsset, children }: AssetShellProps)
       },
       [assetId],
     ),
+    { onPollFallback: refreshAsset }
   );
 
   const isReady = asset.status === 'ready';

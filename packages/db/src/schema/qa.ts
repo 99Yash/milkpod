@@ -60,16 +60,23 @@ export const qaMessageParts = pgTable(
   (t) => [index('qa_message_part_message_sort_idx').on(t.messageId, t.sortOrder)],
 );
 
-export const qaEvidence = pgTable('qa_evidence', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => createId('evd')),
-  messageId: text('message_id')
-    .notNull()
-    .references(() => qaMessages.id, { onDelete: 'cascade' }),
-  segmentId: text('segment_id')
-    .notNull()
-    .references(() => transcriptSegments.id, { onDelete: 'cascade' }),
-  relevanceScore: real('relevance_score'),
-  ...lifecycle_dates,
-});
+export const qaEvidence = pgTable(
+  'qa_evidence',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId('evd')),
+    messageId: text('message_id')
+      .notNull()
+      .references(() => qaMessages.id, { onDelete: 'cascade' }),
+    segmentId: text('segment_id')
+      .notNull()
+      .references(() => transcriptSegments.id, { onDelete: 'cascade' }),
+    relevanceScore: real('relevance_score'),
+    ...lifecycle_dates,
+  },
+  (t) => [
+    index('qa_evidence_message_id_idx').on(t.messageId),
+    index('qa_evidence_segment_id_idx').on(t.segmentId),
+  ],
+);

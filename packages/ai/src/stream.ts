@@ -139,6 +139,7 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
     tools,
     maxOutputTokens: wordLimitToMaxTokens(effectiveWordLimit),
     stopWhen: [stepCountIs(5)],
+    timeout: { totalMs: 120_000, chunkMs: 30_000 },
     onError: (error) => {
       console.error('[AI Stream Error]', error);
     },
@@ -164,12 +165,14 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
       };
     },
     onError: (error) =>
-      RetryError.isInstance(error)
-        ? 'Unable to complete the request. Please try again.'
-        : error instanceof AIError
-          ? error.message
-          : error instanceof Error
+      error instanceof Error && error.name === 'AbortError'
+        ? 'Response timed out. Please try again.'
+        : RetryError.isInstance(error)
+          ? 'Unable to complete the request. Please try again.'
+          : error instanceof AIError
             ? error.message
-            : 'An error occurred.',
+            : error instanceof Error
+              ? error.message
+              : 'An error occurred.',
   });
 }
