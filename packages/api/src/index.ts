@@ -1,8 +1,9 @@
 import { auth } from '@milkpod/auth';
 import { db } from '@milkpod/db';
 export { closeConnections } from '@milkpod/db';
+import { serverEnv } from '@milkpod/env/server';
 import { sql } from 'drizzle-orm';
-import { Elysia } from 'elysia';
+import { Elysia, t } from 'elysia';
 import { requestLogger } from './middleware/logger';
 import { rateLimiter } from './middleware/rate-limit';
 import { chat } from './modules/chat';
@@ -43,6 +44,47 @@ export const app = new Elysia({ name: 'api' })
 
     return { status: allOk ? 'ok' : 'error', checks };
   })
+  // Redirect-based social sign-in: browser navigates here directly (top-level
+  // navigation) so the state cookie is first-party. This avoids the cross-origin
+  // fetch cookie issue on Railway where frontend/backend are different sites.
+  .get(
+    '/auth/social-redirect',
+    async ({ query, set }) => {
+      const env = serverEnv();
+      const { provider, callbackURL } = query;
+
+      const internalRes = await auth().handler(
+        new Request(new URL('/api/auth/sign-in/social', env.BETTER_AUTH_URL), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider, callbackURL }),
+        }),
+      );
+
+      const data = (await internalRes.json()) as {
+        url?: string;
+        redirect?: boolean;
+      };
+      if (data.url && data.redirect) {
+        // Forward the state cookie(s) from Better Auth's response
+        const cookies = internalRes.headers.getSetCookie();
+        if (cookies.length > 0) {
+          set.headers['set-cookie'] = cookies.join(', ');
+        }
+        set.redirect = data.url;
+        return;
+      }
+
+      set.status = 500;
+      return { error: 'OAuth initiation failed' };
+    },
+    {
+      query: t.Object({
+        provider: t.String(),
+        callbackURL: t.String(),
+      }),
+    },
+  )
   .mount(auth().handler)
   .use(rateLimiter)
   .use(chat)

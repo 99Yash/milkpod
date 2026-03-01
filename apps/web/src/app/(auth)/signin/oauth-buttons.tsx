@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
 import { useLastAuthMethod } from '~/hooks/use-last-auth-method';
-import { authClient } from '~/lib/auth/client';
 import type { OAuthProviderId } from '~/lib/constants';
 import {
   getProviderById,
@@ -13,7 +12,7 @@ import {
   OAUTH_PROVIDERS,
   PROVIDER_AUTH_OPTIONS,
 } from '~/lib/constants';
-import { cn, getErrorMessage, setLocalStorageItem } from '~/lib/utils';
+import { cn, setLocalStorageItem } from '~/lib/utils';
 
 interface OAuthButtonProps {
   providerId: OAuthProviderId;
@@ -27,26 +26,23 @@ const OAuthButton: React.FC<OAuthButtonProps> = ({ providerId, className }) => {
   const provider = getProviderById(providerId);
   const authMethod = PROVIDER_AUTH_OPTIONS[providerId];
 
-  const handleOAuthSignIn = React.useCallback(async () => {
+  const handleOAuthSignIn = React.useCallback(() => {
     if (!provider) {
       toast.error('Provider not found');
       return;
     }
 
     setIsLoading(true);
-    try {
-      const callbackURL =
-        typeof window === 'undefined' ? '/' : `${window.location.origin}/`;
-      setLocalStorageItem(LAST_AUTH_METHOD_KEY, authMethod);
-      await authClient.signIn.social({
-        provider: providerId,
-        callbackURL,
-      });
-    } catch (error) {
-      toast.error(getErrorMessage(error));
-    } finally {
-      setIsLoading(false);
-    }
+    setLocalStorageItem(LAST_AUTH_METHOD_KEY, authMethod);
+
+    // Navigate directly to the server's redirect endpoint so the OAuth
+    // state cookie is set as a first-party cookie (top-level navigation).
+    // This avoids the cross-origin fetch cookie issue on Railway where
+    // frontend and backend are on different *.up.railway.app subdomains.
+    const callbackURL = `${window.location.origin}/`;
+    const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL;
+    const params = new URLSearchParams({ provider: providerId, callbackURL });
+    window.location.href = `${serverUrl}/auth/social-redirect?${params}`;
   }, [authMethod, provider, providerId]);
 
   if (!provider) {
