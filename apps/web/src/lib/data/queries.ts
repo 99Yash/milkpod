@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { cache } from 'react';
 import { db } from '@milkpod/db';
 import {
   mediaAssets,
@@ -66,20 +67,25 @@ export async function getCollections(userId: string): Promise<Collection[]> {
     .orderBy(collections.createdAt);
 }
 
-export async function getThreadsForAsset(
-  assetId: string,
-  userId: string,
-): Promise<{ id: string; title: string | null; createdAt: Date }[]> {
-  return db()
-    .select({
-      id: qaThreads.id,
-      title: qaThreads.title,
-      createdAt: qaThreads.createdAt,
-    })
-    .from(qaThreads)
-    .where(and(eq(qaThreads.assetId, assetId), eq(qaThreads.userId, userId)))
-    .orderBy(desc(qaThreads.createdAt));
-}
+// Wrapped in React.cache() — the chat layout and chat page both call this
+// with the same (assetId, userId) during a single render pass. cache()
+// deduplicates so only one DB query fires.
+export const getThreadsForAsset = cache(
+  async (
+    assetId: string,
+    userId: string,
+  ): Promise<{ id: string; title: string | null; createdAt: Date }[]> => {
+    return db()
+      .select({
+        id: qaThreads.id,
+        title: qaThreads.title,
+        createdAt: qaThreads.createdAt,
+      })
+      .from(qaThreads)
+      .where(and(eq(qaThreads.assetId, assetId), eq(qaThreads.userId, userId)))
+      .orderBy(desc(qaThreads.createdAt));
+  },
+);
 
 type MessageRole = MilkpodMessage['role'];
 
@@ -124,6 +130,57 @@ function deserializePart(row: PartRow): Part {
   return { type: 'text', text: '', state: 'done' } as Part;
 }
 
+/**
+ * Assemble messages for a single thread from raw DB rows.
+ * Shared between getChatThread and getLatestChatThread.
+ */
+function assembleMessages(
+  messageRows: (typeof qaMessages.$inferSelect)[],
+  partRows: PartRow[],
+): MilkpodMessage[] {
+  if (messageRows.length === 0) return [];
+  const partsByMessage = Map.groupBy(partRows, (r) => r.messageId);
+  return messageRows
+    .filter((row) => isMessageRole(row.role))
+    .map((row) => ({
+      id: row.id,
+      role: row.role as MessageRole,
+      parts: (partsByMessage.get(row.id) ?? []).map(deserializePart),
+    }));
+}
+
+export async function getChatThread(
+  threadId: string,
+  userId: string,
+): Promise<{ threadId: string; messages: MilkpodMessage[] } | null> {
+  const messagesSq = db()
+    .select({ id: qaMessages.id })
+    .from(qaMessages)
+    .where(eq(qaMessages.threadId, threadId));
+
+  const [threadRows, messageRows, partRows] = await Promise.all([
+    db()
+      .select()
+      .from(qaThreads)
+      .where(and(eq(qaThreads.id, threadId), eq(qaThreads.userId, userId))),
+    db()
+      .select()
+      .from(qaMessages)
+      .where(eq(qaMessages.threadId, threadId))
+      .orderBy(asc(qaMessages.createdAt)),
+    db()
+      .select()
+      .from(qaMessageParts)
+      .where(inArray(qaMessageParts.messageId, messagesSq))
+      .orderBy(asc(qaMessageParts.sortOrder)),
+  ]);
+
+  const thread = threadRows[0];
+  if (!thread) return null;
+
+  return { threadId: thread.id, messages: assembleMessages(messageRows, partRows) };
+}
+
 export async function getLatestChatThread(
   assetId: string,
   userId: string,
@@ -163,17 +220,6 @@ export async function getLatestChatThread(
 
   const thread = threadRows[0];
   if (!thread) return null;
-  if (messageRows.length === 0) return { threadId: thread.id, messages: [] };
 
-  const partsByMessage = Map.groupBy(partRows, (r) => r.messageId);
-
-  const messages: MilkpodMessage[] = messageRows
-    .filter((row) => isMessageRole(row.role))
-    .map((row) => ({
-      id: row.id,
-      role: row.role as MessageRole,
-      parts: (partsByMessage.get(row.id) ?? []).map(deserializePart),
-    }));
-
-  return { threadId: thread.id, messages };
+  return { threadId: thread.id, messages: assembleMessages(messageRows, partRows) };
 }

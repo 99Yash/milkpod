@@ -37,11 +37,13 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         }
       }
 
+      let assetTitle: string | undefined;
       if (body.assetId) {
         const asset = await AssetService.getById(body.assetId, userId);
         if (!asset) {
           return status(403, { message: 'Access denied to asset' });
         }
+        assetTitle = asset.title ?? undefined;
       }
 
       if (body.collectionId) {
@@ -92,6 +94,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         messages: body.messages,
         threadId,
         assetId: body.assetId,
+        assetTitle,
         collectionId: body.collectionId,
         modelId: body.modelId,
         wordLimit: reserved,

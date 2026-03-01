@@ -39,6 +39,7 @@ export interface ChatRequest {
   messages: MilkpodMessage[];
   threadId?: string;
   assetId?: string;
+  assetTitle?: string;
   collectionId?: string;
   modelId?: ModelId;
   wordLimit?: number | null;
@@ -130,6 +131,7 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
     model,
     system: buildSystemPrompt({
       assetId: req.assetId,
+      assetTitle: req.assetTitle,
       collectionId: req.collectionId,
       wordLimit: effectiveWordLimit,
     }),

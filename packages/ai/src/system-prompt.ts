@@ -53,11 +53,11 @@ export function buildSystemPrompt(context: SystemPromptContext = {}): string {
 
     if (context.assetId) {
       const label = context.assetTitle
-        ? `"${context.assetTitle}" (${context.assetId})`
-        : context.assetId;
+        ? `"${context.assetTitle}"`
+        : `asset ${context.assetId}`;
       lines.push(
-        `You are answering questions about a specific asset: ${label}.`,
-        'The retrieve_segments tool is already scoped to this asset — you do not need to specify an asset ID.'
+        `The user is currently viewing ${label}. When they refer to "this video", "the video", or "this", they mean this specific asset.`,
+        'All tools are already scoped to this asset — you do not need to specify an asset ID.',
       );
     }
 
