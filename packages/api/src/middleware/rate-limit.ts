@@ -1,3 +1,4 @@
+import { auth } from '@milkpod/auth';
 import { Elysia } from 'elysia';
 
 // --- Token Bucket ---
@@ -84,29 +85,42 @@ function categorize(path: string): RateCategory | null {
   return null;
 }
 
+// --- Helpers ---
+
+function getClientIp(request: Request): string {
+  return (
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    request.headers.get('x-real-ip') ??
+    'unknown'
+  );
+}
+
 // --- Elysia plugin ---
 
 /**
- * Per-IP token bucket rate limiter.
- *
- * User identity is not available at this point in the lifecycle (the auth
- * macro resolves per-route, after onBeforeHandle). All requests are keyed
- * by IP address.
+ * Token bucket rate limiter keyed by authenticated userId (preferred)
+ * with IP fallback for unauthenticated routes (health, share validation).
  */
 export const rateLimiter = new Elysia({ name: 'rate-limiter' }).onBeforeHandle(
-  (ctx) => {
+  async (ctx) => {
     const { request, set } = ctx;
     const url = new URL(request.url);
     const path = url.pathname;
     const category = categorize(path);
     if (!category) return;
 
-    const ip =
-      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-      request.headers.get('x-real-ip') ??
-      'unknown';
+    let identity: string;
+    try {
+      const session = await auth().api.getSession({
+        headers: request.headers,
+      });
+      identity = session?.user?.id
+        ? `user:${session.user.id}`
+        : `ip:${getClientIp(request)}`;
+    } catch {
+      identity = `ip:${getClientIp(request)}`;
+    }
 
-    const identity = `ip:${ip}`;
     const key = `${identity}:${category}`;
     const config = LIMITS[category];
     const { allowed, retryAfterSecs } = consume(key, config);

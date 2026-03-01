@@ -42,15 +42,15 @@ Ordered task list. Work through them in order. Each task references findings in 
 - ~~In the `onFinish` callback, clear the timeout~~
 - ~~Handle `AbortError` gracefully — return a message like "Response timed out, please try again"~~
 
-### Task 4: Switch rate limiter to user-based with IP fallback
+### ~~Task 4: Switch rate limiter to user-based with IP fallback~~ ✅
 
 **Refs**: SEC-4
 **Files**: `packages/api/src/middleware/rate-limit.ts`
 **What**:
 
-- Change the rate limiter key from IP to `userId` when session is available
-- Fall back to IP for unauthenticated routes (health, share validation)
-- Keep the existing bucket categories (ingest: 10/min, chat: 30/min, crud: 100/min)
+- ~~Change the rate limiter key from IP to `userId` when session is available~~
+- ~~Fall back to IP for unauthenticated routes (health, share validation)~~
+- ~~Keep the existing bucket categories (ingest: 10/min, chat: 30/min, crud: 100/min)~~
 
 ### Task 5: Add request body size limit
 

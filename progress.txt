@@ -13,3 +13,7 @@
 **Files changed**: `packages/ai/src/stream.ts`
 **Outcome**: Added `timeout: { totalMs: 120_000, chunkMs: 30_000 }` to the `streamText()` call — uses AI SDK v6's built-in timeout support instead of a manual AbortController. `totalMs` caps the entire multi-step stream at 2 minutes; `chunkMs` detects a hung provider if no data arrives for 30 seconds. Added `AbortError` handling to `toUIMessageStreamResponse.onError` — returns "Response timed out. Please try again." to the user. Type checks pass.
 
+## Task 4: Switch rate limiter to user-based with IP fallback (SEC-4) ✅
+**Files changed**: `packages/api/src/middleware/rate-limit.ts`
+**Outcome**: Changed rate limiter from IP-only keying to user-based with IP fallback. The `onBeforeHandle` hook now calls `auth().api.getSession()` to try to resolve the user — if authenticated, bucket key is `user:${userId}:${category}`, otherwise falls back to `ip:${clientIp}:${category}`. Session lookup is wrapped in try/catch so failures gracefully degrade to IP-based limiting. Extracted `getClientIp()` helper. All existing bucket categories unchanged (ingest: 10/min, chat: 30/min, crud: 100/min). Type checks pass.
+
