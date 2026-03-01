@@ -90,9 +90,9 @@ export function useAssetEvents(
         }
 
         // After repeated failures at max delay, fall back to polling
+        // but keep trying SSE so we can recover when connectivity returns
         if (maxDelayHits >= MAX_RETRIES_AT_MAX_DELAY && pollFallbackRef.current) {
           startPolling();
-          return;
         }
 
         reconnectTimer = setTimeout(open, delay);
