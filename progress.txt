@@ -5,3 +5,7 @@
 **Migration**: `packages/db/src/migrations/0013_warm_starjammers.sql`
 **Outcome**: Added 7 missing indexes — `collection_item_collection_id_idx`, `collection_item_asset_id_idx`, `qa_evidence_message_id_idx`, `qa_evidence_segment_id_idx`, `share_query_link_created_idx`, `media_asset_user_status_idx`, `transcript_segment_transcript_index_idx`. Migration generated and applied. Type checks pass.
 
+## Task 2: Fix guardrails to fail closed (SEC-1) ✅
+**Files changed**: `packages/ai/src/guardrails.ts`
+**Outcome**: Changed catch block from fail-open (`{ allowed: true }`) to fail-closed with heuristic fallback. Added `heuristicCheck()` function that: (1) denies messages over 2000 chars, (2) denies messages matching 7 jailbreak/prompt-injection patterns (e.g. "ignore previous instructions", "you are now a", "system prompt", "DAN"), (3) allows everything else. Added optional `reason` field to `GuardrailResult` interface. The caller in `stream.ts` already handles denials correctly — no changes needed there. Type checks pass.
+
