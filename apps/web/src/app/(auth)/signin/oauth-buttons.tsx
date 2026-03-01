@@ -12,6 +12,7 @@ import {
   OAUTH_PROVIDERS,
   PROVIDER_AUTH_OPTIONS,
 } from '~/lib/constants';
+import { clientEnv } from '@milkpod/env/client';
 import { cn, setLocalStorageItem } from '~/lib/utils';
 
 interface OAuthButtonProps {
@@ -40,7 +41,7 @@ const OAuthButton: React.FC<OAuthButtonProps> = ({ providerId, className }) => {
     // This avoids the cross-origin fetch cookie issue on Railway where
     // frontend and backend are on different *.up.railway.app subdomains.
     const callbackURL = `${window.location.origin}/`;
-    const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL;
+    const serverUrl = clientEnv().NEXT_PUBLIC_SERVER_URL;
     const params = new URLSearchParams({ provider: providerId, callbackURL });
     window.location.href = `${serverUrl}/auth/social-redirect?${params}`;
   }, [authMethod, provider, providerId]);
