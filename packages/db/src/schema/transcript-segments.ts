@@ -25,6 +25,7 @@ export const transcriptSegments = pgTable(
       t.transcriptId,
       t.startTime
     ),
+    index('transcript_segment_transcript_index_idx').on(t.transcriptId, t.segmentIndex),
     index('transcript_segment_search_idx').using('gin', sql`to_tsvector('english', ${t.text})`),
   ]
 );

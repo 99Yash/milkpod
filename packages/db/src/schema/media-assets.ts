@@ -47,5 +47,6 @@ export const mediaAssets = pgTable(
   (t) => [
     unique('media_asset_idempotency_key_unique').on(t.idempotencyKey),
     index('media_asset_user_id_idx').on(t.userId),
+    index('media_asset_user_status_idx').on(t.userId, t.status),
   ]
 );
