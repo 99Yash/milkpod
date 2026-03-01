@@ -35,6 +35,37 @@ const REFUSAL_TEXT =
 
 export interface GuardrailResult {
   allowed: boolean;
+  reason?: string;
+}
+
+/**
+ * Lightweight heuristic fallback when the classification model is unreachable.
+ * Conservative: allows short, normal-looking messages; denies anything suspicious.
+ */
+const DENY_PATTERNS = [
+  /ignore\s+(all\s+)?(previous|above|prior)\s+(instructions|prompts)/i,
+  /you\s+are\s+now\s+(?:a|an)\s+/i,
+  /\bsystem\s*prompt\b/i,
+  /\bjailbreak\b/i,
+  /\bDAN\b/,
+  /do\s+anything\s+now/i,
+  /pretend\s+(you\s+are|to\s+be)/i,
+];
+
+const MAX_HEURISTIC_LENGTH = 2000;
+
+function heuristicCheck(text: string): GuardrailResult {
+  if (text.length > MAX_HEURISTIC_LENGTH) {
+    return { allowed: false, reason: 'Message too long for fallback classification' };
+  }
+
+  for (const pattern of DENY_PATTERNS) {
+    if (pattern.test(text)) {
+      return { allowed: false, reason: 'Message flagged by fallback filter' };
+    }
+  }
+
+  return { allowed: true };
 }
 
 export async function checkInput(
@@ -59,9 +90,9 @@ export async function checkInput(
     const verdict = result.text.trim().toUpperCase();
     return { allowed: verdict !== 'DENY' };
   } catch (error) {
-    // Fail open — allow the message through if classification fails
+    // Fail closed — use heuristic fallback when classification model is unavailable
     console.error('[Guardrail Error]', error);
-    return { allowed: true };
+    return heuristicCheck(text);
   }
 }
 
