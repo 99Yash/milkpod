@@ -50,3 +50,8 @@ coverage
 .cache
 tmp
 temp
+PRD.md
+plan.md
+progress.txt
+ralph.sh
+ralph-loop.sh
