@@ -17,3 +17,7 @@
 **Files changed**: `packages/api/src/middleware/rate-limit.ts`
 **Outcome**: Changed rate limiter from IP-only keying to user-based with IP fallback. The `onBeforeHandle` hook now calls `auth().api.getSession()` to try to resolve the user — if authenticated, bucket key is `user:${userId}:${category}`, otherwise falls back to `ip:${clientIp}:${category}`. Session lookup is wrapped in try/catch so failures gracefully degrade to IP-based limiting. Extracted `getClientIp()` helper. All existing bucket categories unchanged (ingest: 10/min, chat: 30/min, crud: 100/min). Type checks pass.
 
+## Task 5: Add request body size limit (API-2) ✅
+**Files changed**: `apps/server/src/index.ts`
+**Outcome**: Set `maxRequestBodySize: 2 * 1024 * 1024` (2MB) in the Elysia `.listen()` options. The default was 128MB which allowed arbitrarily large payloads. 2MB is sufficient for all JSON endpoints — this app doesn't handle file uploads (ingest takes URLs). Type checks pass.
+

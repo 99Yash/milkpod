@@ -16,9 +16,12 @@ const server = new Elysia({ adapter: node() })
     }),
   )
   .use(app)
-  .listen(3001, () => {
-    console.log('Server is running on http://localhost:3001');
-  });
+  .listen(
+    { port: 3001, maxRequestBodySize: 2 * 1024 * 1024 /* 2MB */ },
+    () => {
+      console.log('Server is running on http://localhost:3001');
+    },
+  );
 
 // Graceful shutdown: drain in-flight requests, then close DB pool
 async function shutdown(signal: string) {

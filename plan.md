@@ -52,14 +52,14 @@ Ordered task list. Work through them in order. Each task references findings in 
 - ~~Fall back to IP for unauthenticated routes (health, share validation)~~
 - ~~Keep the existing bucket categories (ingest: 10/min, chat: 30/min, crud: 100/min)~~
 
-### Task 5: Add request body size limit
+### ~~Task 5: Add request body size limit~~ ✅
 
 **Refs**: API-2
 **Files**: `apps/server/src/index.ts`
 **What**:
 
-- Add body size limit to the Elysia server config. Check Elysia docs for the right API — likely a plugin or server option
-- Set a reasonable limit (e.g. 2MB for regular endpoints, 10MB for ingest if file uploads are planned)
+- ~~Add body size limit to the Elysia server config. Check Elysia docs for the right API — likely a plugin or server option~~
+- ~~Set a reasonable limit (e.g. 2MB for regular endpoints, 10MB for ingest if file uploads are planned)~~
 
 ### Task 6: Fix word quota race condition
 
