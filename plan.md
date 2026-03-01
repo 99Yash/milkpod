@@ -75,16 +75,16 @@ Ordered task list. Work through them in order. Each task references findings in 
 
 ## Phase 2: UX Bottlenecks
 
-### Task 7: Fix EventSource memory leak and add polling fallback
+### ~~Task 7: Fix EventSource memory leak and add polling fallback~~ ✅
 
 **Refs**: UX-1
 **Files**: `apps/web/src/hooks/use-asset-events.ts`
 **What**:
 
-- Stabilize the `connect` callback with proper `useCallback` deps or move connection logic into the effect body
-- Clear reconnect timeouts on cleanup
-- After `MAX_RECONNECT_DELAY` is exceeded N times, fall back to polling with `setInterval` (e.g. every 5 seconds)
-- Clean up both EventSource and interval on unmount
+- ~~Stabilize the `connect` callback with proper `useCallback` deps or move connection logic into the effect body~~
+- ~~Clear reconnect timeouts on cleanup~~
+- ~~After `MAX_RECONNECT_DELAY` is exceeded N times, fall back to polling with `setInterval` (e.g. every 5 seconds)~~
+- ~~Clean up both EventSource and interval on unmount~~
 
 ### Task 8: Add optimistic updates for destructive actions
 

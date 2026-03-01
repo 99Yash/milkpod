@@ -47,6 +47,7 @@ export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }:
   }, [loadAssets, refreshKey]);
 
   // SSE: update asset status and progress in real-time
+  // Falls back to polling loadAssets() if SSE permanently fails
   useAssetEvents(
     useCallback(
       (event: AssetStatusEvent) => {
@@ -76,7 +77,8 @@ export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }:
         }
       },
       [loadAssets]
-    )
+    ),
+    { onPollFallback: loadAssets }
   );
 
   if (isLoading) {
