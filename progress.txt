@@ -9,3 +9,7 @@
 **Files changed**: `packages/ai/src/guardrails.ts`
 **Outcome**: Changed catch block from fail-open (`{ allowed: true }`) to fail-closed with heuristic fallback. Added `heuristicCheck()` function that: (1) denies messages over 2000 chars, (2) denies messages matching 7 jailbreak/prompt-injection patterns (e.g. "ignore previous instructions", "you are now a", "system prompt", "DAN"), (3) allows everything else. Added optional `reason` field to `GuardrailResult` interface. The caller in `stream.ts` already handles denials correctly — no changes needed there. Type checks pass.
 
+## Task 3: Add timeout to AI streaming requests (SEC-3) ✅
+**Files changed**: `packages/ai/src/stream.ts`
+**Outcome**: Added `timeout: { totalMs: 120_000, chunkMs: 30_000 }` to the `streamText()` call — uses AI SDK v6's built-in timeout support instead of a manual AbortController. `totalMs` caps the entire multi-step stream at 2 minutes; `chunkMs` detects a hung provider if no data arrives for 30 seconds. Added `AbortError` handling to `toUIMessageStreamResponse.onError` — returns "Response timed out. Please try again." to the user. Type checks pass.
+

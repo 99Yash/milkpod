@@ -31,16 +31,16 @@ Ordered task list. Work through them in order. Each task references findings in 
 - ~~Add a simple heuristic fallback: if the guardrail model is unreachable, check message length and basic keyword patterns before denying~~
 - ~~Update the caller in `stream.ts` to handle the new denial reason and return a user-friendly message~~
 
-### Task 3: Add timeout to AI streaming requests
+### ~~Task 3: Add timeout to AI streaming requests~~ ✅
 
 **Refs**: SEC-3
 **Files**: `packages/ai/src/stream.ts`
 **What**:
 
-- Create an `AbortController` with a 60-second timeout before calling `streamText()`
-- Pass `abortSignal: controller.signal` to the `streamText()` options
-- In the `onFinish` callback, clear the timeout
-- Handle `AbortError` gracefully — return a message like "Response timed out, please try again"
+- ~~Create an `AbortController` with a 60-second timeout before calling `streamText()`~~
+- ~~Pass `abortSignal: controller.signal` to the `streamText()` options~~
+- ~~In the `onFinish` callback, clear the timeout~~
+- ~~Handle `AbortError` gracefully — return a message like "Response timed out, please try again"~~
 
 ### Task 4: Switch rate limiter to user-based with IP fallback
 
