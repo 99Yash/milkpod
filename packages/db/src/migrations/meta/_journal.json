@@ -92,6 +92,13 @@
       "when": 1772343453263,
       "tag": "0012_elite_micromax",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1772347799594,
+      "tag": "0013_warm_starjammers",
+      "breakpoints": true
     }
   ]
 }
