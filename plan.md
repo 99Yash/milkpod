@@ -21,15 +21,15 @@ Ordered task list. Work through them in order. Each task references findings in 
 - ~~Add compound index on `transcriptSegments(transcriptId, segmentIndex)`~~
 - ~~Run `pnpm db:generate` and `pnpm db:migrate`~~
 
-### Task 2: Fix guardrails to fail closed
+### ~~Task 2: Fix guardrails to fail closed~~ ✅
 
 **Refs**: SEC-1
 **Files**: `packages/ai/src/guardrails.ts`
 **What**:
 
-- Change the catch block to return `{ allowed: false, reason: 'Classification unavailable' }` instead of `{ allowed: true }`
-- Add a simple heuristic fallback: if the guardrail model is unreachable, check message length and basic keyword patterns before denying
-- Update the caller in `stream.ts` to handle the new denial reason and return a user-friendly message
+- ~~Change the catch block to return `{ allowed: false, reason: 'Classification unavailable' }` instead of `{ allowed: true }`~~
+- ~~Add a simple heuristic fallback: if the guardrail model is unreachable, check message length and basic keyword patterns before denying~~
+- ~~Update the caller in `stream.ts` to handle the new denial reason and return a user-friendly message~~
 
 ### Task 3: Add timeout to AI streaming requests
 
