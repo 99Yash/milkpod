@@ -19,93 +19,141 @@ import {
   fetchLatestThreadForAsset,
 } from '~/lib/api-fetchers';
 
-export type InitialThread =
-  | { status: 'loaded'; threadId: string; messages: MilkpodMessage[] }
-  | { status: 'empty' };
-
-interface ChatPanelProps {
-  threadId?: string;
-  assetId?: string;
-  collectionId?: string;
-  initialThread?: InitialThread;
-  onThreadIdChange?: (threadId: string | undefined) => void;
-}
-
-const SUGGESTIONS = ['Summarize', 'Key points', 'Action items'] as const;
+// ---------------------------------------------------------------------------
+// Legacy hook: used by collection-detail and agent-tab where thread data is
+// NOT server-rendered. The route-based asset chat bypasses this entirely by
+// passing `initialMessages` directly.
+// ---------------------------------------------------------------------------
 
 function useRestoredThread(
   assetId?: string,
   explicitThreadId?: string,
-  initialThread?: InitialThread,
 ) {
-  const [threadId, setThreadId] = useState<string | undefined>(() => {
-    if (initialThread?.status === 'loaded') return initialThread.threadId;
-    return explicitThreadId;
-  });
-  const [messages, setMessages] = useState<MilkpodMessage[] | undefined>(
-    () => (initialThread?.status === 'loaded' ? initialThread.messages : undefined),
-  );
-  // Start in the loading state when a client-side fetch will be needed so
-  // the spinner renders on the very first frame (before the effect fires).
-  const [isLoading, setIsLoading] = useState(() => {
-    if (initialThread) return false;
-    return !!explicitThreadId || !!assetId;
-  });
+  const [threadId, setThreadId] = useState<string | undefined>(explicitThreadId);
+  const [messages, setMessages] = useState<MilkpodMessage[] | undefined>();
+  const [isLoading, setIsLoading] = useState(() => !!explicitThreadId || !!assetId);
 
   useEffect(() => {
-    // Server already resolved thread state — skip client fetch
-    if (initialThread) return;
+    let cancelled = false;
 
-    // If an explicit threadId is provided, load messages directly
     if (explicitThreadId) {
       setThreadId(explicitThreadId);
       setIsLoading(true);
       fetchChatMessages(explicitThreadId)
         .then((result) => {
-          if (result) setMessages(result.messages);
+          if (cancelled) return;
+          if (result) {
+            setMessages(result.messages);
+          } else {
+            toast.error('Failed to load chat history');
+            setMessages([]);
+          }
         })
-        .catch(() => toast.error('Failed to load chat history'))
-        .finally(() => setIsLoading(false));
-      return;
+        .catch(() => {
+          if (!cancelled) {
+            toast.error('Failed to load chat history');
+            setMessages([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setIsLoading(false);
+        });
+      return () => { cancelled = true; };
     }
 
-    // Otherwise, look up the latest thread for this asset
     if (!assetId) return;
 
     setIsLoading(true);
     fetchLatestThreadForAsset(assetId)
       .then(async (thread) => {
-        if (!thread) return;
+        if (cancelled || !thread) return;
         const result = await fetchChatMessages(thread.id);
-        if (result) setMessages(result.messages);
+        if (cancelled) return;
+        if (result) {
+          setMessages(result.messages);
+        } else {
+          toast.error('Failed to load chat history');
+          setMessages([]);
+        }
         setThreadId(thread.id);
       })
-      .catch(() => toast.error('Failed to restore chat history'))
-      .finally(() => setIsLoading(false));
-  }, [assetId, explicitThreadId, initialThread]);
+      .catch(() => {
+        if (!cancelled) toast.error('Failed to restore chat history');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [assetId, explicitThreadId]);
 
   return { threadId, messages, isLoading };
 }
 
+// ---------------------------------------------------------------------------
+// ChatPanel
+// ---------------------------------------------------------------------------
+
+interface ChatPanelProps {
+  threadId?: string;
+  assetId?: string;
+  collectionId?: string;
+  /** When provided, the panel renders immediately (no client-side fetch). */
+  initialMessages?: MilkpodMessage[];
+  /** Called when a draft thread is created on the backend. */
+  onThreadCreated?: (threadId: string) => void;
+}
+
+const SUGGESTIONS = ['Summarize', 'Key points', 'Action items'] as const;
+
 /**
  * Outer shell: resolves thread data, shows a spinner while loading, then
- * mounts ChatPanelContent once messages are ready. This guarantees
- * useMilkpodChat/useChat always initialises with the correct messages
- * (useChat treats its `messages` option as initial state, so passing
- * `undefined` first and updating later doesn't work).
+ * mounts ChatPanelContent once messages are ready.
+ *
+ * When `initialMessages` is provided (route-based flow), skips the
+ * client-side fetch entirely and renders immediately.
  */
 export function ChatPanel({
+  threadId,
+  assetId,
+  collectionId,
+  initialMessages,
+  onThreadCreated,
+}: ChatPanelProps) {
+  // Route-based flow: server already provided messages
+  if (initialMessages !== undefined) {
+    return (
+      <ChatPanelContent
+        threadId={threadId}
+        assetId={assetId}
+        collectionId={collectionId}
+        initialMessages={initialMessages}
+        onThreadCreated={onThreadCreated}
+      />
+    );
+  }
+
+  // Legacy flow: collection/agent consumers — fetch client-side
+  return (
+    <LegacyChatPanel
+      threadId={threadId}
+      assetId={assetId}
+      collectionId={collectionId}
+      onThreadCreated={onThreadCreated}
+    />
+  );
+}
+
+function LegacyChatPanel({
   threadId: explicitThreadId,
   assetId,
   collectionId,
-  initialThread,
-  onThreadIdChange,
-}: ChatPanelProps) {
+  onThreadCreated,
+}: Omit<ChatPanelProps, 'initialMessages'>) {
   const {
     threadId: restoredThreadId,
     messages: persistedMessages,
     isLoading: isLoadingHistory,
-  } = useRestoredThread(assetId, explicitThreadId, initialThread);
+  } = useRestoredThread(assetId, explicitThreadId);
 
   if (isLoadingHistory) {
     return (
@@ -121,7 +169,7 @@ export function ChatPanel({
       assetId={assetId}
       collectionId={collectionId}
       initialMessages={persistedMessages}
-      onThreadIdChange={onThreadIdChange}
+      onThreadCreated={onThreadCreated}
     />
   );
 }
@@ -131,13 +179,13 @@ function ChatPanelContent({
   assetId,
   collectionId,
   initialMessages,
-  onThreadIdChange,
+  onThreadCreated,
 }: {
   threadId?: string;
   assetId?: string;
   collectionId?: string;
   initialMessages?: MilkpodMessage[];
-  onThreadIdChange?: (threadId: string | undefined) => void;
+  onThreadCreated?: (threadId: string) => void;
 }) {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -154,10 +202,14 @@ function ChatPanelContent({
 
   const isLoading = status === 'streaming' || status === 'submitted';
 
-  // Notify parent when the chat auto-creates a thread
+  // Notify parent when a draft thread is created (threadId was undefined, now has a value)
+  const notifiedRef = useRef(false);
   useEffect(() => {
-    onThreadIdChange?.(chatThreadId);
-  }, [chatThreadId, onThreadIdChange]);
+    if (chatThreadId && !threadId && !notifiedRef.current) {
+      notifiedRef.current = true;
+      onThreadCreated?.(chatThreadId);
+    }
+  }, [chatThreadId, threadId, onThreadCreated]);
 
   useEffect(() => {
     if (error) {

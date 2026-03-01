@@ -36,7 +36,7 @@ export const qaMessages = pgTable(
     role: text('role').notNull(),
     ...lifecycle_dates,
   },
-  (t) => [index('qa_message_thread_id_idx').on(t.threadId)],
+  (t) => [index('qa_message_thread_created_idx').on(t.threadId, t.createdAt)],
 );
 
 export const qaMessageParts = pgTable(
@@ -57,7 +57,7 @@ export const qaMessageParts = pgTable(
     toolOutput: jsonb('tool_output'),
     sortOrder: integer('sort_order').notNull(),
   },
-  (t) => [index('qa_message_part_message_id_idx').on(t.messageId)],
+  (t) => [index('qa_message_part_message_sort_idx').on(t.messageId, t.sortOrder)],
 );
 
 export const qaEvidence = pgTable('qa_evidence', {
