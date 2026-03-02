@@ -302,7 +302,7 @@ Preview should reuse existing timestamp action pattern (`useTimestampAction` + `
 
 - [x] Add moments DB schema and migration
 - [x] Add moments API module + mount in `packages/api/src/index.ts`
-- [ ] Implement dynamic chunk config helper (2000 upper bound)
+- [x] Implement dynamic chunk config helper (2000 upper bound)
 - [ ] Implement candidate generation + merge/rerank
 - [ ] Integrate Ask-AI evidence scoring from `qa_message_part` (or `qa_evidence`)
 - [ ] Add Moments tab route and UI cards

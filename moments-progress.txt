@@ -18,3 +18,13 @@
   - `packages/api/src/modules/moments/index.ts` (new) — Elysia routes: `POST /api/moments/generate`, `GET /api/moments`, `POST /api/moments/:id/feedback`
   - `packages/api/src/index.ts` (modified) — mounted `moments` module
 - **Outcome**: Full CRUD API module following project patterns (authMacro, abstract static service, TypeBox models). Generate endpoint validates asset ownership and readiness, returns cached moments or empty array (generation pipeline is a TODO for next task). Feedback endpoint handles save/dismiss state mutations + feedback recording. Build and type-check pass across all 7 packages.
+
+## Task 3: Implement dynamic chunk config helper (2000 upper bound)
+- **Status**: Complete
+- **Files changed**:
+  - `packages/api/src/modules/moments/chunking.ts` (new) — dynamic chunk config + segment chunker
+- **Outcome**: Created `chunking.ts` with three exports:
+  1. `getMomentChunkConfig(totalChars)` — returns `{ chunkSize, overlap, maxCandidatesPerChunk }` scaling across 5 tiers (900→2000 chars) per the plan's chunk policy table.
+  2. `chunkSegmentsForMoments(segments, config)` — groups transcript segments into character-bounded `MomentChunk` windows with overlap, preserving `startTime`/`endTime` and `segmentIds` for traceability. Operates on full segment boundaries (never splits mid-segment), unlike the embedding chunker.
+  3. Types: `MomentChunkConfig`, `MomentChunk`.
+  Overlap is implemented by rewinding trailing segments into the next chunk. Build and type-check pass across all 7 packages.
