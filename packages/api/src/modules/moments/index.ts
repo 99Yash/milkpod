@@ -1,6 +1,7 @@
 import { Elysia, status } from 'elysia';
 import { authMacro } from '../../middleware/auth';
 import { AssetService } from '../assets/service';
+import { generateMoments } from './generate';
 import { MomentModel } from './model';
 import { MomentService } from './service';
 
@@ -30,9 +31,7 @@ export const moments = new Elysia({ prefix: '/api/moments' })
         if (existing.length > 0) return existing;
       }
 
-      // TODO: Implement actual generation pipeline (chunking + LLM + ranking)
-      // For now return empty array — generation will be added in the next task
-      return [];
+      return generateMoments(body.assetId, user.id, body.preset);
     },
     { auth: true, body: MomentModel.generate },
   )
