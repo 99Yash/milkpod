@@ -13,11 +13,13 @@
   "type": "module",
   "scripts": {
     "build": "tsdown",
-    "check-types": "tsc -b"
+    "check-types": "tsc -b",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@milkpod/config": "workspace:*",
-    "tsdown": "catalog:"
+    "tsdown": "catalog:",
+    "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "typescript": "^5"

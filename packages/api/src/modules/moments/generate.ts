@@ -19,7 +19,7 @@ import {
 type PresetId = 'default' | 'hook' | 'insight' | 'quote' | 'actionable' | 'story';
 
 /** Raw candidate from LLM extraction */
-interface LLMCandidate {
+export interface LLMCandidate {
   title: string;
   rationale: string;
   startTime: number;
@@ -29,7 +29,7 @@ interface LLMCandidate {
 }
 
 /** Candidate enriched with all scoring signals */
-interface ScoredCandidate {
+export interface ScoredCandidate {
   title: string;
   rationale: string;
   startTime: number;
@@ -147,7 +147,7 @@ async function extractAllCandidates(
 // ---------------------------------------------------------------------------
 
 /** Merge candidates whose time windows overlap by more than 50% */
-function mergeOverlapping(candidates: LLMCandidate[]): LLMCandidate[] {
+export function mergeOverlapping(candidates: LLMCandidate[]): LLMCandidate[] {
   if (candidates.length === 0) return [];
 
   // Sort by start time
@@ -204,7 +204,7 @@ const CUE_PHRASES = [
   /step (one|two|three|\d)/i,
 ];
 
-function computeStructuralScore(text: string): number {
+export function computeStructuralScore(text: string): number {
   let score = 0;
 
   // Cue phrase density (0-0.4)
@@ -282,7 +282,7 @@ async function getQAEvidenceSignals(
   return result;
 }
 
-function lookupQASignal(
+export function lookupQASignal(
   qaMap: Map<string, number>,
   startTime: number,
   endTime: number,
@@ -302,7 +302,7 @@ function lookupQASignal(
 // Step 5: Preset-specific boosts
 // ---------------------------------------------------------------------------
 
-function applyPresetBoost(
+export function applyPresetBoost(
   candidate: ScoredCandidate,
   preset: PresetId,
   totalDuration: number,
@@ -350,7 +350,7 @@ function applyPresetBoost(
 // Step 6: Ranking
 // ---------------------------------------------------------------------------
 
-function rankCandidates(
+export function rankCandidates(
   candidates: LLMCandidate[],
   qaMap: Map<string, number>,
   segmentTexts: Map<number, string>,
@@ -492,7 +492,7 @@ export async function generateMoments(
 // Helpers
 // ---------------------------------------------------------------------------
 
-function clamp01(n: number): number {
+export function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
 }
 
