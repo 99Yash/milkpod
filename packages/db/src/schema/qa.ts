@@ -1,4 +1,4 @@
-import { index, integer, jsonb, pgTable, real, text } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, pgTable, real, text, unique } from 'drizzle-orm/pg-core';
 import { createId, lifecycle_dates } from '../helpers';
 import { user } from './auth';
 import { collections } from './collections';
@@ -76,6 +76,7 @@ export const qaEvidence = pgTable(
     ...lifecycle_dates,
   },
   (t) => [
+    unique('qa_evidence_message_segment_uniq').on(t.messageId, t.segmentId),
     index('qa_evidence_message_id_idx').on(t.messageId),
     index('qa_evidence_segment_id_idx').on(t.segmentId),
   ],

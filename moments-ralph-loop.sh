@@ -19,24 +19,24 @@ for ((i=1; i<=$1; i++)); do
   claude --permission-mode bypassPermissions \
     --print \
     --output-format stream-json --verbose \
-    "@PRD.md @plan.md @progress.txt \
-1. Read the PRD (audit findings), plan (ordered tasks), and progress file. \
-2. Find the next incomplete task in plan.md and implement it. \
+    "@moments-plan.md @moments-progress.txt \
+1. Read the moments plan (feature spec) and progress file. \
+2. Find the next incomplete task in the Implementation Checklist and implement it. \
 3. Run pnpm check-types to verify. \
-4. Mark the task done in plan.md (strikethrough + checkmark). \
-5. Append your progress to progress.txt (task number, files changed, outcome). \
+4. Mark the task done in moments-plan.md (check the checkbox). \
+5. Append your progress to moments-progress.txt (task name, files changed, outcome). \
 6. If you change database schema, run pnpm db:generate and pnpm db:migrate. \
 7. Commit your changes. \
 ONLY WORK ON A SINGLE TASK. \
-If all tasks in plan.md are complete, output <promise>COMPLETE</promise>. \
+If all tasks in the checklist are complete, output <promise>COMPLETE</promise>. \
 \
 Reference these for patterns and solutions: \
 - docs/elysia.md (Elysia framework reference) \
-- docs/ai-sdk.md (RAG agent guide) \
 - ARCHITECTURE.md (system design) \
 - CLAUDE.md (project conventions and gotchas) \
 \
-PRD.md has the 'why' for each finding. plan.md has the 'what' and 'how'." \
+moments-plan.md has the full spec — DB schema, API design, chunking policy, \
+ranking formula, and frontend components. Follow it closely." \
   | grep --line-buffered '^{' \
   | tee "$tmpfile" \
   | jq --unbuffered -rj "$stream_text"
@@ -44,7 +44,7 @@ PRD.md has the 'why' for each finding. plan.md has the 'what' and 'how'." \
   result=$(jq -r "$final_result" "$tmpfile")
 
   if [[ "$result" == *"<promise>COMPLETE</promise>"* ]]; then
-    echo "PRD complete after $i iterations."
+    echo "Moments feature complete after $i iterations."
     exit 0
   fi
 done

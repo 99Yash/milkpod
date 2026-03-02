@@ -10,6 +10,8 @@ import type {
   collectionItems,
   shareLinks,
   shareQueries,
+  assetMoments,
+  assetMomentFeedback,
 } from '@milkpod/db/schemas';
 
 // ---------------------------------------------------------------------------
@@ -26,6 +28,8 @@ export type Collection = InferSelectModel<typeof collections>;
 export type CollectionItem = InferSelectModel<typeof collectionItems>;
 export type ShareLink = InferSelectModel<typeof shareLinks>;
 export type ShareQuery = InferSelectModel<typeof shareQueries>;
+export type Moment = InferSelectModel<typeof assetMoments>;
+export type MomentFeedback = InferSelectModel<typeof assetMomentFeedback>;
 
 // ---------------------------------------------------------------------------
 // Asset status — discriminated union + type predicates
