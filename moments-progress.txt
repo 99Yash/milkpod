@@ -1,0 +1,9 @@
+# Moments Feature Progress
+
+## Task 1: Add moments DB schema and migration
+- **Status**: Complete
+- **Files changed**:
+  - `packages/db/src/schema/moments.ts` (new) — `asset_moment` and `asset_moment_feedback` tables with enums, indexes, FKs
+  - `packages/db/src/migrations/0014_omniscient_cassandra_nova.sql` (generated) — migration SQL
+  - `packages/db/src/migrations/meta/0014_snapshot.json` (generated)
+- **Outcome**: Schema created with `moment_preset` enum (default|hook|insight|quote|actionable|story), `moment_source` enum (hybrid|llm|qa), `asset_moment` table (15 columns, 2 indexes, 2 FKs), `asset_moment_feedback` table (6 columns, unique constraint, 1 index, 2 FKs). Migration generated and applied. Build and type-check pass.
