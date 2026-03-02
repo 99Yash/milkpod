@@ -28,3 +28,19 @@
   2. `chunkSegmentsForMoments(segments, config)` — groups transcript segments into character-bounded `MomentChunk` windows with overlap, preserving `startTime`/`endTime` and `segmentIds` for traceability. Operates on full segment boundaries (never splits mid-segment), unlike the embedding chunker.
   3. Types: `MomentChunkConfig`, `MomentChunk`.
   Overlap is implemented by rewinding trailing segments into the next chunk. Build and type-check pass across all 7 packages.
+
+## Task 4: Implement candidate generation + merge/rerank
+- **Status**: Complete
+- **Files changed**:
+  - `packages/api/src/modules/moments/generate.ts` (new) — full generation pipeline
+  - `packages/api/src/modules/moments/index.ts` (modified) — wired `generateMoments()` into POST /generate route, replacing TODO placeholder
+  - `packages/api/package.json` (modified) — added `zod` dependency for structured output schema
+- **Outcome**: Created `generate.ts` implementing the complete moment generation pipeline:
+  1. **LLM candidate extraction**: Uses `generateText` with `Output.array()` (AI SDK v6 structured output) and `fastModel` (gemini-2.5-flash-lite) for cost-efficient chunk-level extraction. Processes chunks in batches of 3 for bounded concurrency.
+  2. **Preset-aware prompting**: 6 preset-specific system prompts (default, hook, insight, quote, actionable, story) guide the LLM toward different extraction goals.
+  3. **Merge/dedup**: Overlapping candidates (>50% time overlap) are merged, keeping the higher-scoring candidate with extended time window.
+  4. **Structural heuristics scoring**: Computes score from cue phrase density, lexical density, and sentence burst intensity (0-1 range).
+  5. **Ask-AI evidence scoring**: Queries `qa_message_part` for `retrieve_segments` tool outputs referencing the asset's segments, normalizes reference counts to 0-1 signal.
+  6. **Ranking formula**: `0.45 * llmScore + 0.35 * qaSignal + 0.20 * structuralScore` with preset-specific boosts (e.g., hook boosts first 20% of timeline, actionable boosts imperative language).
+  7. **Guardrails**: Caps total candidates at 80 before rerank, returns top 10 moments, persists with score breakdown in jsonb.
+  Build and type-check pass across all 7 packages.

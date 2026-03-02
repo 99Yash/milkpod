@@ -29,6 +29,7 @@
     "@milkpod/env": "workspace:*",
     "ai": "catalog:",
     "drizzle-orm": "^0.44.2",
-    "elysia": "catalog:"
+    "elysia": "catalog:",
+    "zod": "catalog:"
   }
 }
