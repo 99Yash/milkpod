@@ -99,6 +99,13 @@
       "when": 1772347799594,
       "tag": "0013_warm_starjammers",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1772417885534,
+      "tag": "0014_omniscient_cassandra_nova",
+      "breakpoints": true
     }
   ]
 }
