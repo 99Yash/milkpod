@@ -2,8 +2,8 @@ import { generateText, Output } from 'ai';
 import { z } from 'zod';
 import { fastModel } from '@milkpod/ai/provider';
 import { db } from '@milkpod/db';
-import { qaMessageParts, transcriptSegments, transcripts } from '@milkpod/db/schemas';
-import { eq, and, sql } from 'drizzle-orm';
+import { qaEvidence, transcriptSegments, transcripts } from '@milkpod/db/schemas';
+import { eq, sql } from 'drizzle-orm';
 import { AssetService } from '../assets/service';
 import { MomentService } from './service';
 import {
@@ -234,77 +234,49 @@ function computeStructuralScore(text: string): number {
 // ---------------------------------------------------------------------------
 
 /**
- * Query qa_message_part for tool outputs from retrieve_segments that reference
- * segments in the given time ranges. Returns a map of approximate startTime → score.
+ * Query qa_evidence for segment references associated with this asset.
+ * Returns a map of approximate startTime (rounded to 1s) → normalized score (0-1).
+ *
+ * Combines two signals per segment:
+ * - reference count: how many times the segment was cited in QA answers
+ * - relevance score: cosine similarity from the retrieval tool (when available)
  */
 async function getQAEvidenceSignals(
   assetId: string,
 ): Promise<Map<string, number>> {
-  // Find the transcript for this asset
-  const [transcript] = await db()
-    .select({ id: transcripts.id })
-    .from(transcripts)
-    .where(eq(transcripts.assetId, assetId));
-
-  if (!transcript) return new Map();
-
-  // Get all segment IDs and their start times for this transcript
-  const segments = await db()
+  // Join qa_evidence → transcript_segments → transcripts, filtered by assetId
+  const rows = await db()
     .select({
-      id: transcriptSegments.id,
       startTime: transcriptSegments.startTime,
+      refCount: sql<number>`count(*)::int`,
+      maxRelevance: sql<number>`coalesce(max(${qaEvidence.relevanceScore}), 0)`,
     })
-    .from(transcriptSegments)
-    .where(eq(transcriptSegments.transcriptId, transcript.id));
+    .from(qaEvidence)
+    .innerJoin(
+      transcriptSegments,
+      eq(qaEvidence.segmentId, transcriptSegments.id),
+    )
+    .innerJoin(transcripts, eq(transcriptSegments.transcriptId, transcripts.id))
+    .where(eq(transcripts.assetId, assetId))
+    .groupBy(transcriptSegments.id, transcriptSegments.startTime);
 
-  if (segments.length === 0) return new Map();
+  if (rows.length === 0) return new Map();
 
-  const segmentTimeMap = new Map(segments.map((s) => [s.id, s.startTime]));
-  const segmentIds = new Set(segments.map((s) => s.id));
-
-  // Query tool outputs from retrieve_segments calls (any state with output present)
-  const toolOutputs = await db()
-    .select({ toolOutput: qaMessageParts.toolOutput })
-    .from(qaMessageParts)
-    .where(
-      and(
-        eq(qaMessageParts.toolName, 'retrieve_segments'),
-        sql`${qaMessageParts.toolOutput} IS NOT NULL`,
-      ),
-    );
-
-  // Count how many times each segment was referenced in QA answers
-  const segmentRefCounts = new Map<string, number>();
-
-  for (const row of toolOutputs) {
-    if (!row.toolOutput || typeof row.toolOutput !== 'object') continue;
-    const output = row.toolOutput as { segments?: Array<{ segmentId?: string }> };
-    if (!Array.isArray(output.segments)) continue;
-
-    for (const seg of output.segments) {
-      if (seg.segmentId && segmentIds.has(seg.segmentId)) {
-        segmentRefCounts.set(
-          seg.segmentId,
-          (segmentRefCounts.get(seg.segmentId) ?? 0) + 1,
-        );
-      }
-    }
-  }
-
-  if (segmentRefCounts.size === 0) return new Map();
-
-  // Normalize to 0-1 range
-  const maxCount = Math.max(...segmentRefCounts.values());
+  // Normalize reference counts to 0-1
+  const maxCount = Math.max(...rows.map((r) => r.refCount));
   const result = new Map<string, number>();
 
-  for (const [segId, count] of segmentRefCounts) {
-    const startTime = segmentTimeMap.get(segId);
-    if (startTime !== undefined) {
-      // Key by rounded start time (to 1s) for approximate matching
-      const key = String(Math.round(startTime));
-      const existing = result.get(key) ?? 0;
-      result.set(key, Math.max(existing, count / maxCount));
-    }
+  for (const row of rows) {
+    const key = String(Math.round(row.startTime));
+    // Blend reference frequency (how often cited) with relevance quality
+    const countSignal = row.refCount / maxCount;
+    const relevanceSignal = row.maxRelevance;
+    const score = relevanceSignal > 0
+      ? 0.6 * countSignal + 0.4 * relevanceSignal
+      : countSignal;
+
+    const existing = result.get(key) ?? 0;
+    result.set(key, Math.max(existing, score));
   }
 
   return result;

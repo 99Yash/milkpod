@@ -44,3 +44,15 @@
   6. **Ranking formula**: `0.45 * llmScore + 0.35 * qaSignal + 0.20 * structuralScore` with preset-specific boosts (e.g., hook boosts first 20% of timeline, actionable boosts imperative language).
   7. **Guardrails**: Caps total candidates at 80 before rerank, returns top 10 moments, persists with score breakdown in jsonb.
   Build and type-check pass across all 7 packages.
+
+## Task 5: Integrate Ask-AI evidence scoring from qa_evidence
+- **Status**: Complete
+- **Files changed**:
+  - `packages/api/src/modules/chat/service.ts` (modified) — added `qa_evidence` population on message save
+  - `packages/api/src/modules/moments/generate.ts` (modified) — rewrote `getQAEvidenceSignals()` to query `qa_evidence` directly
+- **Outcome**: Implemented the v1.1 recommended approach from the plan, putting `qa_evidence` to active use:
+  1. **Evidence population**: `ChatService.saveMessages()` now extracts segment references from `retrieve_segments` tool outputs (both dynamic-tool and static tool parts) and inserts into `qa_evidence` with `relevanceScore` from cosine similarity. Deduplicates by messageId + segmentId within each save call.
+  2. **Evidence querying**: `getQAEvidenceSignals()` replaced the old approach (scanning all `qa_message_part` tool outputs in JS) with a single SQL query joining `qa_evidence → transcript_segments → transcripts` filtered by assetId. Groups by segment, aggregates reference counts + max relevance score, normalizes to 0-1.
+  3. **Blended signal**: When relevance scores are available, the qa signal blends reference frequency (60%) with retrieval similarity (40%). Falls back to pure frequency when no relevance scores exist.
+  4. Removed unused `and` import from drizzle-orm in generate.ts. Replaced `qaMessageParts` import with `qaEvidence`.
+  Build and type-check pass across all 7 packages.

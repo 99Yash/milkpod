@@ -1,6 +1,6 @@
 import { db } from '@milkpod/db';
 import { createId } from '@milkpod/db/helpers';
-import { qaMessages, qaMessageParts } from '@milkpod/db/schemas';
+import { qaMessages, qaMessageParts, qaEvidence } from '@milkpod/db/schemas';
 import { eq, asc, inArray } from 'drizzle-orm';
 import { isStaticToolUIPart } from 'ai';
 import type { MilkpodMessage } from '@milkpod/ai';
@@ -94,6 +94,49 @@ function deserializePart(row: typeof qaMessageParts.$inferSelect): Part {
   return { type: 'text', text: '' } as Part;
 }
 
+type EvidenceRow = typeof qaEvidence.$inferInsert;
+
+/** Extract segment references from retrieve_segments tool outputs into qa_evidence rows. */
+function extractEvidenceRows(messages: MilkpodMessage[]): EvidenceRow[] {
+  const rows: EvidenceRow[] = [];
+  const seen = new Set<string>(); // dedupe by messageId + segmentId
+
+  for (const msg of messages) {
+    for (const part of msg.parts) {
+      // Match both dynamic-tool and static tool parts for retrieve_segments
+      const toolName =
+        part.type === 'dynamic-tool'
+          ? part.toolName
+          : part.type.startsWith('tool-')
+            ? part.type.slice('tool-'.length)
+            : null;
+
+      if (toolName !== 'retrieve_segments') continue;
+      if (!('output' in part) || !part.output) continue;
+
+      const output = part.output as {
+        segments?: Array<{ segmentId?: string; similarity?: number }>;
+      };
+      if (!Array.isArray(output.segments)) continue;
+
+      for (const seg of output.segments) {
+        if (!seg.segmentId) continue;
+        const key = `${msg.id}:${seg.segmentId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        rows.push({
+          messageId: msg.id,
+          segmentId: seg.segmentId,
+          relevanceScore: typeof seg.similarity === 'number' ? seg.similarity : null,
+        });
+      }
+    }
+  }
+
+  return rows;
+}
+
 export abstract class ChatService {
   static async saveMessages(threadId: string, messages: MilkpodMessage[]) {
     if (messages.length === 0) return;
@@ -116,6 +159,12 @@ export abstract class ChatService {
 
       if (partRows.length > 0) {
         await tx.insert(qaMessageParts).values(partRows).onConflictDoNothing();
+      }
+
+      // Extract segment references from retrieve_segments tool outputs → qa_evidence
+      const evidenceRows = extractEvidenceRows(messages);
+      if (evidenceRows.length > 0) {
+        await tx.insert(qaEvidence).values(evidenceRows).onConflictDoNothing();
       }
     });
   }
