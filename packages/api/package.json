@@ -13,11 +13,13 @@
   "type": "module",
   "scripts": {
     "build": "tsdown",
-    "check-types": "tsc -b"
+    "check-types": "tsc -b",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@milkpod/config": "workspace:*",
-    "tsdown": "catalog:"
+    "tsdown": "catalog:",
+    "vitest": "^4.0.18"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -29,6 +31,7 @@
     "@milkpod/env": "workspace:*",
     "ai": "catalog:",
     "drizzle-orm": "^0.44.2",
-    "elysia": "catalog:"
+    "elysia": "catalog:",
+    "zod": "catalog:"
   }
 }

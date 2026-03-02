@@ -14,6 +14,7 @@ import { ingest } from './modules/ingest';
 import { shares } from './modules/shares';
 import { podcasts } from './modules/podcasts';
 import { usage } from './modules/usage';
+import { moments } from './modules/moments';
 
 export const app = new Elysia({ name: 'api' })
   .use(requestLogger)
@@ -101,7 +102,8 @@ export const app = new Elysia({ name: 'api' })
   .use(ingest)
   .use(shares)
   .use(podcasts)
-  .use(usage);
+  .use(usage)
+  .use(moments);
 
 export type App = typeof app;
 
