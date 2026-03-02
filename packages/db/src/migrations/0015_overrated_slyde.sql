@@ -1,0 +1,1 @@
+ALTER TABLE "qa_evidence" ADD CONSTRAINT "qa_evidence_message_segment_uniq" UNIQUE("message_id","segment_id");
