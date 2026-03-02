@@ -307,8 +307,8 @@ Preview should reuse existing timestamp action pattern (`useTimestampAction` + `
 - [x] Integrate Ask-AI evidence scoring from `qa_message_part` (or `qa_evidence`)
 - [x] Add Moments tab route and UI cards
 - [x] Reuse timestamp preview interaction
-- [ ] Add save/dismiss feedback endpoint and UI actions
-- [ ] Add basic tests for chunk config and merge/ranking logic
+- [x] Add save/dismiss feedback endpoint and UI actions
+- [x] Add basic tests for chunk config and merge/ranking logic
 
 ---
 

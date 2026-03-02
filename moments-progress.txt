@@ -84,3 +84,28 @@
   4. `VideoMomentDialog` renders conditionally when `momentDialog` state is set, with proper close handling via `clearDialog()`.
   5. `AssetSourceContext` is provided by `AssetShell` layout wrapping all `/asset/[id]/*` routes, so the hook works correctly in the moments route.
   Acceptance criterion met: "Timestamp click opens playable preview via existing moment dialog." Type-check passes across all 7 packages.
+
+## Task 8: Add save/dismiss feedback endpoint and UI actions
+- **Status**: Complete (verified — implementation was done as part of Tasks 2 and 6)
+- **Files changed**: None (no new changes needed)
+- **Outcome**: Verified that save/dismiss feedback is fully implemented:
+  1. **Backend**: `POST /api/moments/:id/feedback` endpoint in `index.ts` handles save/dismiss/upvote/downvote actions. `MomentService.saveMoment()` sets `isSaved: true`, `MomentService.dismissMoment()` sets `dismissedAt` timestamp, `MomentService.addFeedback()` records in `assetMomentFeedback` table with `onConflictDoNothing()` dedup.
+  2. **Frontend**: `handleSave()` and `handleDismiss()` in `moments-tab.tsx` call the feedback endpoint via Eden treaty and apply optimistic UI updates (save toggles `isSaved`, dismiss filters moment out). `moment-card.tsx` renders Save/Dismiss buttons with proper disabled states and visual feedback (filled bookmark icon when saved).
+
+## Task 9: Add basic tests for chunk config and merge/ranking logic
+- **Status**: Complete
+- **Files changed**:
+  - `packages/api/package.json` (modified) — added `vitest` dev dependency and `test` script
+  - `packages/api/vitest.config.ts` (new) — Vitest configuration targeting `src/**/*.test.ts`
+  - `packages/api/src/modules/moments/chunking.test.ts` (new) — 14 tests for `getMomentChunkConfig` and `chunkSegmentsForMoments`
+  - `packages/api/src/modules/moments/ranking.test.ts` (new) — 32 tests for `mergeOverlapping`, `computeStructuralScore`, `lookupQASignal`, `applyPresetBoost`, `rankCandidates`
+  - `packages/api/src/modules/moments/generate.ts` (modified) — exported pure functions (`mergeOverlapping`, `computeStructuralScore`, `lookupQASignal`, `applyPresetBoost`, `rankCandidates`, `clamp01`) and types (`LLMCandidate`, `ScoredCandidate`) for testability
+- **Outcome**: First test infrastructure for the monorepo. 46 tests across 2 test files:
+  1. **Chunk config tests** (6): Verifies all 5 tier boundaries map to correct `{ chunkSize, overlap, maxCandidatesPerChunk }` values, and that chunkSize never exceeds 2000.
+  2. **Chunk segmentation tests** (8): Empty input, single-chunk fit, multi-chunk splitting, time boundary preservation, oversized segment handling, overlap rewind behavior, newline-joined text output.
+  3. **Merge/overlap tests** (6): Empty input, single candidate, non-overlapping preservation, >50% overlap merge with extended time window, higher-scoring winner selection, unsorted input handling.
+  4. **Structural scoring tests** (4): Empty text, 0-1 range, cue phrase boost, sentence density boost, upper bound clamp.
+  5. **QA signal lookup tests** (5): Empty map, range overlap, miss detection, max signal selection, boundary checking.
+  6. **Preset boost tests** (9): Default returns 0, hook boosts early timeline + surprise language, actionable boosts imperative cues, quote boosts short duration, story boosts emotional language, insight boosts conceptual language.
+  7. **Ranking tests** (8): Empty input, descending score order, topN limit, QA signal impact on ranking, score breakdown presence, structural score from segment texts.
+  All 46 tests pass. Type-check passes across all 7 packages.
