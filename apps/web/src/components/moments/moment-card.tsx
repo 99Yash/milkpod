@@ -11,8 +11,8 @@ import { cn } from '~/lib/utils';
 
 interface MomentCardProps {
   moment: Moment;
-  onSave: (id: string) => void;
-  onDismiss: (id: string) => void;
+  onSave: (id: string) => Promise<void>;
+  onDismiss: (id: string) => Promise<void>;
 }
 
 const sourceLabels: Record<string, string> = {
@@ -29,8 +29,8 @@ export function MomentCard({ moment, onSave, onDismiss }: MomentCardProps) {
   async function handleAction(action: 'save' | 'dismiss') {
     setActionLoading(action);
     try {
-      if (action === 'save') onSave(moment.id);
-      else onDismiss(moment.id);
+      if (action === 'save') await onSave(moment.id);
+      else await onDismiss(moment.id);
     } finally {
       setActionLoading(null);
     }

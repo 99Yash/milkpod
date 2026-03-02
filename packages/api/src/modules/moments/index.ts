@@ -66,6 +66,7 @@ export const moments = new Elysia({ prefix: '/api/moments' })
         user.id,
         body.action,
       );
+      if (!feedback) return status(500, { message: 'Failed to record feedback' });
       return feedback;
     },
     { auth: true, body: MomentModel.feedback },

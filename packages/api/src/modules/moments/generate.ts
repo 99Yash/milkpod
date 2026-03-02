@@ -112,14 +112,24 @@ async function extractCandidatesFromChunk(
 
   const candidates = result.output ?? [];
 
-  // Clamp times to chunk boundaries
-  return candidates.map((c) => ({
-    ...c,
-    startTime: Math.max(chunk.startTime, c.startTime),
-    endTime: Math.min(chunk.endTime, c.endTime),
-    confidence: clamp01(c.confidence),
-    goalFit: clamp01(c.goalFit),
-  }));
+  const MIN_DURATION = 5; // seconds, consistent with prompt rules
+
+  // Clamp times to chunk boundaries, normalize, and filter invalid windows
+  return candidates
+    .map((c) => {
+      let start = Math.max(chunk.startTime, c.startTime);
+      let end = Math.min(chunk.endTime, c.endTime);
+      // Swap if LLM returned startTime > endTime
+      if (start > end) [start, end] = [end, start];
+      return {
+        ...c,
+        startTime: start,
+        endTime: end,
+        confidence: clamp01(c.confidence),
+        goalFit: clamp01(c.goalFit),
+      };
+    })
+    .filter((c) => c.endTime - c.startTime >= MIN_DURATION);
 }
 
 /** Process all chunks with bounded concurrency */

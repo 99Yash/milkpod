@@ -112,7 +112,7 @@ export abstract class MomentService {
     momentId: string,
     userId: string,
     action: MomentModel.Feedback['action'],
-  ): Promise<MomentFeedback> {
+  ): Promise<MomentFeedback | null> {
     const [feedback] = await db()
       .insert(assetMomentFeedback)
       .values({ momentId, userId, action })
@@ -130,7 +130,7 @@ export abstract class MomentService {
             eq(assetMomentFeedback.action, action),
           ),
         );
-      return existing!;
+      return existing ?? null;
     }
     return feedback;
   }
