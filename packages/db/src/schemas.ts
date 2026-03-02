@@ -13,3 +13,4 @@ export * from './schema/episode-edits';
 export * from './schema/episode-renders';
 export * from './schema/filter-rules';
 export * from './schema/usage';
+export * from './schema/moments';

@@ -7,3 +7,14 @@
   - `packages/db/src/migrations/0014_omniscient_cassandra_nova.sql` (generated) — migration SQL
   - `packages/db/src/migrations/meta/0014_snapshot.json` (generated)
 - **Outcome**: Schema created with `moment_preset` enum (default|hook|insight|quote|actionable|story), `moment_source` enum (hybrid|llm|qa), `asset_moment` table (15 columns, 2 indexes, 2 FKs), `asset_moment_feedback` table (6 columns, unique constraint, 1 index, 2 FKs). Migration generated and applied. Build and type-check pass.
+
+## Task 2: Add moments API module + mount in packages/api/src/index.ts
+- **Status**: Complete
+- **Files changed**:
+  - `packages/db/src/schemas.ts` (modified) — added `export * from './schema/moments'` to barrel export
+  - `packages/api/src/types.ts` (modified) — added `Moment` and `MomentFeedback` row types from schema
+  - `packages/api/src/modules/moments/model.ts` (new) — TypeBox validation schemas for generate, listQuery, feedback endpoints
+  - `packages/api/src/modules/moments/service.ts` (new) — abstract static `MomentService` with list, getById, deleteByAssetAndPreset, insertMany, saveMoment, dismissMoment, addFeedback methods
+  - `packages/api/src/modules/moments/index.ts` (new) — Elysia routes: `POST /api/moments/generate`, `GET /api/moments`, `POST /api/moments/:id/feedback`
+  - `packages/api/src/index.ts` (modified) — mounted `moments` module
+- **Outcome**: Full CRUD API module following project patterns (authMacro, abstract static service, TypeBox models). Generate endpoint validates asset ownership and readiness, returns cached moments or empty array (generation pipeline is a TODO for next task). Feedback endpoint handles save/dismiss state mutations + feedback recording. Build and type-check pass across all 7 packages.
