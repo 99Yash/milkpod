@@ -73,3 +73,14 @@
   5. **States**: Loading spinner, empty state with generate CTA, and regenerate button in header when moments exist.
   6. **API integration**: Eden treaty calls to `GET /api/moments`, `POST /api/moments/generate`, `POST /api/moments/:id/feedback`.
   Build and type-check pass across all 7 packages.
+
+## Task 7: Reuse timestamp preview interaction
+- **Status**: Complete (verified — implementation was done as part of Task 6)
+- **Files changed**: None (no new changes needed)
+- **Outcome**: Verified that `moment-card.tsx` already correctly reuses the existing timestamp preview pattern:
+  1. Imports `useTimestampAction` from `~/components/chat/use-timestamp-action` and `VideoMomentDialog` from `~/components/chat/video-moment-dialog`.
+  2. Uses `isClickable` to conditionally render clickable timestamp range (Play icon button) or plain text fallback.
+  3. Calls `handleClick(moment.startTime)` which generates embed URL via `getEmbedUrl()` and opens either an in-app `VideoMomentDialog` (for YouTube/Vimeo/etc.) or external link (for podcasts).
+  4. `VideoMomentDialog` renders conditionally when `momentDialog` state is set, with proper close handling via `clearDialog()`.
+  5. `AssetSourceContext` is provided by `AssetShell` layout wrapping all `/asset/[id]/*` routes, so the hook works correctly in the moments route.
+  Acceptance criterion met: "Timestamp click opens playable preview via existing moment dialog." Type-check passes across all 7 packages.
