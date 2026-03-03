@@ -1,7 +1,9 @@
 import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
 import { OAuthButtons } from '~/app/(auth)/signin/oauth-buttons';
 import { getServerSession } from '~/lib/auth/session';
 import { siteConfig } from '~/lib/site';
+import { AuthErrorToast } from './auth-error-toast';
 import { EmailSignIn } from './email-signin';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +17,9 @@ export default async function AuthenticationPage() {
 
   return (
     <div className="w-full rounded-2xl bg-background/80 p-8 backdrop-blur">
+      <Suspense>
+        <AuthErrorToast />
+      </Suspense>
       <div className="flex flex-col items-center gap-3 text-center">
         <div className="flex h-12 w-12 items-center justify-center">
           <img

@@ -93,8 +93,23 @@ export const app = new Elysia({ name: 'api' })
       }),
     },
   )
-  .mount(auth().handler)
   .use(rateLimiter)
+  .post(
+    '/auth/check-email-provider',
+    async ({ body }) => {
+      // Intentionally do not reveal whether the email is registered
+      // or which authentication provider is used, to avoid user
+      // enumeration and PII leakage for unauthenticated callers.
+      void body;
+      return { conflict: false };
+    },
+    {
+      body: t.Object({
+        email: t.String({ format: 'email' }),
+      }),
+    },
+  )
+  .mount(auth().handler)
   .use(chat)
   .use(assets)
   .use(collections)

@@ -16,17 +16,18 @@
     "check-types": "tsc -b"
   },
   "devDependencies": {
-    "tsdown": "catalog:",
-    "@milkpod/config": "workspace:*"
+    "@milkpod/config": "workspace:*",
+    "tsdown": "catalog:"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
+    "@milkpod/db": "workspace:*",
+    "@milkpod/env": "workspace:*",
     "better-auth": "catalog:",
     "dotenv": "catalog:",
-    "zod": "catalog:",
-    "@milkpod/db": "workspace:*",
-    "@milkpod/env": "workspace:*"
+    "resend": "^6.9.3",
+    "zod": "catalog:"
   }
 }
