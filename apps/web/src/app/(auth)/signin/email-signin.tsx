@@ -14,6 +14,8 @@ import { getErrorMessage, setLocalStorageItem } from '~/lib/utils';
 
 type Step = 'email' | 'otp';
 
+const RESEND_COOLDOWN_SECS = 30;
+
 export function EmailSignIn() {
   const router = useRouter();
   const lastAuthMethod = useLastAuthMethod();
@@ -21,6 +23,30 @@ export function EmailSignIn() {
   const [email, setEmail] = React.useState('');
   const [otp, setOtp] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
+  const [resendCountdown, setResendCountdown] = React.useState(0);
+
+  React.useEffect(() => {
+    if (resendCountdown <= 0) return;
+    const timer = setTimeout(() => setResendCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCountdown]);
+
+  const handleResendOtp = async () => {
+    setResendCountdown(RESEND_COOLDOWN_SECS);
+    try {
+      const result = await authClient.emailOtp.sendVerificationOtp({
+        email,
+        type: 'sign-in',
+      });
+      if (result.error) {
+        toast.error(result.error.message ?? 'Failed to resend code.');
+        return;
+      }
+      toast.success('A new code has been sent.');
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    }
+  };
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +85,7 @@ export function EmailSignIn() {
 
       setEmail(trimmed);
       setStep('otp');
+      setResendCountdown(RESEND_COOLDOWN_SECS);
     } catch (error) {
       toast.error(getErrorMessage(error));
     } finally {
@@ -114,19 +141,33 @@ export function EmailSignIn() {
           </span>
           {isLoading ? <Spinner /> : null}
         </Button>
-        <Button
-          type="button"
-          variant="link"
-          size="sm"
-          className="justify-start px-0 text-muted-foreground"
-          onClick={() => {
-            setStep('email');
-            setOtp('');
-          }}
-          disabled={isLoading}
-        >
-          Use a different email
-        </Button>
+        <div className="flex items-center justify-between">
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="justify-start px-0 text-muted-foreground"
+            onClick={() => {
+              setStep('email');
+              setOtp('');
+            }}
+            disabled={isLoading}
+          >
+            Use a different email
+          </Button>
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="px-0 text-muted-foreground"
+            onClick={handleResendOtp}
+            disabled={isLoading || resendCountdown > 0}
+          >
+            {resendCountdown > 0
+              ? `Resend in ${resendCountdown}s`
+              : 'Resend code'}
+          </Button>
+        </div>
       </form>
     );
   }

@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 
 const ERROR_MESSAGES: Record<string, string> = {
   USER_ALREADY_EXISTS:
-    'This email is already registered with email sign-in. Please use email instead.',
+    'This email is already registered. Please sign in using the email code method.',
   ACCOUNT_NOT_FOUND:
     'No account found for this provider. Please sign in with your original method.',
 };

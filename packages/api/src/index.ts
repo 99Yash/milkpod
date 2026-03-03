@@ -94,6 +94,7 @@ export const app = new Elysia({ name: 'api' })
       }),
     },
   )
+  .use(rateLimiter)
   .post(
     '/auth/check-email-provider',
     async ({ body }) => {
@@ -129,12 +130,11 @@ export const app = new Elysia({ name: 'api' })
     },
     {
       body: t.Object({
-        email: t.String(),
+        email: t.String({ format: 'email' }),
       }),
     },
   )
   .mount(auth().handler)
-  .use(rateLimiter)
   .use(chat)
   .use(assets)
   .use(collections)

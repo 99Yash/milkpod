@@ -35,15 +35,25 @@ export function auth() {
     plugins: [
       emailOTP({
         sendVerificationOTP: async ({ email, otp, type }) => {
-          await resend.emails.send({
-            from: 'Milkpod <noreply@milkpod.app>',
-            to: email,
-            subject:
-              type === 'forget-password'
-                ? `Reset your password — ${otp}`
-                : `Your sign-in code — ${otp}`,
-            html: `<p>Your verification code is: <strong>${otp}</strong></p><p>This code expires in 5 minutes.</p>`,
-          });
+          const safeOtp = String(otp).replace(/[^0-9]/g, '');
+          try {
+            await resend.emails.send({
+              from: 'Milkpod <noreply@milkpod.app>',
+              to: email,
+              subject:
+                type === 'forget-password'
+                  ? `Reset your password — ${safeOtp}`
+                  : `Your sign-in code — ${safeOtp}`,
+              html: `<p>Your verification code is: <strong>${safeOtp}</strong></p><p>This code expires in 5 minutes.</p>`,
+            });
+          } catch (error) {
+            console.error('Failed to send verification OTP via Resend', {
+              email,
+              type,
+              error,
+            });
+            throw error;
+          }
         },
       }),
     ],
