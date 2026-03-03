@@ -1,8 +1,9 @@
 import { auth } from '@milkpod/auth';
 import { db } from '@milkpod/db';
 export { closeConnections } from '@milkpod/db';
+import * as authSchema from '@milkpod/db/schema/auth';
 import { serverEnv } from '@milkpod/env/server';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import { requestLogger } from './middleware/logger';
 import { rateLimiter } from './middleware/rate-limit';
@@ -90,6 +91,45 @@ export const app = new Elysia({ name: 'api' })
       query: t.Object({
         provider: t.String(),
         callbackURL: t.String(),
+      }),
+    },
+  )
+  .post(
+    '/auth/check-email-provider',
+    async ({ body }) => {
+      const { email } = body;
+      const database = db();
+
+      const [user] = await database
+        .select({ id: authSchema.user.id })
+        .from(authSchema.user)
+        .where(eq(authSchema.user.email, email))
+        .limit(1);
+
+      if (!user) {
+        return { conflict: false };
+      }
+
+      const accounts = await database
+        .select({ providerId: authSchema.account.providerId })
+        .from(authSchema.account)
+        .where(eq(authSchema.account.userId, user.id));
+
+      const hasEmailOtp = accounts.some(
+        (a) => a.providerId === 'email-otp',
+      );
+      if (hasEmailOtp || accounts.length === 0) {
+        return { conflict: false };
+      }
+
+      return {
+        conflict: true,
+        existingProvider: accounts[0]!.providerId,
+      };
+    },
+    {
+      body: t.Object({
+        email: t.String(),
       }),
     },
   )
