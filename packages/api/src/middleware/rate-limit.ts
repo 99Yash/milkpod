@@ -75,7 +75,7 @@ const LIMITS = {
 function categorize(path: string): RateCategory | null {
   if (path.startsWith('/api/ingest')) return 'ingest';
   if (path.startsWith('/api/chat')) return 'chat';
-  if (path.startsWith('/api/auth/check-')) return 'auth';
+  if (path.startsWith('/api/auth/')) return 'auth';
   if (
     path.startsWith('/api/assets') ||
     path.startsWith('/api/collections') ||
