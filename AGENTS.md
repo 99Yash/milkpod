@@ -126,6 +126,49 @@ Common v6 differences to remember:
 - `streamText.onFinish` receives `StepResult<TOOLS> & { steps, totalUsage }` with key fields at top level.
 - Provider model ID types are not exported from provider packages; use `string` and validate at runtime.
 
+## Elysia request lifecycle
+
+Elysia processes each request through a fixed pipeline. Understanding this is critical when writing middleware, guards, and error handlers.
+
+```
+Request
+  │
+  ▼
+onRequest          ← Runs on every request, before routing.
+  │                  Use for logging, timing, global headers.
+  │ Routing
+  ▼
+transform          ← After routing, before validation.
+  │                  Can mutate ctx (e.g. coerce query params).
+  │ Validation (body/query/params/headers schemas)
+  ▼
+beforeHandle       ← After validation, before the handler.
+  │                  Return a value to short-circuit (e.g. auth guards, rate limiting).
+  ▼
+Handler            ← The route handler function.
+  │
+  ▼
+afterHandle        ← Can inspect/modify the handler's return value.
+  │
+  ▼
+mapResponse        ← Converts the value into a Response object.
+  │
+  ▼
+afterResponse      ← Deferred — runs after the response is sent.
+  │                  Use for analytics, cleanup.
+  ▼
+Response sent
+```
+
+**Error path:** If any stage from `transform` through `mapResponse` throws, or if the route is not found after `onRequest`, control jumps to `onError`. The error handler can return a value (which then flows through `afterHandle` → `mapResponse` → `afterResponse` as normal) or re-throw.
+
+**Scope propagation:** Hooks registered via `.use(plugin)` apply to routes defined *after* that `.use()` call in the chain. Use `.derive({ as: 'scoped' }, fn)` in plugins to propagate derived context to the parent. Hooks registered directly on the app (`.onBeforeHandle(...)`) apply to all routes in that Elysia instance.
+
+**Our usage:**
+- `requestLogger` — `onRequest` hook for request timing/logging
+- `rateLimiter` — `onBeforeHandle` hook that short-circuits with 429 when the bucket is empty
+- `auth.api.getSession` — called inside `.derive()` to attach session context for downstream handlers
+
 ## Database workflow
 
 - Never use `db:push`; always run `pnpm db:generate` then `pnpm db:migrate`.
@@ -152,6 +195,7 @@ These are the vars referenced in code and configuration:
 - `ELEVENLABS_API_KEY` - Optional, required for ElevenLabs transcription in ingest flows.
 - `OPENAI_API_KEY` - Used by `@ai-sdk/openai` in `@milkpod/ai` (provider reads from process env).
 - `GOOGLE_GENERATIVE_AI_API_KEY` - Used by `@ai-sdk/google` in `@milkpod/ai` (provider reads from process env).
+- `RESEND_API_KEY` - Required for sending email OTP codes via Resend.
 - `ADMIN_EMAILS` - Comma-separated list of admin email addresses; these users bypass daily word quota limits.
 
 Environment files live under each app:
