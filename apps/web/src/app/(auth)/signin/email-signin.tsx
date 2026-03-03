@@ -32,7 +32,6 @@ export function EmailSignIn() {
   }, [resendCountdown]);
 
   const handleResendOtp = async () => {
-    setResendCountdown(RESEND_COOLDOWN_SECS);
     try {
       const result = await authClient.emailOtp.sendVerificationOtp({
         email,
@@ -42,6 +41,7 @@ export function EmailSignIn() {
         toast.error(result.error.message ?? 'Failed to resend code.');
         return;
       }
+      setResendCountdown(RESEND_COOLDOWN_SECS);
       toast.success('A new code has been sent.');
     } catch (error) {
       toast.error(getErrorMessage(error));
