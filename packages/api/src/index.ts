@@ -98,35 +98,11 @@ export const app = new Elysia({ name: 'api' })
   .post(
     '/auth/check-email-provider',
     async ({ body }) => {
-      const { email } = body;
-      const database = db();
-
-      const [user] = await database
-        .select({ id: authSchema.user.id })
-        .from(authSchema.user)
-        .where(eq(authSchema.user.email, email))
-        .limit(1);
-
-      if (!user) {
-        return { conflict: false };
-      }
-
-      const accounts = await database
-        .select({ providerId: authSchema.account.providerId })
-        .from(authSchema.account)
-        .where(eq(authSchema.account.userId, user.id));
-
-      const hasEmailOtp = accounts.some(
-        (a) => a.providerId === 'email-otp',
-      );
-      if (hasEmailOtp || accounts.length === 0) {
-        return { conflict: false };
-      }
-
-      return {
-        conflict: true,
-        existingProvider: accounts[0]!.providerId,
-      };
+      // Intentionally do not reveal whether the email is registered
+      // or which authentication provider is used, to avoid user
+      // enumeration and PII leakage for unauthenticated callers.
+      void body;
+      return { conflict: false };
     },
     {
       body: t.Object({
