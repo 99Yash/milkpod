@@ -10,80 +10,50 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('getMomentChunkConfig', () => {
-  it('returns tier 1 config for small transcripts (<= 8000 chars)', () => {
-    expect(getMomentChunkConfig(0)).toEqual({
-      chunkSize: 900,
-      overlap: 120,
-      maxCandidatesPerChunk: 2,
-    });
-    expect(getMomentChunkConfig(5000)).toEqual({
-      chunkSize: 900,
-      overlap: 120,
-      maxCandidatesPerChunk: 2,
-    });
-    expect(getMomentChunkConfig(8000)).toEqual({
-      chunkSize: 900,
-      overlap: 120,
-      maxCandidatesPerChunk: 2,
-    });
+  it('returns minimum chunk size (500) for empty transcripts', () => {
+    const config = getMomentChunkConfig(0);
+    expect(config.chunkSize).toBe(500);
+    expect(config.maxCandidatesPerChunk).toBe(2);
   });
 
-  it('returns tier 2 config for 8001-20000 chars', () => {
-    expect(getMomentChunkConfig(8001)).toEqual({
-      chunkSize: 1200,
-      overlap: 160,
-      maxCandidatesPerChunk: 2,
-    });
-    expect(getMomentChunkConfig(20000)).toEqual({
-      chunkSize: 1200,
-      overlap: 160,
-      maxCandidatesPerChunk: 2,
-    });
+  it('scales chunk size linearly with transcript length', () => {
+    const small = getMomentChunkConfig(10_000);
+    const medium = getMomentChunkConfig(40_000);
+    const large = getMomentChunkConfig(70_000);
+
+    expect(small.chunkSize).toBeLessThan(medium.chunkSize);
+    expect(medium.chunkSize).toBeLessThan(large.chunkSize);
   });
 
-  it('returns tier 3 config for 20001-45000 chars', () => {
-    expect(getMomentChunkConfig(20001)).toEqual({
-      chunkSize: 1500,
-      overlap: 220,
-      maxCandidatesPerChunk: 3,
-    });
-    expect(getMomentChunkConfig(45000)).toEqual({
-      chunkSize: 1500,
-      overlap: 220,
-      maxCandidatesPerChunk: 3,
-    });
+  it('reaches max chunk size (2000) at 80k chars', () => {
+    expect(getMomentChunkConfig(80_000).chunkSize).toBe(2000);
   });
 
-  it('returns tier 4 config for 45001-80000 chars', () => {
-    expect(getMomentChunkConfig(45001)).toEqual({
-      chunkSize: 1800,
-      overlap: 260,
-      maxCandidatesPerChunk: 3,
-    });
-    expect(getMomentChunkConfig(80000)).toEqual({
-      chunkSize: 1800,
-      overlap: 260,
-      maxCandidatesPerChunk: 3,
-    });
-  });
-
-  it('returns tier 5 config for > 80000 chars', () => {
-    expect(getMomentChunkConfig(80001)).toEqual({
-      chunkSize: 2000,
-      overlap: 300,
-      maxCandidatesPerChunk: 4,
-    });
-    expect(getMomentChunkConfig(200000)).toEqual({
-      chunkSize: 2000,
-      overlap: 300,
-      maxCandidatesPerChunk: 4,
-    });
+  it('caps at 2000 for transcripts beyond 80k chars', () => {
+    expect(getMomentChunkConfig(100_000).chunkSize).toBe(2000);
+    expect(getMomentChunkConfig(500_000).chunkSize).toBe(2000);
   });
 
   it('never returns chunkSize exceeding 2000', () => {
-    for (const size of [0, 1000, 10000, 50000, 100000, 500000]) {
+    for (const size of [0, 1000, 10_000, 50_000, 100_000, 500_000]) {
       expect(getMomentChunkConfig(size).chunkSize).toBeLessThanOrEqual(2000);
     }
+  });
+
+  it('sets overlap to ~15% of chunk size', () => {
+    for (const size of [0, 20_000, 40_000, 80_000]) {
+      const config = getMomentChunkConfig(size);
+      expect(config.overlap).toBe(Math.round(config.chunkSize * 0.15));
+    }
+  });
+
+  it('scales maxCandidatesPerChunk with chunk size', () => {
+    // small transcript → 2 candidates
+    expect(getMomentChunkConfig(5_000).maxCandidatesPerChunk).toBe(2);
+    // medium transcript → 3 candidates
+    expect(getMomentChunkConfig(40_000).maxCandidatesPerChunk).toBe(3);
+    // large transcript → 4 candidates
+    expect(getMomentChunkConfig(80_000).maxCandidatesPerChunk).toBe(4);
   });
 });
 
