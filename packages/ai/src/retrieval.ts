@@ -8,6 +8,14 @@ import {
 } from '@milkpod/db/schemas';
 import { generateEmbedding, EMBEDDING_MODEL_NAME } from './embeddings';
 
+const segmentFields = {
+  id: transcriptSegments.id,
+  text: transcriptSegments.text,
+  startTime: transcriptSegments.startTime,
+  endTime: transcriptSegments.endTime,
+  speaker: transcriptSegments.speaker,
+} as const;
+
 export interface RelevantSegment {
   segmentId: string;
   text: string;
@@ -134,13 +142,7 @@ export async function getTranscriptOverview(
   // If total is within budget, return all segments
   if (total <= maxSegments) {
     const segments = await db()
-      .select({
-        id: transcriptSegments.id,
-        text: transcriptSegments.text,
-        startTime: transcriptSegments.startTime,
-        endTime: transcriptSegments.endTime,
-        speaker: transcriptSegments.speaker,
-      })
+      .select(segmentFields)
       .from(transcriptSegments)
       .where(eq(transcriptSegments.transcriptId, transcript.id))
       .orderBy(asc(transcriptSegments.startTime));
@@ -151,13 +153,7 @@ export async function getTranscriptOverview(
   // Evenly sample using modular arithmetic on segment_index
   const step = Math.floor(total / maxSegments);
   const segments = await db()
-    .select({
-      id: transcriptSegments.id,
-      text: transcriptSegments.text,
-      startTime: transcriptSegments.startTime,
-      endTime: transcriptSegments.endTime,
-      speaker: transcriptSegments.speaker,
-    })
+    .select(segmentFields)
     .from(transcriptSegments)
     .where(
       and(
@@ -185,13 +181,7 @@ export async function getTranscriptContext(
   }[]
 > {
   return db()
-    .select({
-      id: transcriptSegments.id,
-      text: transcriptSegments.text,
-      startTime: transcriptSegments.startTime,
-      endTime: transcriptSegments.endTime,
-      speaker: transcriptSegments.speaker,
-    })
+    .select(segmentFields)
     .from(transcriptSegments)
     .where(
       and(
