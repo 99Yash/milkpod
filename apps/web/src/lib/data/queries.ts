@@ -11,6 +11,7 @@ import {
   qaMessages,
   qaMessageParts,
   assetMoments,
+  momentPresetEnum,
 } from '@milkpod/db/schemas';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Asset, AssetWithTranscript, Collection, Moment } from '@milkpod/api/types';
@@ -80,7 +81,7 @@ export async function getMoments(
       and(
         eq(assetMoments.assetId, assetId),
         eq(assetMoments.userId, userId),
-        eq(assetMoments.preset, preset as typeof assetMoments._.columns.preset._.data),
+        eq(assetMoments.preset, preset as (typeof momentPresetEnum.enumValues)[number]),
         isNull(assetMoments.dismissedAt),
       ),
     )
