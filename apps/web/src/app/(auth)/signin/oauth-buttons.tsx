@@ -15,6 +15,19 @@ import {
 import { clientEnv } from '@milkpod/env/client';
 import { cn, setLocalStorageItem } from '~/lib/utils';
 
+const POPUP_WIDTH = 500;
+const POPUP_HEIGHT = 600;
+
+function openCenteredPopup(url: string): Window | null {
+  const left = Math.round(window.screenX + (window.outerWidth - POPUP_WIDTH) / 2);
+  const top = Math.round(window.screenY + (window.outerHeight - POPUP_HEIGHT) / 2);
+  return window.open(
+    url,
+    'oauth-popup',
+    `width=${POPUP_WIDTH},height=${POPUP_HEIGHT},left=${left},top=${top},popup=yes,noopener`,
+  );
+}
+
 interface OAuthButtonProps {
   providerId: OAuthProviderId;
   className?: React.ComponentProps<typeof Button>['className'];
@@ -36,14 +49,34 @@ const OAuthButton: React.FC<OAuthButtonProps> = ({ providerId, className }) => {
     setIsLoading(true);
     setLocalStorageItem(LAST_AUTH_METHOD_KEY, authMethod);
 
-    // Navigate directly to the server's redirect endpoint so the OAuth
-    // state cookie is set as a first-party cookie (top-level navigation).
-    // This avoids the cross-origin fetch cookie issue on Railway where
-    // frontend and backend are on different *.up.railway.app subdomains.
-    const callbackURL = `${window.location.origin}/`;
+    const callbackURL = `${window.location.origin}/oauth-callback`;
     const serverUrl = clientEnv().NEXT_PUBLIC_SERVER_URL;
     const params = new URLSearchParams({ provider: providerId, callbackURL });
-    window.location.href = `${serverUrl}/auth/social-redirect?${params}`;
+    const popupUrl = `${serverUrl}/auth/social-redirect?${params}`;
+
+    const popup = openCenteredPopup(popupUrl);
+
+    if (!popup) {
+      // Popup blocked — fall back to full-page redirect (old behaviour)
+      const fallbackParams = new URLSearchParams({
+        provider: providerId,
+        callbackURL: `${window.location.origin}/`,
+      });
+      window.location.href = `${serverUrl}/auth/social-redirect?${fallbackParams}`;
+      return;
+    }
+
+    // Poll for the popup closing. Once it closes (after the callback page
+    // runs window.close()), reload the current page. The /signin SSR
+    // detects the session and redirects to /dashboard — same flow as the
+    // old redirect approach landing on /.
+    const pollId = window.setInterval(() => {
+      if (popup.closed) {
+        window.clearInterval(pollId);
+        // Full reload so the SSR session check runs fresh.
+        window.location.reload();
+      }
+    }, 400);
   }, [authMethod, provider, providerId]);
 
   if (!provider) {

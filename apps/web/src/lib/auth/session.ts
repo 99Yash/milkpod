@@ -1,12 +1,12 @@
-import { auth } from '@milkpod/auth';
+import { sessionAuth } from '@milkpod/auth/session';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { route } from '~/lib/routes';
 
-type AuthInstance = ReturnType<typeof auth>;
+type SessionAuthInstance = ReturnType<typeof sessionAuth>;
 export type SessionSnapshot = Awaited<
-  ReturnType<AuthInstance['api']['getSession']>
+  ReturnType<SessionAuthInstance['api']['getSession']>
 >;
 
 type AuthenticatedSession = NonNullable<SessionSnapshot> & {
@@ -16,7 +16,7 @@ type AuthenticatedSession = NonNullable<SessionSnapshot> & {
 export const getServerSession = cache(async () => {
   try {
     const requestHeaders = await headers();
-    const session = await auth().api.getSession({ headers: requestHeaders });
+    const session = await sessionAuth().api.getSession({ headers: requestHeaders });
     return session ?? null;
   } catch {
     return null;
