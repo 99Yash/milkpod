@@ -1,53 +1,11 @@
-import {
-  chunkTranscript,
-  generateEmbeddings,
-  EMBEDDING_MODEL_NAME,
-  EMBEDDING_DIMENSIONS,
-} from '@milkpod/ai/embeddings';
 import { transcribeAudio } from '../ingest/elevenlabs';
 import { groupWordsIntoSegments } from '../ingest/segments';
 import { IngestService } from '../ingest/service';
+import { withRetry } from '../ingest/retry';
+import { embedSegments } from '../ingest/embed';
 import { AssetService } from '../assets/service';
 import { PodcastService } from './service';
-import {
-  emitAssetStatus,
-  emitAssetProgress,
-} from '../../events/asset-events';
-
-const MAX_RETRIES = 3;
-const BASE_DELAY_MS = 1000;
-
-function delayWithJitter(attempt: number): Promise<void> {
-  const exponential = BASE_DELAY_MS * 2 ** attempt;
-  const jitter = Math.random() * exponential;
-  return new Promise((resolve) => setTimeout(resolve, exponential + jitter));
-}
-
-async function withRetry<T>(
-  stage: string,
-  episodeId: string,
-  fn: () => Promise<T>
-): Promise<T> {
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Unknown error';
-      await PodcastService.incrementEpisodeAttempts(episodeId, message);
-      console.error(
-        `[podcast] Stage "${stage}" failed for episode ${episodeId} (attempt ${attempt + 1}/${MAX_RETRIES + 1}):`,
-        message
-      );
-      if (attempt < MAX_RETRIES) {
-        await delayWithJitter(attempt);
-      } else {
-        throw error;
-      }
-    }
-  }
-  throw new Error(`Stage "${stage}" exhausted retries`);
-}
+import { emitAssetStatus } from '../../events/asset-events';
 
 /**
  * Ingest a single podcast episode:
@@ -67,6 +25,12 @@ export async function orchestrateEpisodePipeline(
     console.error(`[podcast] Episode ${episodeId} not found`);
     return;
   }
+
+  const retry = <T>(stage: string, fn: () => Promise<T>) =>
+    withRetry(
+      { stage, entityId: episodeId, logPrefix: 'podcast', onError: PodcastService.incrementEpisodeAttempts },
+      fn
+    );
 
   let assetId = episode.assetId;
 
@@ -104,7 +68,7 @@ export async function orchestrateEpisodePipeline(
     await PodcastService.updateEpisodeStatus(episodeId, 'transcribing');
     emitAssetStatus(userId, assetId, 'transcribing');
 
-    const result = await withRetry('transcribing', episodeId, () =>
+    const result = await retry('transcribing', () =>
       transcribeAudio(episode.sourceUrl)
     );
     const segments = groupWordsIntoSegments(result.words);
@@ -119,45 +83,13 @@ export async function orchestrateEpisodePipeline(
     await PodcastService.updateEpisodeStatus(episodeId, 'transcribing'); // episode stays at transcribing until embeddings done
     emitAssetStatus(userId, assetId, 'embedding');
 
-    // Concatenate all segments into full transcript, then chunk recursively
-    const chunkItems = chunkTranscript(storedSegments);
-    const embeddingItems: {
-      segmentId: string;
-      content: string;
-      embedding: number[];
-      model: string;
-      dimensions: number;
-    }[] = [];
-
-    const EMBED_BATCH = 64;
-    for (let i = 0; i < chunkItems.length; i += EMBED_BATCH) {
-      const batch = chunkItems.slice(i, i + EMBED_BATCH);
-      const vectors = await withRetry('embedding', episodeId, () =>
-        generateEmbeddings(batch.map((c) => c.content))
-      );
-      for (const [j, chunk] of batch.entries()) {
-        const vector = vectors[j];
-        if (!vector) {
-          console.warn(`Missing embedding vector at index ${j} for episode ${episodeId}`);
-          continue;
-        }
-        embeddingItems.push({
-          segmentId: chunk.segmentId,
-          content: chunk.content,
-          embedding: vector,
-          model: EMBEDDING_MODEL_NAME,
-          dimensions: EMBEDDING_DIMENSIONS,
-        });
-      }
-
-      const done = Math.min(i + EMBED_BATCH, chunkItems.length);
-      const pct = (done / chunkItems.length) * 100;
-      emitAssetProgress(userId, assetId, 'embedding', pct, `Embedding chunks (${done}/${chunkItems.length})`);
-    }
-
-    if (embeddingItems.length > 0) {
-      await IngestService.storeEmbeddings(embeddingItems);
-    }
+    await embedSegments({
+      entityId: episodeId,
+      userId,
+      assetId,
+      storedSegments,
+      retry,
+    });
 
     // Stage 4: Mark as ready
     await IngestService.updateStatus(assetId, 'ready');

@@ -1,9 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import type { Moment } from '@milkpod/api/types';
-import { useAssetContext } from '~/contexts/asset-context';
 import { api } from '~/lib/api';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
@@ -13,13 +12,17 @@ import {
   type MomentPreset,
 } from './moment-preset-switcher';
 
-export function MomentsTab() {
-  const { assetId } = useAssetContext();
+interface MomentsTabProps {
+  assetId: string;
+  initialMoments: Moment[];
+}
+
+export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
   const [preset, setPreset] = useState<MomentPreset>('default');
-  const [moments, setMoments] = useState<Moment[]>([]);
+  const [moments, setMoments] = useState<Moment[]>(initialMoments);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [hasLoaded, setHasLoaded] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(true);
 
   const fetchMoments = useCallback(
     async (p: MomentPreset) => {
@@ -39,10 +42,6 @@ export function MomentsTab() {
     },
     [assetId],
   );
-
-  useEffect(() => {
-    fetchMoments(preset);
-  }, [preset, fetchMoments]);
 
   async function handleGenerate(regenerate = false) {
     setGenerating(true);
@@ -84,6 +83,7 @@ export function MomentsTab() {
   function handlePresetChange(p: MomentPreset) {
     setPreset(p);
     setHasLoaded(false);
+    fetchMoments(p);
   }
 
   const isEmpty = hasLoaded && !loading && moments.length === 0;
