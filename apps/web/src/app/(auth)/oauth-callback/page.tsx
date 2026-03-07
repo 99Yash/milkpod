@@ -15,10 +15,9 @@ import { Spinner } from '~/components/ui/spinner';
  */
 export default function OAuthCallbackPage() {
   useEffect(() => {
-    // If opened as a popup, just close — the opener polls for this.
-    if (window.opener) {
-      window.close();
-    }
+    // Try closing — the opener polls for `.closed` via the WindowProxy.
+    // With `noopener`, window.opener is null but window.close() still works.
+    window.close();
 
     // Fallback: not a popup, or window.close() was a no-op → redirect.
     const fallback = setTimeout(() => {

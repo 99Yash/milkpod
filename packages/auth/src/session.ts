@@ -32,6 +32,7 @@ export function sessionAuth() {
   const env = sessionEnvSchema.parse(process.env);
 
   _sessionAuth = betterAuth({
+    baseURL: env.BETTER_AUTH_URL,
     database: drizzleAdapter(db(), { provider: 'pg', schema }),
     trustedOrigins: [env.CORS_ORIGIN],
     advanced: {

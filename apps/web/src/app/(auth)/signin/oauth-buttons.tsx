@@ -24,7 +24,7 @@ function openCenteredPopup(url: string): Window | null {
   return window.open(
     url,
     'oauth-popup',
-    `width=${POPUP_WIDTH},height=${POPUP_HEIGHT},left=${left},top=${top},popup=yes`,
+    `width=${POPUP_WIDTH},height=${POPUP_HEIGHT},left=${left},top=${top},popup=yes,noopener`,
   );
 }
 
