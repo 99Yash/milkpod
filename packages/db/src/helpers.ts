@@ -24,3 +24,7 @@ export function createId(
 export function generateRandomCode(length: number = 8) {
   return customAlphabet('123456789', length)();
 }
+
+export function findOne<T>(rows: T[]): T | null {
+  return rows[0] ?? null;
+}
