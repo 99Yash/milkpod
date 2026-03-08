@@ -121,8 +121,8 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
 
         {!isUser && !isStreaming && message.metadata?.finishReason === 'length' && (
           <p className="text-xs text-muted-foreground">
-            Response trimmed by word limit — select a higher limit for longer
-            answers.
+            Response trimmed due to output limit — try a higher word limit or
+            ask a follow-up.
           </p>
         )}
       </div>
