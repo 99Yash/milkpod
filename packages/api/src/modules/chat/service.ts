@@ -149,6 +149,7 @@ export abstract class ChatService {
             id: m.id,
             threadId,
             role: m.role,
+            metadata: m.metadata ?? null,
           })),
         )
         .onConflictDoNothing();
@@ -194,6 +195,7 @@ export abstract class ChatService {
         id: row.id,
         role: row.role,
         parts: (partsByMessage.get(row.id) ?? []).map(deserializePart),
+        ...(row.metadata != null && { metadata: row.metadata }),
       };
     });
   }
