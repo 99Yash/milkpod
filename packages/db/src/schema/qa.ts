@@ -1,9 +1,19 @@
+import type { FinishReason } from 'ai';
 import { index, integer, jsonb, pgTable, real, text, unique } from 'drizzle-orm/pg-core';
 import { createId, lifecycle_dates } from '../helpers';
 import { user } from './auth';
 import { collections } from './collections';
 import { mediaAssets } from './media-assets';
 import { transcriptSegments } from './transcript-segments';
+
+/** Typed shape for the `qa_message.metadata` jsonb column. */
+export type QaMessageMetadata = {
+  threadId?: string;
+  assetId?: string;
+  collectionId?: string;
+  durationMs?: number;
+  finishReason?: FinishReason;
+};
 
 export const qaThreads = pgTable(
   'qa_thread',
@@ -34,6 +44,7 @@ export const qaMessages = pgTable(
       .notNull()
       .references(() => qaThreads.id, { onDelete: 'cascade' }),
     role: text('role').notNull(),
+    metadata: jsonb('metadata').$type<QaMessageMetadata>(),
     ...lifecycle_dates,
   },
   (t) => [index('qa_message_thread_created_idx').on(t.threadId, t.createdAt)],

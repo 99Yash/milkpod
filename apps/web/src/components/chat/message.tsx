@@ -118,6 +118,13 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
 
           return null;
         })}
+
+        {!isUser && !isStreaming && message.metadata?.finishReason === 'length' && (
+          <p className="text-xs text-muted-foreground">
+            Response trimmed due to output limit — try a higher word limit or
+            ask a follow-up.
+          </p>
+        )}
       </div>
     </div>
   );
