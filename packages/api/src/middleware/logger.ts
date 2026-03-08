@@ -12,10 +12,10 @@ function normalizeStatus(status: number | string | undefined): number {
 }
 
 export const requestLogger = new Elysia({ name: 'request-logger' })
-  .onRequest(({ request }) => {
+  .onTransform({ as: 'global' }, ({ request }) => {
     timings.set(request, performance.now());
   })
-  .onAfterResponse((ctx) => {
+  .onAfterResponse({ as: 'global' }, (ctx) => {
     const start = timings.get(ctx.request);
     const durationMs = start != null ? Math.round(performance.now() - start) : -1;
     timings.delete(ctx.request);
