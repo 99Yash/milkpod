@@ -28,6 +28,7 @@
     "tsdown": "catalog:"
   },
   "peerDependencies": {
+    "ai": "catalog:",
     "typescript": "^5"
   },
   "dependencies": {

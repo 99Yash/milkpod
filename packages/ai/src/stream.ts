@@ -151,6 +151,7 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
         threadId: req.threadId,
         assetId: req.assetId,
         collectionId: req.collectionId,
+        durationMs: Date.now() - startTime,
         finishReason,
       };
       await req.onFinish({ responseMessage, wordCount });
