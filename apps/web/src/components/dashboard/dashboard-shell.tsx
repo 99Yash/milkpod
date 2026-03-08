@@ -139,7 +139,7 @@ export function DashboardShell({
   return (
     <DashboardShellContext.Provider value={contextValue}>
       <div
-        className="h-svh bg-background overflow-hidden sm:overflow-x-hidden sm:overflow-y-auto"
+        className="h-full bg-background overflow-hidden sm:overflow-x-hidden sm:overflow-y-auto"
         data-dashboard-root
       >
         <div className="mx-auto box-border flex h-full w-full max-w-7xl gap-8 px-0 py-0 sm:px-4 lg:px-6 lg:py-6 sm:h-auto sm:min-h-full">

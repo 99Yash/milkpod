@@ -7,6 +7,59 @@ import type {
   ShareLink,
 } from '@milkpod/api/types';
 import type { MilkpodMessage } from '@milkpod/ai/types';
+import {
+  deletePersistedChatMessages,
+  readPersistedChatMessages,
+  writePersistedChatMessages,
+} from './local-first/chat-cache';
+
+type ChatMessagesResult = { threadId: string; messages: MilkpodMessage[] };
+
+const chatMessagesCache = new Map<string, ChatMessagesResult>();
+const chatMessagesInflight = new Map<string, Promise<ChatMessagesResult | null>>();
+const persistedChatMessagesInflight = new Map<
+  string,
+  Promise<ChatMessagesResult | undefined>
+>();
+const persistChatMessagesTimers = new Map<
+  string,
+  ReturnType<typeof globalThis.setTimeout>
+>();
+
+async function loadPersistedChatMessages(
+  threadId: string,
+): Promise<ChatMessagesResult | undefined> {
+  const existing = persistedChatMessagesInflight.get(threadId);
+  if (existing) return existing;
+
+  const request = readPersistedChatMessages(threadId)
+    .then((persisted) => {
+      if (persisted) {
+        chatMessagesCache.set(threadId, persisted);
+      }
+      return persisted;
+    })
+    .finally(() => {
+      persistedChatMessagesInflight.delete(threadId);
+    });
+
+  persistedChatMessagesInflight.set(threadId, request);
+  return request;
+}
+
+function schedulePersistChatMessages(threadId: string, messages: MilkpodMessage[]): void {
+  const existing = persistChatMessagesTimers.get(threadId);
+  if (existing) {
+    globalThis.clearTimeout(existing);
+  }
+
+  const timer = globalThis.setTimeout(() => {
+    persistChatMessagesTimers.delete(threadId);
+    void writePersistedChatMessages(threadId, messages);
+  }, 250);
+
+  persistChatMessagesTimers.set(threadId, timer);
+}
 
 // ---------------------------------------------------------------------------
 // Shared resource (returned by /api/shares/validate/:token)
@@ -178,7 +231,20 @@ export async function deleteThread(
   threadId: string
 ): Promise<boolean> {
   const { error } = await api.api.threads({ id: threadId }).delete();
-  return !error;
+  if (error) return false;
+
+  const timer = persistChatMessagesTimers.get(threadId);
+  if (timer) {
+    globalThis.clearTimeout(timer);
+    persistChatMessagesTimers.delete(threadId);
+  }
+
+  chatMessagesCache.delete(threadId);
+  persistedChatMessagesInflight.delete(threadId);
+  chatMessagesInflight.delete(threadId);
+  void deletePersistedChatMessages(threadId);
+
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -186,9 +252,57 @@ export async function deleteThread(
 // ---------------------------------------------------------------------------
 
 export async function fetchChatMessages(
-  threadId: string
-): Promise<{ threadId: string; messages: MilkpodMessage[] } | null> {
-  const { data, error } = await api.api.chat({ threadId }).get();
-  if (error || !data || !('messages' in data)) return null;
-  return data as { threadId: string; messages: MilkpodMessage[] };
+  threadId: string,
+  options?: { preferCache?: boolean }
+): Promise<ChatMessagesResult | null> {
+  const cached = chatMessagesCache.get(threadId);
+  if (options?.preferCache && cached) return cached;
+
+  let persisted: ChatMessagesResult | undefined;
+  if (options?.preferCache && !cached) {
+    persisted = await loadPersistedChatMessages(threadId);
+    if (persisted) {
+      void fetchChatMessages(threadId);
+      return persisted;
+    }
+  }
+
+  const inflight = chatMessagesInflight.get(threadId);
+  if (inflight) return inflight;
+
+  const request = api.api
+    .chat({ threadId })
+    .get()
+    .then(({ data, error }) => {
+      if (error || !data || !('messages' in data)) {
+        return chatMessagesCache.get(threadId) ?? persisted ?? null;
+      }
+
+      const result = data as ChatMessagesResult;
+      chatMessagesCache.set(threadId, result);
+      void writePersistedChatMessages(threadId, result.messages);
+      return result;
+    })
+    .finally(() => {
+      chatMessagesInflight.delete(threadId);
+    });
+
+  chatMessagesInflight.set(threadId, request);
+  return request;
+}
+
+export function getCachedChatMessages(threadId: string): ChatMessagesResult | undefined {
+  return chatMessagesCache.get(threadId);
+}
+
+export function primeChatMessagesCache(
+  threadId: string,
+  messages: MilkpodMessage[]
+): void {
+  chatMessagesCache.set(threadId, { threadId, messages });
+  schedulePersistChatMessages(threadId, messages);
+}
+
+export function prefetchChatMessages(threadId: string): void {
+  void fetchChatMessages(threadId, { preferCache: true });
 }

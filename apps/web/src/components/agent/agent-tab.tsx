@@ -24,17 +24,40 @@ export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
   );
 
   useEffect(() => {
+    if (initialAssets) {
+      const ready = initialAssets.filter((a) => a.status === 'ready');
+      setAssets(ready);
+      setIsLoading(false);
+      setSelectedId((prev) => {
+        if (initialAssetId) return initialAssetId;
+        if (prev && ready.some((asset) => asset.id === prev)) return prev;
+        return ready[0]?.id;
+      });
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
     fetchAssets()
       .then((data) => {
+        if (cancelled) return;
         const ready = data.filter((a) => a.status === 'ready');
         setAssets(ready);
-        if (!selectedId && ready.length > 0) {
-          setSelectedId(ready[0].id);
-        }
+        setSelectedId((prev) => {
+          if (initialAssetId) return initialAssetId;
+          if (prev && ready.some((asset) => asset.id === prev)) return prev;
+          return ready[0]?.id;
+        });
       })
       .catch(() => {})
-      .finally(() => setIsLoading(false));
-  }, [selectedId]);
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialAssetId, initialAssets]);
 
   useEffect(() => {
     if (initialAssetId) {
