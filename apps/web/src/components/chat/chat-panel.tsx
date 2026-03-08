@@ -17,6 +17,8 @@ import type { MilkpodMessage } from '@milkpod/ai/types';
 import {
   fetchChatMessages,
   fetchLatestThreadForAsset,
+  getCachedChatMessages,
+  primeChatMessagesCache,
 } from '~/lib/api-fetchers';
 
 // ---------------------------------------------------------------------------
@@ -29,17 +31,43 @@ function useRestoredThread(
   assetId?: string,
   explicitThreadId?: string,
 ) {
+  const explicitCached = explicitThreadId
+    ? getCachedChatMessages(explicitThreadId)
+    : undefined;
   const [threadId, setThreadId] = useState<string | undefined>(explicitThreadId);
-  const [messages, setMessages] = useState<MilkpodMessage[] | undefined>();
-  const [isLoading, setIsLoading] = useState(() => !!explicitThreadId || !!assetId);
+  const [messages, setMessages] = useState<MilkpodMessage[] | undefined>(
+    explicitCached?.messages,
+  );
+  const [isLoading, setIsLoading] = useState(
+    () => (explicitThreadId ? !explicitCached : !!assetId),
+  );
 
   useEffect(() => {
     let cancelled = false;
 
     if (explicitThreadId) {
+      const cached = getCachedChatMessages(explicitThreadId);
       setThreadId(explicitThreadId);
+
+      if (cached) {
+        setMessages(cached.messages);
+        setIsLoading(false);
+        fetchChatMessages(explicitThreadId)
+          .then((result) => {
+            if (!cancelled && result) {
+              setMessages(result.messages);
+            }
+          })
+          .catch(() => {
+            // Ignore revalidation failures when cached messages are available.
+          });
+        return () => {
+          cancelled = true;
+        };
+      }
+
       setIsLoading(true);
-      fetchChatMessages(explicitThreadId)
+      fetchChatMessages(explicitThreadId, { preferCache: true })
         .then((result) => {
           if (cancelled) return;
           if (result) {
@@ -67,7 +95,25 @@ function useRestoredThread(
     fetchLatestThreadForAsset(assetId)
       .then(async (thread) => {
         if (cancelled || !thread) return;
-        const result = await fetchChatMessages(thread.id);
+
+        const cached = getCachedChatMessages(thread.id);
+        if (cached) {
+          setMessages(cached.messages);
+          setThreadId(thread.id);
+          setIsLoading(false);
+          fetchChatMessages(thread.id)
+            .then((result) => {
+              if (!cancelled && result) {
+                setMessages(result.messages);
+              }
+            })
+            .catch(() => {
+              // Ignore revalidation failures when cached messages are available.
+            });
+          return;
+        }
+
+        const result = await fetchChatMessages(thread.id, { preferCache: true });
         if (cancelled) return;
         if (result) {
           setMessages(result.messages);
@@ -216,6 +262,11 @@ function ChatPanelContent({
       toast.error(error.message || 'An error occurred');
     }
   }, [error]);
+
+  useEffect(() => {
+    if (!chatThreadId) return;
+    primeChatMessagesCache(chatThreadId, messages);
+  }, [chatThreadId, messages]);
 
   useEffect(() => {
     if (scrollRef.current) {

@@ -14,27 +14,20 @@ export type TranscriptionResult = {
   words: ElevenLabsWord[];
 };
 
-export async function transcribeAudio(
-  audioUrl: string
-): Promise<TranscriptionResult> {
+function getApiKey(): string {
   const apiKey = serverEnv().ELEVENLABS_API_KEY;
   if (!apiKey) {
     throw new Error('ELEVENLABS_API_KEY environment variable is not set');
   }
+  return apiKey;
+}
 
-  const formData = new FormData();
-  formData.append('model_id', 'scribe_v2');
-  formData.append('cloud_storage_url', audioUrl);
-  formData.append('diarize', 'true');
-  formData.append('timestamps_granularity', 'word');
-
+async function callTranscriptionApi(formData: FormData): Promise<TranscriptionResult> {
   const response = await fetch(
     'https://api.elevenlabs.io/v1/speech-to-text',
     {
       method: 'POST',
-      headers: {
-        'xi-api-key': apiKey,
-      },
+      headers: { 'xi-api-key': getApiKey() },
       body: formData,
     }
   );
@@ -46,6 +39,27 @@ export async function transcribeAudio(
     );
   }
 
-  const data = (await response.json()) as TranscriptionResult;
-  return data;
+  return (await response.json()) as TranscriptionResult;
+}
+
+export async function transcribeAudio(
+  audioUrl: string
+): Promise<TranscriptionResult> {
+  const formData = new FormData();
+  formData.append('model_id', 'scribe_v2');
+  formData.append('cloud_storage_url', audioUrl);
+  formData.append('diarize', 'true');
+  formData.append('timestamps_granularity', 'word');
+  return callTranscriptionApi(formData);
+}
+
+export async function transcribeFile(
+  file: File
+): Promise<TranscriptionResult> {
+  const formData = new FormData();
+  formData.append('model_id', 'scribe_v2');
+  formData.append('file', file);
+  formData.append('diarize', 'true');
+  formData.append('timestamps_granularity', 'word');
+  return callTranscriptionApi(formData);
 }

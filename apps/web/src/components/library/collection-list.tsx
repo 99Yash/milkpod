@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { fetchCollections } from '~/lib/api-fetchers';
 import { CollectionCard } from './collection-card';
 import { CreateCollectionDialog } from './create-collection-dialog';
@@ -15,6 +15,7 @@ interface CollectionListProps {
 export function CollectionList({ refreshKey, initialCollections }: CollectionListProps) {
   const [collections, setCollections] = useState<Collection[]>(initialCollections ?? []);
   const [isLoading, setIsLoading] = useState(!initialCollections);
+  const didInitialFetchRef = useRef(false);
 
   const loadCollections = useCallback(async () => {
     try {
@@ -27,8 +28,15 @@ export function CollectionList({ refreshKey, initialCollections }: CollectionLis
   }, []);
 
   useEffect(() => {
+    if (!didInitialFetchRef.current) {
+      didInitialFetchRef.current = true;
+      if (initialCollections && !refreshKey) {
+        return;
+      }
+    }
+
     loadCollections();
-  }, [loadCollections, refreshKey]);
+  }, [initialCollections, loadCollections, refreshKey]);
 
   if (isLoading) {
     return (

@@ -1,10 +1,15 @@
-import { Elysia, status } from 'elysia';
+import { Elysia, status, t } from 'elysia';
 import { authMacro } from '../../middleware/auth';
 import { IngestModel } from './model';
 import { IngestService } from './service';
 import { AssetService } from '../assets/service';
 import { resolveYouTubeMetadata } from './youtube';
-import { orchestratePipeline } from './pipeline';
+import { orchestratePipeline, orchestrateUploadPipeline } from './pipeline';
+
+/** 100 MB */
+const MAX_UPLOAD_SIZE = 100 * 1024 * 1024;
+
+const ACCEPTED_MIME_PREFIXES = ['audio/', 'video/'] as const;
 
 export const ingest = new Elysia({ prefix: '/api/ingest' })
   .use(authMacro)
@@ -53,4 +58,52 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       return asset;
     },
     { auth: true, body: IngestModel.ingest }
+  )
+  .post(
+    '/upload',
+    async ({ body, user }) => {
+      const userId = user.id;
+      const { file, title } = body;
+
+      // Validate MIME type
+      if (!ACCEPTED_MIME_PREFIXES.some((p) => file.type.startsWith(p))) {
+        return status(422, {
+          message: 'Unsupported file type. Please upload an audio or video file.',
+        });
+      }
+
+      // Validate file size
+      if (file.size > MAX_UPLOAD_SIZE) {
+        return status(422, {
+          message: `File too large. Maximum size is ${MAX_UPLOAD_SIZE / (1024 * 1024)}MB.`,
+        });
+      }
+
+      const mediaType = file.type.startsWith('video/') ? 'video' as const : 'audio' as const;
+      const assetTitle = title?.trim() || file.name.replace(/\.[^.]+$/, '');
+
+      const asset = await AssetService.create(userId, {
+        title: assetTitle,
+        sourceType: 'upload',
+        mediaType,
+      });
+
+      if (!asset) {
+        return status(500, { message: 'Failed to create asset' });
+      }
+
+      // Fire-and-forget pipeline
+      orchestrateUploadPipeline(asset.id, file, userId).catch((err) => {
+        console.error(`Upload pipeline failed for asset ${asset.id}:`, err);
+      });
+
+      return asset;
+    },
+    {
+      auth: true,
+      body: t.Object({
+        file: t.File(),
+        title: t.Optional(t.String()),
+      }),
+    }
   );

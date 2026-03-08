@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { fetchAssets } from '~/lib/api-fetchers';
 import { AssetCard } from './asset-card';
 import { Spinner } from '~/components/ui/spinner';
@@ -25,6 +25,11 @@ export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }:
   const [assets, setAssets] = useState<Asset[]>(initialAssets ?? []);
   const [isLoading, setIsLoading] = useState(!initialAssets);
   const [progressMap, setProgressMap] = useState<Record<string, AssetProgress>>({});
+  const didInitialFetchRef = useRef(false);
+
+  const hasActiveFilters = Boolean(
+    filters?.q || filters?.status || filters?.sourceType,
+  );
 
   const loadAssets = useCallback(async () => {
     try {
@@ -43,8 +48,15 @@ export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }:
   }, [filters?.q, filters?.status, filters?.sourceType]);
 
   useEffect(() => {
+    if (!didInitialFetchRef.current) {
+      didInitialFetchRef.current = true;
+      if (initialAssets && !hasActiveFilters && !refreshKey) {
+        return;
+      }
+    }
+
     loadAssets();
-  }, [loadAssets, refreshKey]);
+  }, [hasActiveFilters, initialAssets, loadAssets, refreshKey]);
 
   // SSE: update asset status and progress in real-time
   // Falls back to polling loadAssets() if SSE permanently fails

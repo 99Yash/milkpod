@@ -171,21 +171,25 @@ export abstract class ChatService {
   }
 
   static async getMessages(threadId: string): Promise<MilkpodMessage[]> {
-    const messageRows = await db()
-      .select()
+    const messagesSq = db()
+      .select({ id: qaMessages.id })
       .from(qaMessages)
-      .where(eq(qaMessages.threadId, threadId))
-      .orderBy(asc(qaMessages.createdAt));
+      .where(eq(qaMessages.threadId, threadId));
+
+    const [messageRows, partRows] = await Promise.all([
+      db()
+        .select()
+        .from(qaMessages)
+        .where(eq(qaMessages.threadId, threadId))
+        .orderBy(asc(qaMessages.createdAt)),
+      db()
+        .select()
+        .from(qaMessageParts)
+        .where(inArray(qaMessageParts.messageId, messagesSq))
+        .orderBy(asc(qaMessageParts.sortOrder)),
+    ]);
 
     if (messageRows.length === 0) return [];
-
-    const messageIds = messageRows.map((r) => r.id);
-
-    const partRows = await db()
-      .select()
-      .from(qaMessageParts)
-      .where(inArray(qaMessageParts.messageId, messageIds))
-      .orderBy(asc(qaMessageParts.sortOrder));
 
     const partsByMessage = Map.groupBy(partRows, (r) => r.messageId);
 

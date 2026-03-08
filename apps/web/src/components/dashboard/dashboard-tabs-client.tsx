@@ -31,6 +31,17 @@ export function DashboardTabsClient({
 }: DashboardTabsClientProps) {
   const { collapsed, toggleCollapsed } = useDashboardShell();
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
+  const [mountedTabs, setMountedTabs] = useState<Record<DashboardTab, boolean>>({
+    home: initialTab === 'home',
+    library: initialTab === 'library',
+    agent: initialTab === 'agent',
+  });
+
+  useEffect(() => {
+    setMountedTabs((prev) => (
+      prev[activeTab] ? prev : { ...prev, [activeTab]: true }
+    ));
+  }, [activeTab]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -153,27 +164,33 @@ export function DashboardTabsClient({
         </TabsList>
 
         <div onClickCapture={handlePanelClick}>
-          <TabsContent
-            value="home"
-            forceMount
-            className="data-[state=inactive]:hidden"
-          >
-            {home}
-          </TabsContent>
-          <TabsContent
-            value="library"
-            forceMount
-            className="data-[state=inactive]:hidden"
-          >
-            {library}
-          </TabsContent>
-          <TabsContent
-            value="agent"
-            forceMount
-            className="data-[state=inactive]:hidden"
-          >
-            {agent}
-          </TabsContent>
+          {mountedTabs.home ? (
+            <TabsContent
+              value="home"
+              forceMount
+              className="data-[state=inactive]:hidden"
+            >
+              {home}
+            </TabsContent>
+          ) : null}
+          {mountedTabs.library ? (
+            <TabsContent
+              value="library"
+              forceMount
+              className="data-[state=inactive]:hidden"
+            >
+              {library}
+            </TabsContent>
+          ) : null}
+          {mountedTabs.agent ? (
+            <TabsContent
+              value="agent"
+              forceMount
+              className="data-[state=inactive]:hidden"
+            >
+              {agent}
+            </TabsContent>
+          ) : null}
         </div>
       </Tabs>
     </div>

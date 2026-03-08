@@ -100,7 +100,7 @@ export function AssetShell({ assetId, initialAsset, children }: AssetShellProps)
         sourceType={asset.sourceType}
         sourceId={asset.sourceId}
       >
-        <div className="flex flex-col lg:h-[calc(100svh-6rem-2px)]">
+        <div className="flex flex-col lg:h-[calc(100svh-7rem-4px)]">
           {/* Compact header */}
           <div className="shrink-0 space-y-2 pb-3">
             {/* Row 1: nav + title + actions */}
