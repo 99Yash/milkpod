@@ -120,6 +120,13 @@
       "when": 1772503353313,
       "tag": "0016_migrate-credential-to-email-otp",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1772955459908,
+      "tag": "0017_chemical_shocker",
+      "breakpoints": true
     }
   ]
 }

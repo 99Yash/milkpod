@@ -143,10 +143,17 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
     onError: (error) => {
       console.error('[AI Stream Error]', error);
     },
-    onFinish: async ({ steps, text }) => {
+    onFinish: async ({ steps, text, finishReason }) => {
       if (!req.onFinish) return;
       const wordCount = text.split(/\s+/).filter(Boolean).length;
-      await req.onFinish({ responseMessage: buildResponseMessage(steps), wordCount });
+      const responseMessage = buildResponseMessage(steps);
+      responseMessage.metadata = {
+        threadId: req.threadId,
+        assetId: req.assetId,
+        collectionId: req.collectionId,
+        finishReason,
+      };
+      await req.onFinish({ responseMessage, wordCount });
     },
   });
 
@@ -162,6 +169,7 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
         assetId: req.assetId,
         collectionId: req.collectionId,
         durationMs: Date.now() - startTime,
+        finishReason: part.finishReason,
       };
     },
     onError: (error) =>

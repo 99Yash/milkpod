@@ -22,6 +22,7 @@
   "devDependencies": {
     "@milkpod/config": "workspace:*",
     "@types/pg": "^8.15.6",
+    "ai": "catalog:",
     "drizzle-kit": "^0.31.2",
     "nanoid": "5.1.5",
     "tsdown": "catalog:"

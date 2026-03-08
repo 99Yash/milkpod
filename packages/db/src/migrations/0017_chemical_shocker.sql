@@ -1,0 +1,1 @@
+ALTER TABLE "qa_message" ADD COLUMN "metadata" jsonb;

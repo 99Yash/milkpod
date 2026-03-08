@@ -1,4 +1,4 @@
-import type { InferUITools, LanguageModelUsage, UIMessage } from 'ai';
+import type { FinishReason, InferUITools, LanguageModelUsage, UIMessage } from 'ai';
 import type { QAToolSet } from './tools';
 import type { RelevantSegment } from './retrieval';
 
@@ -9,6 +9,7 @@ export type ChatMetadata = {
   assetId?: string;
   collectionId?: string;
   durationMs?: number;
+  finishReason?: FinishReason;
 };
 
 export type ChatDataParts = {
