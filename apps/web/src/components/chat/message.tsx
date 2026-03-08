@@ -10,7 +10,12 @@ import { ToolResult } from './tool-result';
 import { TimestampLink } from './timestamp-link';
 import { useAssetSource } from './asset-source-context';
 
-const TIMESTAMP_RE = /\[(\d+(?::\d{2}){1,2})\](?!\()/g;
+// Matches [MM:SS], [HH:MM:SS], and ranges like [MM:SS–MM:SS] or [MM:SS-MM:SS]
+const TS = /\d+(?::\d{2}){1,2}/;
+const TIMESTAMP_RE = new RegExp(
+  `\\[(${TS.source})(?:[–\\-](${TS.source}))?\\](?!\\()`,
+  'g',
+);
 
 function parseSeconds(ts: string): number {
   const parts = ts.split(':').map(Number);
@@ -19,10 +24,17 @@ function parseSeconds(ts: string): number {
 }
 
 function linkifyTimestamps(text: string): string {
-  return text.replace(TIMESTAMP_RE, (_match, time: string) => {
-    const seconds = parseSeconds(time);
-    return `[${time}](#t=${seconds})`;
-  });
+  return text.replace(
+    TIMESTAMP_RE,
+    (_match, start: string, end: string | undefined) => {
+      const startSec = parseSeconds(start);
+      if (end) {
+        const endSec = parseSeconds(end);
+        return `[${start}](#t=${startSec})–[${end}](#t=${endSec})`;
+      }
+      return `[${start}](#t=${startSec})`;
+    },
+  );
 }
 
 const streamdownComponents: Components = {
