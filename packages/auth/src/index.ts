@@ -71,9 +71,15 @@ export function auth() {
     },
     advanced: {
       defaultCookieAttributes: {
-        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
+        sameSite:
+          env.NODE_ENV === 'production'
+            ? env.COOKIE_DOMAIN
+              ? 'lax'
+              : 'none'
+            : 'lax',
         secure: env.NODE_ENV === 'production',
         httpOnly: true,
+        ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
       },
     },
   });
