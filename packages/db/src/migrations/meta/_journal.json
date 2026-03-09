@@ -127,6 +127,13 @@
       "when": 1772955459908,
       "tag": "0017_chemical_shocker",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1773062051487,
+      "tag": "0018_nostalgic_mikhail_rasputin",
+      "breakpoints": true
     }
   ]
 }

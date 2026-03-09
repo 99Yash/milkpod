@@ -7,6 +7,9 @@ export const chatModel: LanguageModel = openai('gpt-5.2');
 /** Cheap, fast model used for lightweight tasks like title generation. */
 export const fastModel: LanguageModel = google('gemini-2.5-flash-lite');
 
+/** Gemini 2.5 Flash for visual context extraction (video understanding). */
+export const visualModel: LanguageModel = google('gemini-2.5-flash');
+
 export const EMBEDDING_MODEL_NAME = 'text-embedding-3-small';
 export const EMBEDDING_DIMENSIONS = 1536;
 

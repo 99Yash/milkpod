@@ -5,9 +5,12 @@ import {
   transcripts,
   transcriptSegments,
   embeddings as embeddingsTable,
+  videoContextSegments,
+  videoContextEmbeddings,
 } from '@milkpod/db/schemas';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Segment } from './segments';
+import type { VisualSegment } from './video-context';
 
 type AssetStatus = (typeof assetStatusEnum.enumValues)[number];
 
@@ -108,6 +111,41 @@ export abstract class IngestService {
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
       const batch = items.slice(i, i + BATCH_SIZE);
       await db().insert(embeddingsTable).values(batch);
+    }
+  }
+
+  static async storeVideoContextSegments(
+    assetId: string,
+    segments: VisualSegment[],
+  ) {
+    if (segments.length === 0) return [];
+
+    const inserted = await db()
+      .insert(videoContextSegments)
+      .values(
+        segments.map((seg) => ({
+          assetId,
+          startTime: seg.startTime,
+          endTime: seg.endTime,
+          summary: seg.summary,
+          ocrText: seg.ocrText ?? null,
+          entities: seg.entities ?? null,
+          confidence: seg.confidence,
+          providerMetadata: { model: 'gemini-2.5-flash', provider: 'google' } as Record<string, unknown>,
+        }))
+      )
+      .returning();
+
+    return inserted;
+  }
+
+  static async storeVideoContextEmbeddings(
+    items: { segmentId: string; content: string; embedding: number[]; model: string; dimensions: number }[]
+  ) {
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const batch = items.slice(i, i + BATCH_SIZE);
+      await db().insert(videoContextEmbeddings).values(batch);
     }
   }
 

@@ -5,6 +5,7 @@ import { withRetry } from './retry';
 import { embedSegments } from './embed';
 import { emitAssetStatus } from '../../events/asset-events';
 import { transcribeAudio, transcribeFile } from './elevenlabs';
+import { extractVideoContext } from './video-context';
 import type { TranscriptionStrategy } from './model';
 
 type TranscriptionMethod = 'audio' | 'captions' | 'audio_fallback_to_captions';
@@ -59,6 +60,25 @@ async function finalizePipeline(
   emitAssetStatus(userId, assetId, 'ready');
 }
 
+/** Fire visual context extraction without blocking the transcript pipeline (FR9). */
+function triggerVisualExtraction(
+  assetId: string,
+  sourceUrl: string,
+  userId: string,
+  segments: { endTime: number }[],
+) {
+  const lastSeg = segments[segments.length - 1];
+  const duration = lastSeg ? Math.ceil(lastSeg.endTime) : 0;
+  if (duration <= 0) return;
+
+  extractVideoContext(assetId, sourceUrl, userId, duration).catch((err) => {
+    console.warn(
+      `[ingest] Visual context extraction failed for ${assetId}:`,
+      err instanceof Error ? err.message : err
+    );
+  });
+}
+
 async function handlePipelineError(assetId: string, userId: string, error: unknown) {
   const message =
     error instanceof Error ? error.message : 'Unknown pipeline error';
@@ -111,6 +131,7 @@ export async function orchestratePipeline(
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'captions',
       });
+      triggerVisualExtraction(assetId, sourceUrl, userId, segments);
       return;
     }
 
@@ -122,6 +143,7 @@ export async function orchestratePipeline(
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'audio',
       });
+      triggerVisualExtraction(assetId, sourceUrl, userId, segments);
       return;
     } catch (err) {
       audioError = err instanceof Error ? err.message : 'Unknown audio transcription error';
@@ -136,6 +158,7 @@ export async function orchestratePipeline(
       transcriptionMethod: 'audio_fallback_to_captions',
       fallbackReason: audioError,
     });
+    triggerVisualExtraction(assetId, sourceUrl, userId, segments);
   } catch (error) {
     await handlePipelineError(assetId, userId, error);
   }
