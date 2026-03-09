@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
-import { useDashboardShell } from '~/components/dashboard/dashboard-shell';
+import { useEffect, useRef, type ReactNode } from 'react';
+import {
+  useDashboardShell,
+  type DashboardTab,
+} from '~/components/dashboard/dashboard-shell';
 import { DashboardSidebarToggle } from '~/components/dashboard/sidebar-toggle';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs';
-
-type DashboardTab = 'home' | 'library' | 'agent';
 
 type DashboardTabsClientProps = {
-  initialTab: DashboardTab;
   home: ReactNode;
   library: ReactNode;
   agent: ReactNode;
@@ -17,76 +16,31 @@ type DashboardTabsClientProps = {
 const isDashboardTab = (value: string): value is DashboardTab =>
   value === 'home' || value === 'library' || value === 'agent';
 
-const dashboardTabs: { id: DashboardTab; label: string }[] = [
-  { id: 'home', label: 'Home' },
-  { id: 'library', label: 'Library' },
-  { id: 'agent', label: 'Agent' },
-];
-
 export function DashboardTabsClient({
-  initialTab,
   home,
   library,
   agent,
 }: DashboardTabsClientProps) {
-  const { collapsed, toggleCollapsed } = useDashboardShell();
-  const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
-  const [mountedTabs, setMountedTabs] = useState<Record<DashboardTab, boolean>>({
-    home: initialTab === 'home',
-    library: initialTab === 'library',
-    agent: initialTab === 'agent',
+  const { collapsed, toggleCollapsed, activeTab, handleTabChange } =
+    useDashboardShell();
+
+  // Track which tabs have been mounted using a ref so the update is
+  // synchronous — no extra render frame with empty content.
+  const mountedTabsRef = useRef<Record<DashboardTab, boolean>>({
+    home: activeTab === 'home',
+    library: activeTab === 'library',
+    agent: activeTab === 'agent',
   });
+  mountedTabsRef.current[activeTab] = true;
+  const mountedTabs = mountedTabsRef.current;
 
+  // Reset scroll position when switching tabs — the actual scroll
+  // container on desktop is [data-dashboard-root], not .app-shell-scroll.
   useEffect(() => {
-    setMountedTabs((prev) => (
-      prev[activeTab] ? prev : { ...prev, [activeTab]: true }
-    ));
+    document
+      .querySelector('[data-dashboard-root]')
+      ?.scrollTo({ top: 0, behavior: 'instant' });
   }, [activeTab]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const url = new URL(window.location.href);
-    const tabParam = url.searchParams.get('tab');
-    const sessionParam = url.searchParams.get('session');
-
-    if (tabParam === 'library' && initialTab !== 'library') {
-      setActiveTab('library');
-      return;
-    }
-
-    if ((tabParam === 'agent' || sessionParam) && initialTab !== 'agent') {
-      setActiveTab('agent');
-      return;
-    }
-
-    if (!tabParam && !sessionParam && initialTab !== 'home') {
-      setActiveTab('home');
-    }
-  }, [initialTab]);
-
-  const handleTabChange = (nextTab: DashboardTab) => {
-    setActiveTab(nextTab);
-
-    if (typeof window === 'undefined') return;
-    const url = new URL(window.location.href);
-    if (nextTab === 'library') {
-      url.searchParams.set('tab', 'library');
-      url.searchParams.delete('session');
-    } else if (nextTab === 'agent') {
-      url.searchParams.set('tab', 'agent');
-    } else {
-      url.searchParams.delete('tab');
-      url.searchParams.delete('session');
-    }
-    url.hash = '';
-    window.history.replaceState(null, '', url.toString());
-  };
-
-  const handleTabValueChange = (nextTab: string) => {
-    if (isDashboardTab(nextTab)) {
-      handleTabChange(nextTab);
-    }
-  };
 
   const handlePanelClick: React.MouseEventHandler<HTMLDivElement> = (event) => {
     const target = event.target;
@@ -143,56 +97,23 @@ export function DashboardTabsClient({
         </h1>
       </div>
 
-      <Tabs
-        value={activeTab}
-        onValueChange={handleTabValueChange}
-        className="gap-6 -mt-[7px]"
-      >
-        <TabsList
-          aria-label="Dashboard tabs"
-          className="border border-border/60 bg-muted/70 dark:bg-muted/30"
-        >
-          {dashboardTabs.map((tab) => (
-            <TabsTrigger
-              key={tab.id}
-              value={tab.id}
-              className="text-xs font-semibold text-muted-foreground dark:text-muted-foreground/80 data-[state=active]:text-foreground dark:data-[state=active]:text-foreground data-[state=active]:bg-background/90 dark:data-[state=active]:bg-background/50"
-            >
-              {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        <div onClickCapture={handlePanelClick}>
-          {mountedTabs.home ? (
-            <TabsContent
-              value="home"
-              forceMount
-              className="data-[state=inactive]:hidden"
-            >
-              {home}
-            </TabsContent>
-          ) : null}
-          {mountedTabs.library ? (
-            <TabsContent
-              value="library"
-              forceMount
-              className="data-[state=inactive]:hidden"
-            >
-              {library}
-            </TabsContent>
-          ) : null}
-          {mountedTabs.agent ? (
-            <TabsContent
-              value="agent"
-              forceMount
-              className="data-[state=inactive]:hidden"
-            >
-              {agent}
-            </TabsContent>
-          ) : null}
-        </div>
-      </Tabs>
+      <div onClickCapture={handlePanelClick}>
+        {mountedTabs.home ? (
+          <div className={activeTab !== 'home' ? 'hidden' : undefined}>
+            {home}
+          </div>
+        ) : null}
+        {mountedTabs.library ? (
+          <div className={activeTab !== 'library' ? 'hidden' : undefined}>
+            {library}
+          </div>
+        ) : null}
+        {mountedTabs.agent ? (
+          <div className={activeTab !== 'agent' ? 'hidden' : undefined}>
+            {agent}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
