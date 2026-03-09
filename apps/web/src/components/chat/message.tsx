@@ -1,12 +1,13 @@
 'use client';
 
-import type { MilkpodMessage, RetrieveSegmentsOutput } from '@milkpod/ai/types';
+import type { MilkpodMessage, ToolOutput } from '@milkpod/ai/types';
 import { isToolOutput } from '@milkpod/ai/types';
 import { isToolUIPart } from 'ai';
 import type { Components } from 'streamdown';
 import { Streamdown } from 'streamdown';
 import { cn } from '~/lib/utils';
 import { useAssetSource } from './asset-source-context';
+import { ThinkingIndicator } from './thinking-indicator';
 import { TimestampLink } from './timestamp-link';
 import { ToolResult } from './tool-result';
 
@@ -63,18 +64,53 @@ interface ChatMessageProps {
   isStreaming?: boolean;
 }
 
+function getFallbackToolOutput(toolName: string): ToolOutput {
+  const normalized = toolName.replace(/^tool-/, '');
+
+  switch (normalized) {
+    case 'get_transcript_context':
+      return {
+        tool: 'context',
+        status: 'loading',
+        segments: [],
+        message: 'Loading transcript context...',
+      };
+    case 'read_transcript':
+      return {
+        tool: 'read',
+        status: 'loading',
+        totalSegments: 0,
+        segments: [],
+        message: 'Reading transcript...',
+      };
+    case 'retrieve_segments':
+      return {
+        tool: 'retrieve',
+        status: 'searching',
+        query: '',
+        segments: [],
+        message: 'Searching transcript...',
+      };
+    default:
+      return {
+        tool: 'retrieve',
+        status: 'searching',
+        query: '',
+        segments: [],
+        message: 'Processing...',
+      };
+  }
+}
+
 export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const assetSource = useAssetSource();
-  const fallbackOutput: RetrieveSegmentsOutput = {
-    tool: 'retrieve',
-    status: 'searching',
-    query: '',
-    segments: [],
-    message: 'Processing...',
-  };
 
   const shouldLinkify = !!assetSource && assetSource.sourceType !== 'upload';
+  const hasRenderableAssistantPart = message.parts.some((part) => {
+    if (part.type === 'text') return part.text.trim().length > 0;
+    return isToolUIPart(part);
+  });
 
   return (
     <div
@@ -114,24 +150,28 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
 
           if (isToolUIPart(part)) {
             const hasOutput = part.state === 'output-available';
-            const isStreaming = hasOutput && part.preliminary === true;
+            const toolStreaming = hasOutput && part.preliminary === true;
             const output =
               hasOutput && isToolOutput(part.output)
                 ? part.output
-                : fallbackOutput;
+                : getFallbackToolOutput(part.type);
 
             return (
               <ToolResult
                 key={i}
                 toolName={part.type}
                 output={output}
-                isStreaming={isStreaming}
+                isStreaming={toolStreaming}
               />
             );
           }
 
           return null;
-        })}
+          })}
+
+        {!isUser && isStreaming && !hasRenderableAssistantPart && (
+          <ThinkingIndicator compact className="mt-0.5" />
+        )}
 
         {!isUser &&
           !isStreaming &&

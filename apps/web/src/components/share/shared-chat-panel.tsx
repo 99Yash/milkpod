@@ -4,10 +4,10 @@ import { useRef, useEffect, useState } from 'react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
 import { ScrollArea } from '~/components/ui/scroll-area';
-import { Spinner } from '~/components/ui/spinner';
 import { toast } from 'sonner';
 import { useSharedChat } from '~/hooks/use-shared-chat';
 import { ChatMessage } from '~/components/chat/message';
+import { ThinkingIndicator } from '~/components/chat/thinking-indicator';
 
 interface SharedChatPanelProps {
   token: string;
@@ -66,9 +66,8 @@ export function SharedChatPanel({ token }: SharedChatPanelProps) {
               <ChatMessage key={message.id} message={message} />
             ))}
             {isLoading && messages.at(-1)?.role !== 'assistant' && (
-              <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-                <Spinner className="size-4" />
-                <span>Thinking...</span>
+              <div className="py-4">
+                <ThinkingIndicator />
               </div>
             )}
           </div>
