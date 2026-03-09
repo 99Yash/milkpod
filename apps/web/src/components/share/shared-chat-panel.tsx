@@ -15,7 +15,7 @@ interface SharedChatPanelProps {
 
 export function SharedChatPanel({ token }: SharedChatPanelProps) {
   const [input, setInput] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   const { messages, sendMessage, status, error, rateLimitRemaining } =
     useSharedChat({ token });
@@ -33,10 +33,8 @@ export function SharedChatPanel({ token }: SharedChatPanelProps) {
   }, [error]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+    bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, [messages, status]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +53,7 @@ export function SharedChatPanel({ token }: SharedChatPanelProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <ScrollArea ref={scrollRef} className="flex-1 px-4">
+      <ScrollArea className="flex-1 px-4">
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center py-12 text-center text-sm text-muted-foreground">
             Ask a question about this content.
@@ -70,6 +68,7 @@ export function SharedChatPanel({ token }: SharedChatPanelProps) {
                 <ThinkingIndicator />
               </div>
             )}
+            <div ref={bottomRef} />
           </div>
         )}
       </ScrollArea>

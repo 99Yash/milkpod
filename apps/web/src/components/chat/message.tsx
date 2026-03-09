@@ -121,7 +121,7 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
     >
       <div
         className={cn(
-          'max-w-[85%] space-y-2',
+          'max-w-[85%] space-y-1.5',
           isUser
             ? 'rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-primary-foreground shadow-sm'
             : 'rounded-2xl rounded-bl-md bg-muted/40 px-4 py-3',
@@ -140,7 +140,7 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
               <Streamdown
                 key={i}
                 isAnimating={isStreaming}
-                className="text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                className="text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1"
                 components={shouldLinkify ? streamdownComponents : undefined}
               >
                 {text}
@@ -167,7 +167,7 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
           }
 
           return null;
-          })}
+        })}
 
         {!isUser && isStreaming && !hasRenderableAssistantPart && (
           <ThinkingIndicator compact className="mt-0.5" />

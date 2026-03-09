@@ -235,7 +235,7 @@ function ChatPanelContent({
   onThreadCreated?: (threadId: string) => void;
 }) {
   const [input, setInput] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const { modelId, setModelId, wordLimit, setWordLimit } = useChatSettings();
 
   const { messages, sendMessage, status, error, threadId: chatThreadId, wordsRemaining } = useMilkpodChat({
@@ -270,10 +270,8 @@ function ChatPanelContent({
   }, [chatThreadId, messages]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+    bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, [messages, status]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -298,7 +296,7 @@ function ChatPanelContent({
 
   return (
     <div className="flex h-full flex-col">
-      <ScrollArea ref={scrollRef} className="min-h-0 flex-1 px-4">
+      <ScrollArea className="min-h-0 flex-1 px-4">
         <div className="mx-auto max-w-3xl">
           {messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-5 py-12 text-center">
@@ -345,6 +343,7 @@ function ChatPanelContent({
                   <ThinkingIndicator />
                 </div>
               )}
+              <div ref={bottomRef} />
             </div>
           )}
         </div>
