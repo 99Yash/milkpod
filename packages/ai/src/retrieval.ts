@@ -53,6 +53,9 @@ export async function findRelevantSegments(
 ): Promise<RelevantSegment[]> {
   const { assetId, collectionId, limit = 10, minSimilarity = 0.3 } = options;
 
+  // Require at least one scope to prevent cross-tenant retrieval
+  if (!assetId && !collectionId) return [];
+
   const queryEmbedding = options.queryEmbedding ?? await generateEmbedding(query);
 
   const similarity = sql<number>`1 - (${cosineDistance(embeddings.embedding, queryEmbedding)})`;
@@ -119,6 +122,9 @@ export async function findRelevantVisualSegments(
   options: RetrievalOptions = {}
 ): Promise<RelevantVisualSegment[]> {
   const { assetId, collectionId, limit = 5, minSimilarity = 0.3 } = options;
+
+  // Require at least one scope to prevent cross-tenant retrieval
+  if (!assetId && !collectionId) return [];
 
   const queryEmbedding = options.queryEmbedding ?? await generateEmbedding(query);
 
