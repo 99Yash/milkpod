@@ -251,7 +251,9 @@ export async function generateComments(
         userId,
         body: c.body,
         startTime: Math.max(0, c.startTime),
-        endTime: c.endTime,
+        endTime: window
+          ? Math.min(c.endTime, window.endTime)
+          : c.endTime,
         source,
         evidenceRefs: window
           ? {
