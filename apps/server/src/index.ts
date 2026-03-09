@@ -1,4 +1,3 @@
-import '~/env';
 import { cors } from '@elysiajs/cors';
 import { node } from '@elysiajs/node';
 import { app, closeConnections } from '@milkpod/api';

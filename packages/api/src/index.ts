@@ -4,6 +4,7 @@ export { closeConnections } from '@milkpod/db';
 import { serverEnv } from '@milkpod/env/server';
 import { sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
+import { z } from 'zod';
 import { requestLogger } from './middleware/logger';
 import { rateLimiter } from './middleware/rate-limit';
 import { chat } from './modules/chat';
@@ -15,6 +16,11 @@ import { shares } from './modules/shares';
 import { podcasts } from './modules/podcasts';
 import { usage } from './modules/usage';
 import { moments } from './modules/moments';
+
+const socialSignInResponseSchema = z.object({
+  url: z.string().optional(),
+  redirect: z.boolean().optional(),
+});
 
 export const app = new Elysia({ name: 'api' })
   .use(requestLogger)
@@ -69,10 +75,13 @@ export const app = new Elysia({ name: 'api' })
         },
       );
 
-      const data = (await res.json()) as {
-        url?: string;
-        redirect?: boolean;
-      };
+      const payload = await res.json().catch(() => null);
+      const parsed = socialSignInResponseSchema.safeParse(payload);
+      if (!parsed.success) {
+        set.status = 500;
+        return { error: 'OAuth initiation failed' };
+      }
+      const data = parsed.data;
       if (data.url && data.redirect) {
         const cookies = res.headers.getSetCookie();
         if (cookies.length > 0) {
@@ -121,4 +130,3 @@ export const app = new Elysia({ name: 'api' })
   .use(moments);
 
 export type App = typeof app;
-
