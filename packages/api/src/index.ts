@@ -16,6 +16,7 @@ import { shares } from './modules/shares';
 import { podcasts } from './modules/podcasts';
 import { usage } from './modules/usage';
 import { moments } from './modules/moments';
+import { comments } from './modules/comments';
 
 const socialSignInResponseSchema = z.object({
   url: z.string().optional(),
@@ -127,6 +128,7 @@ export const app = new Elysia({ name: 'api' })
   .use(shares)
   .use(podcasts)
   .use(usage)
-  .use(moments);
+  .use(moments)
+  .use(comments);
 
 export type App = typeof app;

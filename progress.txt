@@ -42,3 +42,21 @@ Files changed:
 - packages/db/src/migrations/0019_stale_winter_soldier.sql — Migration creating qa_visual_evidence table with foreign keys, unique constraint, and indexes.
 Outcome: Ask AI retrieval now searches both transcript and visual context embeddings in parallel, returning combined results with separate arrays for transcript segments and visual segments. The AI model receives both modalities and cites visual context (what was shown on screen) alongside transcript content (what was said) in its responses. Visual evidence references are logged to qa_visual_evidence for auditability. Embedding generation is shared across both searches to avoid duplicate API calls. The visualSegments field is optional for backward compatibility with existing frontend code.
 
+## Phase 5 - Hybrid Comments + Comments UI ✅ (2026-03-09)
+Files changed:
+- packages/db/src/schema/comments.ts (new) — New asset_comment table: id, assetId, userId, body, startTime, endTime, source (comment_source enum: audio | visual | hybrid), evidenceRefs (jsonb for transcript/visual segment ID references), dismissedAt (soft delete). Indexes on (assetId, startTime) and (userId, assetId). Cascade delete from media_asset and user.
+- packages/db/src/schemas.ts — Added barrel export for comments schema.
+- packages/db/src/migrations/0020_petite_salo.sql — Migration creating comment_source enum and asset_comment table with indexes and foreign keys.
+- packages/api/src/types.ts — Added Comment type derived from assetComments schema.
+- packages/api/src/modules/comments/model.ts (new) — Elysia type schemas for generate (assetId, regenerate), listQuery (assetId), and feedback (dismiss action) endpoints.
+- packages/api/src/modules/comments/service.ts (new) — CommentService abstract static class with list, getById, deleteByAsset, insertMany, and dismissComment methods. Orders comments by startTime ascending.
+- packages/api/src/modules/comments/generate.ts (new) — Comment generation pipeline: loads transcript segments and visual context segments, builds 45-second fused evidence windows (transcript + overlapping visual context), sends to Gemini 2.5 Flash Lite for structured comment extraction with source labels, maps comments to DB rows with evidence references, persists via CommentService.insertMany. Max 20 comments per asset, max 30 windows.
+- packages/api/src/modules/comments/index.ts (new) — Elysia router at /api/comments with auth macro. POST /generate (creates or returns cached comments, supports regenerate), GET / (list by assetId), POST /:id/feedback (dismiss).
+- packages/api/src/index.ts — Mounted comments module.
+- apps/web/src/lib/data/queries.ts — Added getComments(assetId, userId) query returning non-dismissed comments ordered by startTime.
+- apps/web/src/components/asset/asset-tab-bar.tsx — Added Comments tab (MessageCircle icon, /comments suffix) and updated getActiveTab routing.
+- apps/web/src/components/comments/comment-card.tsx (new) — Client component rendering individual comment with timestamp range (clickable for video jump), source badge (Audio/Visual/Hybrid with color coding), comment body, and dismiss action. Uses existing useTimestampAction and VideoMomentDialog for video playback.
+- apps/web/src/components/comments/comments-tab.tsx (new) — Client component for comments tab: empty state with generate button, loading state, comment list with regenerate button. Uses Eden treaty client for API calls.
+- apps/web/src/app/asset/[id]/comments/page.tsx (new) — Server component page route: authenticates session, loads initial comments via getComments query, renders CommentsTab.
+Outcome: Full hybrid comments feature with dedicated data model, generation pipeline, API module, and UI surface. Comments are generated from fused transcript + visual context evidence using Gemini 2.5 Flash Lite. Each comment includes a timestamp range, source label (audio/visual/hybrid), and evidence references for explainability. The UI provides a dedicated Comments tab with timestamp-based video navigation and source-type badges. Comments can be dismissed (soft delete). The generation endpoint caches results and supports regeneration.
+

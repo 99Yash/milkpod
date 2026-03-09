@@ -167,22 +167,22 @@ Enable chat answers grounded in audio + visual evidence, independent of comments
 - Questions like "what is shown on screen at 12:30?" return cited answers.
 - Retrieval modality (`audio`, `visual`, `hybrid`) is auditable.
 
-## Phase 5 - Hybrid Comments + Comments UI
+## Phase 5 - Hybrid Comments + Comments UI ✅
 
 ### Goal
 Generate and present timestamped comments using fused evidence.
 
 ### Deliverables
-- Comments data model (separate from moments):
+- ~~Comments data model (separate from moments):~~ ✅
   - `asset_comment`
   - evidence references + source type
-- New API module:
+- ~~New API module:~~ ✅
   - `POST /api/comments/generate`
   - `GET /api/comments?assetId=...`
-- Dedicated Comments UI surface with timestamp jump and source chips.
+- ~~Dedicated Comments UI surface with timestamp jump and source chips.~~ ✅
 
 ### Files
-- `packages/db/src/schema/asset-comments.ts` (new)
+- `packages/db/src/schema/comments.ts` (new)
 - `packages/api/src/index.ts` (mount comments module)
 - `packages/api/src/modules/comments/*` (new)
 - `apps/web/src/components/asset/asset-tab-bar.tsx`
