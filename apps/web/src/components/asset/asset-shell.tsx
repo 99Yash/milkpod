@@ -102,7 +102,7 @@ export function AssetShell({ assetId, initialAsset, children }: AssetShellProps)
       >
         <div className="flex flex-col lg:h-[calc(100svh-7rem-4px)]">
           {/* Compact header */}
-          <div className="shrink-0 space-y-2 pb-3">
+          <div className="shrink-0 space-y-2 border-b border-border/30 pb-3">
             {/* Row 1: nav + title + actions */}
             <div className="flex items-center gap-3">
               <Link
@@ -140,21 +140,21 @@ export function AssetShell({ assetId, initialAsset, children }: AssetShellProps)
             </div>
 
             {/* Row 2: metadata chips */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-[calc(theme(spacing.4)+theme(spacing.3)+1px)] text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 pl-[calc(theme(spacing.4)+theme(spacing.3)+1px)] text-xs text-muted-foreground">
               {asset.channelName && (
-                <span className="flex items-center gap-1">
+                <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5">
                   <User className="size-3" />
                   {asset.channelName}
                 </span>
               )}
               {asset.duration && (
-                <span className="flex items-center gap-1">
+                <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5">
                   <Clock className="size-3" />
                   {formatDuration(asset.duration)}
                 </span>
               )}
               {speakers.size > 0 && (
-                <span className="flex items-center gap-1">
+                <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5">
                   <Mic className="size-3" />
                   {speakers.size} speaker{speakers.size > 1 ? 's' : ''}
                 </span>

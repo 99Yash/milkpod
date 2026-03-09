@@ -79,15 +79,16 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
   return (
     <div
       className={cn(
-        'flex gap-3 py-4',
+        'flex gap-3 py-3',
         isUser ? 'justify-end' : 'justify-start',
       )}
     >
       <div
         className={cn(
-          'max-w-[80%] space-y-2',
-          isUser &&
-            'rounded-2xl bg-primary px-4 py-2.5 text-primary-foreground',
+          'max-w-[85%] space-y-2',
+          isUser
+            ? 'rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-primary-foreground shadow-sm'
+            : 'rounded-2xl rounded-bl-md bg-muted/40 px-4 py-3',
         )}
       >
         {message.parts.map((part, i) => {
@@ -135,7 +136,7 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
         {!isUser &&
           !isStreaming &&
           message.metadata?.finishReason === 'length' && (
-            <p className="text-xs text-muted-foreground">
+            <p className="mt-1 rounded-lg bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
               Response trimmed due to output limit — try a higher word limit or
               ask a follow-up.
             </p>

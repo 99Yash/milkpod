@@ -300,15 +300,15 @@ function ChatPanelContent({
       <ScrollArea ref={scrollRef} className="min-h-0 flex-1 px-4">
         <div className="mx-auto max-w-3xl">
           {messages.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-4 py-12 text-center">
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-muted">
+            <div className="flex h-full flex-col items-center justify-center gap-5 py-12 text-center">
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-b from-muted to-muted/50 shadow-sm ring-1 ring-border/40">
                 <MessageSquareText className="size-6 text-muted-foreground" />
               </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground">
+              <div className="space-y-1.5">
+                <p className="text-base font-semibold text-foreground">
                   Ask about this video
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Get answers with timestamps from the transcript.
                 </p>
               </div>
@@ -318,7 +318,7 @@ function ChatPanelContent({
                     key={suggestion}
                     type="button"
                     onClick={() => sendMessage({ text: suggestion })}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-background px-3.5 py-2 text-xs font-medium text-muted-foreground shadow-sm transition-all hover:border-border hover:bg-muted hover:text-foreground hover:shadow-md"
                   >
                     <Sparkles className="size-3" />
                     {suggestion}
@@ -327,7 +327,7 @@ function ChatPanelContent({
               </div>
             </div>
           ) : (
-            <div className="space-y-1 py-4">
+            <div className="space-y-2 py-4">
               {messages.map((message, i) => (
                 <ChatMessage
                   key={message.id}
@@ -350,37 +350,37 @@ function ChatPanelContent({
         </div>
       </ScrollArea>
 
-      <form
-        onSubmit={handleSubmit}
-        className="shrink-0 border-t border-border/40 bg-background/70 p-3"
-      >
-        <div className="relative mx-auto max-w-3xl">
+      <div className="shrink-0 px-3 pb-3 pt-2">
+        <form
+          onSubmit={handleSubmit}
+          className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-border/60 bg-muted/30 shadow-sm transition-shadow focus-within:border-border focus-within:shadow-md"
+        >
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about the video..."
-            className="min-h-[48px] max-h-[140px] resize-none border-border/40 bg-background/70 pr-12"
+            className="min-h-[48px] max-h-[140px] resize-none border-0 bg-transparent px-4 pt-3 pb-2 shadow-none focus-visible:ring-0"
             rows={1}
             disabled={isLoading}
           />
-          <Button
-            type="submit"
-            size="icon-sm"
-            className="absolute bottom-1.5 right-1.5 z-10 rounded-full"
-            disabled={isLoading || !input.trim()}
-          >
-            <SendHorizonal className="size-4" />
-          </Button>
-        </div>
-        <div className="mx-auto mt-1.5 flex max-w-3xl items-center gap-1">
-          <ModelPicker value={modelId} onChange={setModelId} />
-          <WordLimitPicker value={wordLimit} onChange={setWordLimit} />
-          <div className="ml-auto">
-            <DailyQuota remaining={wordsRemaining} />
+          <div className="flex items-center gap-1 px-2 pb-2">
+            <ModelPicker value={modelId} onChange={setModelId} />
+            <WordLimitPicker value={wordLimit} onChange={setWordLimit} />
+            <div className="ml-auto flex items-center gap-2">
+              <DailyQuota remaining={wordsRemaining} />
+              <Button
+                type="submit"
+                size="icon-sm"
+                className="rounded-xl"
+                disabled={isLoading || !input.trim()}
+              >
+                <SendHorizonal className="size-4" />
+              </Button>
+            </div>
           </div>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }
