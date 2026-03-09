@@ -359,19 +359,20 @@ function ChatPanelContent({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about the video..."
-            className="min-h-[48px] max-h-[140px] resize-none border-0 bg-transparent px-4 pt-3 pb-2 shadow-none focus-visible:ring-0"
+            className="min-h-[44px] max-h-[140px] resize-none border-0 bg-transparent px-4 pt-3.5 pb-2 text-[15px] shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 md:text-[15px]"
             rows={1}
             disabled={isLoading}
           />
-          <div className="flex items-center gap-1 px-2 pb-2">
+          <div className="flex items-center gap-1.5 px-2.5 pb-2.5">
             <ModelPicker value={modelId} onChange={setModelId} />
             <WordLimitPicker value={wordLimit} onChange={setWordLimit} />
             <div className="ml-auto flex items-center gap-2">
               <DailyQuota remaining={wordsRemaining} />
               <Button
                 type="submit"
+                variant="ghost"
                 size="icon-sm"
-                className="rounded-xl"
+                className="rounded-xl bg-muted-foreground/15 text-muted-foreground hover:bg-muted-foreground/25 hover:text-foreground disabled:bg-muted-foreground/8"
                 disabled={isLoading || !input.trim()}
               >
                 <SendHorizonal className="size-4" />

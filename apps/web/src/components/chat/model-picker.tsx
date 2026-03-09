@@ -90,7 +90,7 @@ export function ModelPicker({ value, onChange }: ModelPickerProps) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground">
+        <Button variant="ghost" size="sm" className="h-8 gap-1.5 rounded-lg px-2.5 text-[13px] text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground">
           <ProviderIcon provider={selected.provider} className="size-3.5" />
           {selected.name}
           <ChevronDown className="size-3" />
