@@ -157,7 +157,6 @@ export default async function DashboardPage({
 
   return (
     <DashboardContent
-      initialTab={initialTab}
       initialAssets={assets}
       initialCollections={collections}
       home={<DashboardHome />}

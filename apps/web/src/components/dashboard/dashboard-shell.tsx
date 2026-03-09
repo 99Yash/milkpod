@@ -16,8 +16,6 @@ import {
   User,
   Video,
 } from 'lucide-react';
-import type { Route } from 'next';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   createContext,
@@ -61,23 +59,18 @@ import { siteConfig } from '~/lib/site';
 import { api } from '~/lib/api';
 import { cn, getErrorMessage } from '~/lib/utils';
 
+export type DashboardTab = 'home' | 'library' | 'agent';
+
 type NavItem = {
-  id: string;
+  id: DashboardTab;
   label: string;
   icon: LucideIcon;
-  href?: Route;
-  disabled?: boolean;
 };
 
 const navItems: NavItem[] = [
-  { id: 'home', label: 'Home', icon: Home, href: route('/dashboard') },
-  { id: 'library', label: 'Library', icon: Library, disabled: true },
-  {
-    id: 'agent',
-    label: 'Agent',
-    icon: Sparkles,
-    disabled: true,
-  },
+  { id: 'home', label: 'Home', icon: Home },
+  { id: 'library', label: 'Library', icon: Library },
+  { id: 'agent', label: 'Agent', icon: Sparkles },
 ];
 
 type UserStat = {
@@ -93,13 +86,15 @@ const userStats: UserStat[] = [
 ];
 
 type DashboardShellProps = {
-  activeNav?: string;
+  initialTab?: DashboardTab;
   children: ReactNode;
 };
 
 type DashboardShellContextValue = {
   collapsed: boolean;
   toggleCollapsed: () => void;
+  activeTab: DashboardTab;
+  handleTabChange: (tab: DashboardTab) => void;
 };
 
 const DashboardShellContext = createContext<DashboardShellContextValue | null>(
@@ -115,31 +110,62 @@ export function useDashboardShell() {
 }
 
 export function DashboardShell({
-  activeNav = 'home',
+  initialTab: initialTabProp,
   children,
 }: DashboardShellProps) {
   const searchParams = useSearchParams();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
   const tabParam = searchParams.get('tab');
   const sessionParam = searchParams.get('session');
-  const resolvedActiveNav =
-    tabParam === 'agent' || sessionParam ? 'agent' : activeNav;
+  const derivedTab: DashboardTab =
+    initialTabProp ??
+    (tabParam === 'library'
+      ? 'library'
+      : tabParam === 'agent' || sessionParam
+        ? 'agent'
+        : 'home');
+
+  const [activeTab, setActiveTab] = useState<DashboardTab>(derivedTab);
+
   const toggleCollapsed = useCallback(() => {
     setCollapsed((prev) => !prev);
   }, []);
+
+  const handleTabChange = useCallback((nextTab: DashboardTab) => {
+    setActiveTab(nextTab);
+    setMobileOpen(false);
+
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (nextTab === 'library') {
+      url.searchParams.set('tab', 'library');
+      url.searchParams.delete('session');
+    } else if (nextTab === 'agent') {
+      url.searchParams.set('tab', 'agent');
+    } else {
+      url.searchParams.delete('tab');
+      url.searchParams.delete('session');
+    }
+    url.hash = '';
+    window.history.replaceState(null, '', url.toString());
+  }, []);
+
   const contextValue = useMemo(
     () => ({
       collapsed,
       toggleCollapsed,
+      activeTab,
+      handleTabChange,
     }),
-    [collapsed, toggleCollapsed],
+    [collapsed, toggleCollapsed, activeTab, handleTabChange],
   );
 
   return (
     <DashboardShellContext.Provider value={contextValue}>
       <div
-        className="h-full bg-background overflow-hidden sm:overflow-x-hidden sm:overflow-y-auto"
+        className="h-full bg-background overflow-hidden sm:overflow-x-hidden sm:overflow-y-auto sm:[scrollbar-gutter:stable]"
         data-dashboard-root
       >
         <div className="mx-auto box-border flex h-full w-full max-w-7xl gap-8 px-0 py-0 sm:px-4 lg:px-6 lg:py-6 sm:h-auto sm:min-h-full">
@@ -151,7 +177,7 @@ export function DashboardShell({
           >
             <SidebarBrand collapsed={collapsed} />
 
-            <SidebarSections collapsed={collapsed} activeNav={resolvedActiveNav} />
+            <SidebarSections collapsed={collapsed} activeNav={activeTab} />
           </aside>
 
           <main className="flex-1 min-w-0 min-h-0">
@@ -193,7 +219,7 @@ export function DashboardShell({
               <SidebarUserMenu collapsed={false} />
             </div>
             <div className="mt-6 flex h-full flex-col">
-              <SidebarSections collapsed={false} activeNav={resolvedActiveNav} />
+              <SidebarSections collapsed={false} activeNav={activeTab} />
             </div>
           </SheetContent>
         </Sheet>
@@ -318,7 +344,7 @@ function SidebarPlanUsage() {
               variant="outline"
               className="border-border/60 text-[10px] uppercase tracking-wide text-muted-foreground"
             >
-              Unlimited
+              ∞
             </Badge>
           </div>
         </DashboardPanelContent>
@@ -562,42 +588,23 @@ function NavItemLink({
   isActive: boolean;
   collapsed: boolean;
 }) {
-  const baseClassName = cn(
-    'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-    collapsed && 'justify-center px-2',
-    isActive
-      ? 'bg-muted text-foreground'
-      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-    item.disabled &&
-      'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground',
-  );
-
-  const content = (
-    <>
-      <item.icon className="size-4" />
-      <span className={cn(collapsed && 'sr-only')}>{item.label}</span>
-    </>
-  );
-
-  if (!item.href || item.disabled) {
-    return (
-      <div
-        className={baseClassName}
-        aria-disabled="true"
-        title={collapsed ? item.label : undefined}
-      >
-        {content}
-      </div>
-    );
-  }
+  const { handleTabChange } = useDashboardShell();
 
   return (
-    <Link
-      className={baseClassName}
-      href={item.href}
+    <button
+      type="button"
+      onClick={() => handleTabChange(item.id)}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+        collapsed && 'justify-center px-2',
+        isActive
+          ? 'bg-muted text-foreground'
+          : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+      )}
       title={collapsed ? item.label : undefined}
     >
-      {content}
-    </Link>
+      <item.icon className="size-4" />
+      <span className={cn(collapsed && 'sr-only')}>{item.label}</span>
+    </button>
   );
 }

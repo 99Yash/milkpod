@@ -22,7 +22,7 @@ export default async function AssetLayout({
   if (!asset) notFound();
 
   return (
-    <DashboardLayout activeNav="library">
+    <DashboardLayout initialTab="library">
       <AssetShell assetId={id} initialAsset={asset}>
         {children}
       </AssetShell>
