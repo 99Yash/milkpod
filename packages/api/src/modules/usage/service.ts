@@ -1,6 +1,6 @@
 import { db } from '@milkpod/db';
-import { dailyUsage } from '@milkpod/db/schemas';
-import { and, eq, sql } from 'drizzle-orm';
+import { dailyUsage, mediaAssets } from '@milkpod/db/schemas';
+import { and, eq, sql, count, sum } from 'drizzle-orm';
 import { DAILY_WORD_BUDGET } from '@milkpod/ai';
 import { serverEnv } from '@milkpod/env/server';
 
@@ -70,6 +70,21 @@ export abstract class UsageService {
 
       return toAdd;
     });
+  }
+
+  static async getUserStats(userId: string): Promise<{ videoCount: number; totalMinutes: number }> {
+    const [row] = await db()
+      .select({
+        videoCount: count(mediaAssets.id),
+        totalSeconds: sum(mediaAssets.duration),
+      })
+      .from(mediaAssets)
+      .where(eq(mediaAssets.userId, userId));
+
+    return {
+      videoCount: row?.videoCount ?? 0,
+      totalMinutes: Math.round((Number(row?.totalSeconds) || 0) / 60),
+    };
   }
 
   /**
