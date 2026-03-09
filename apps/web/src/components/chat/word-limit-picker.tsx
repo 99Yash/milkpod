@@ -32,12 +32,12 @@ export function WordLimitPicker({ value, onChange }: WordLimitPickerProps) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs text-muted-foreground">
+        <Button variant="ghost" size="sm" className="h-8 gap-1.5 rounded-lg px-2.5 text-[13px] text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground">
           {getLabel(value)}
           <ChevronDown className="size-3" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="h-[240px] w-[180px] p-0" side="top" align="start">
+      <PopoverContent className="w-[200px] p-0" side="top" align="start">
         <Command>
           <CommandList>
             <CommandGroup>
@@ -51,7 +51,7 @@ export function WordLimitPicker({ value, onChange }: WordLimitPickerProps) {
                   }}
                   className="flex items-center justify-between"
                 >
-                  <span className="text-xs">{option.label}</span>
+                  <span className="text-[13px]">{option.label}</span>
                   {option.value === value && <Check className="size-3" />}
                 </CommandItem>
               ))}
