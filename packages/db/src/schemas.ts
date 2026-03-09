@@ -16,3 +16,4 @@ export * from './schema/usage';
 export * from './schema/moments';
 export * from './schema/video-context-segments';
 export * from './schema/video-context-embeddings';
+export * from './schema/comments';

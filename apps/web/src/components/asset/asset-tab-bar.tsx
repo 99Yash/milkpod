@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FileText, MessageSquareText, Sparkles } from 'lucide-react';
+import { FileText, MessageCircle, MessageSquareText, Sparkles } from 'lucide-react';
 import { cn } from '~/lib/utils';
 
 interface AssetTabBarProps {
@@ -13,11 +13,13 @@ const tabs = [
   { id: 'transcript', label: 'Transcript', icon: FileText, suffix: '' },
   { id: 'ask-ai', label: 'Ask AI', icon: MessageSquareText, suffix: '/chat' },
   { id: 'moments', label: 'Moments', icon: Sparkles, suffix: '/moments' },
+  { id: 'comments', label: 'Comments', icon: MessageCircle, suffix: '/comments' },
 ] as const;
 
 function getActiveTab(pathname: string) {
   if (pathname.includes('/chat')) return 'ask-ai';
   if (pathname.includes('/moments')) return 'moments';
+  if (pathname.includes('/comments')) return 'comments';
   return 'transcript';
 }
 
