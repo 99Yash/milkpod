@@ -26,7 +26,7 @@ export function AssetTabBar({ assetId }: AssetTabBarProps) {
   const activeTab = getActiveTab(pathname);
 
   return (
-    <div className="flex shrink-0 gap-1 border-b border-border/40 px-1 pt-1">
+    <div className="flex shrink-0 gap-1 border-b border-border/40 px-1 pt-2">
       {tabs.map(({ id, label, icon: Icon, suffix }) => {
         const isActive = id === activeTab;
         return (

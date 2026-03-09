@@ -102,7 +102,7 @@ export function AssetShell({ assetId, initialAsset, children }: AssetShellProps)
       >
         <div className="flex flex-col lg:h-[calc(100svh-7rem-4px)]">
           {/* Compact header */}
-          <div className="shrink-0 space-y-2 border-b border-border/30 pb-3">
+          <div className="shrink-0 space-y-2.5 border-b border-border/30 pb-4 pt-1">
             {/* Row 1: nav + title + actions */}
             <div className="flex items-center gap-3">
               <Link
