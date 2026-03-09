@@ -2,9 +2,11 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import {
   findRelevantSegments,
+  findRelevantVisualSegments,
   getTranscriptContext,
   getTranscriptOverview,
 } from './retrieval';
+import { generateEmbedding } from './embeddings';
 import type {
   ToolContext,
   RetrieveSegmentsOutput,
@@ -36,7 +38,7 @@ const transcriptContextInput = z.object({
 export function createQAToolSet(context: ToolContext = {}) {
   const retrieveSegmentsTool = tool({
     description:
-      'Search the transcript for segments relevant to the question. Always use this before answering a question about the video/audio content.',
+      'Search for transcript and visual context segments relevant to the question. Returns what was said (audio transcript) and what was shown on screen (visual context) when available. Always use this before answering a question about the video/audio content.',
     inputSchema: retrieveSegmentsInput,
     execute: async function* ({ query }): AsyncGenerator<RetrieveSegmentsOutput> {
       yield {
@@ -44,21 +46,36 @@ export function createQAToolSet(context: ToolContext = {}) {
         status: 'searching',
         query,
         segments: [],
+        visualSegments: [],
         message: `Searching for: "${query}"...`,
       };
 
-      const segments = await findRelevantSegments(query, {
+      const queryEmbedding = await generateEmbedding(query);
+      const retrievalOpts = {
         assetId: context.assetId,
         collectionId: context.collectionId,
-        limit: 8,
-      });
+        queryEmbedding,
+      };
+
+      const [segments, visualSegments] = await Promise.all([
+        findRelevantSegments(query, { ...retrievalOpts, limit: 8 }),
+        findRelevantVisualSegments(query, { ...retrievalOpts, limit: 5 }),
+      ]);
+
+      const parts: string[] = [];
+      if (segments.length > 0) parts.push(`${segments.length} transcript`);
+      if (visualSegments.length > 0) parts.push(`${visualSegments.length} visual`);
+      const total = segments.length + visualSegments.length;
 
       yield {
         tool: 'retrieve',
         status: 'found',
         query,
         segments,
-        message: `Found ${segments.length} relevant segment${segments.length === 1 ? '' : 's'}.`,
+        visualSegments,
+        message: total === 0
+          ? 'No relevant segments found.'
+          : `Found ${parts.join(' and ')} segment${total === 1 ? '' : 's'}.`,
       };
     },
   });

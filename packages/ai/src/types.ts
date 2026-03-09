@@ -1,6 +1,6 @@
 import type { FinishReason, InferUITools, LanguageModelUsage, UIMessage } from 'ai';
 import type { QAToolSet } from './tools';
-import type { RelevantSegment } from './retrieval';
+import type { RelevantSegment, RelevantVisualSegment } from './retrieval';
 
 // --- Chat metadata & message types ---
 
@@ -40,6 +40,7 @@ export interface RetrieveSegmentsOutput {
   status: 'searching' | 'found';
   query: string;
   segments: RelevantSegment[];
+  visualSegments?: RelevantVisualSegment[];
   message: string;
 }
 

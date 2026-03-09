@@ -134,6 +134,13 @@
       "when": 1773062051487,
       "tag": "0018_nostalgic_mikhail_rasputin",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1773066095535,
+      "tag": "0019_stale_winter_soldier",
+      "breakpoints": true
     }
   ]
 }

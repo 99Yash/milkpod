@@ -146,15 +146,15 @@ Persist timestamped visual context suitable for retrieval.
 - Visual extraction failures do not block transcript readiness.
 - Stage-level telemetry is emitted.
 
-## Phase 4 - Ask AI Hybrid Retrieval (Can Ship Independently)
+## Phase 4 - Ask AI Hybrid Retrieval (Can Ship Independently) ✅
 
 ### Goal
 Enable chat answers grounded in audio + visual evidence, independent of comments rollout.
 
 ### Deliverables
-- Extend retrieval tooling to fetch transcript + visual segments.
-- Add source labels and visual citations in tool responses.
-- Extend QA evidence logging for visual references.
+- ~~Extend retrieval tooling to fetch transcript + visual segments.~~ ✅
+- ~~Add source labels and visual citations in tool responses.~~ ✅
+- ~~Extend QA evidence logging for visual references.~~ ✅
 
 ### Files
 - `packages/ai/src/tools.ts`
