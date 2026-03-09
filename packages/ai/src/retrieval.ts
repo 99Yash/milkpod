@@ -5,6 +5,8 @@ import {
   transcriptSegments,
   transcripts,
   collectionItems,
+  videoContextEmbeddings,
+  videoContextSegments,
 } from '@milkpod/db/schemas';
 import { generateEmbedding, EMBEDDING_MODEL_NAME } from './embeddings';
 
@@ -26,11 +28,23 @@ export interface RelevantSegment {
   similarity: number;
 }
 
+export interface RelevantVisualSegment {
+  segmentId: string;
+  summary: string;
+  ocrText: string | null;
+  entities: string[] | null;
+  startTime: number;
+  endTime: number;
+  confidence: number | null;
+  similarity: number;
+}
+
 export interface RetrievalOptions {
   assetId?: string;
   collectionId?: string;
   limit?: number;
   minSimilarity?: number;
+  queryEmbedding?: number[];
 }
 
 export async function findRelevantSegments(
@@ -39,7 +53,7 @@ export async function findRelevantSegments(
 ): Promise<RelevantSegment[]> {
   const { assetId, collectionId, limit = 10, minSimilarity = 0.3 } = options;
 
-  const queryEmbedding = await generateEmbedding(query);
+  const queryEmbedding = options.queryEmbedding ?? await generateEmbedding(query);
 
   const similarity = sql<number>`1 - (${cosineDistance(embeddings.embedding, queryEmbedding)})`;
 
@@ -98,6 +112,53 @@ export async function findRelevantSegments(
   }
 
   return results;
+}
+
+export async function findRelevantVisualSegments(
+  query: string,
+  options: RetrievalOptions = {}
+): Promise<RelevantVisualSegment[]> {
+  const { assetId, collectionId, limit = 5, minSimilarity = 0.3 } = options;
+
+  const queryEmbedding = options.queryEmbedding ?? await generateEmbedding(query);
+
+  const similarity = sql<number>`1 - (${cosineDistance(videoContextEmbeddings.embedding, queryEmbedding)})`;
+
+  const conditions = [gt(similarity, minSimilarity)];
+
+  if (assetId) {
+    conditions.push(eq(videoContextSegments.assetId, assetId));
+  }
+
+  let queryBuilder = db()
+    .select({
+      segmentId: videoContextSegments.id,
+      summary: videoContextSegments.summary,
+      ocrText: videoContextSegments.ocrText,
+      entities: videoContextSegments.entities,
+      startTime: videoContextSegments.startTime,
+      endTime: videoContextSegments.endTime,
+      confidence: videoContextSegments.confidence,
+      similarity,
+    })
+    .from(videoContextEmbeddings)
+    .innerJoin(
+      videoContextSegments,
+      eq(videoContextEmbeddings.segmentId, videoContextSegments.id)
+    );
+
+  if (collectionId) {
+    queryBuilder = queryBuilder.innerJoin(
+      collectionItems,
+      eq(collectionItems.assetId, videoContextSegments.assetId)
+    );
+    conditions.push(eq(collectionItems.collectionId, collectionId));
+  }
+
+  return queryBuilder
+    .where(and(...conditions))
+    .orderBy(desc(similarity))
+    .limit(limit);
 }
 
 export interface TranscriptOverview {

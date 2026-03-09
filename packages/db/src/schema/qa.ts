@@ -5,6 +5,7 @@ import { user } from './auth';
 import { collections } from './collections';
 import { mediaAssets } from './media-assets';
 import { transcriptSegments } from './transcript-segments';
+import { videoContextSegments } from './video-context-segments';
 
 /** Typed shape for the `qa_message.metadata` jsonb column. */
 export type QaMessageMetadata = {
@@ -90,5 +91,27 @@ export const qaEvidence = pgTable(
     unique('qa_evidence_message_segment_uniq').on(t.messageId, t.segmentId),
     index('qa_evidence_message_id_idx').on(t.messageId),
     index('qa_evidence_segment_id_idx').on(t.segmentId),
+  ],
+);
+
+export const qaVisualEvidence = pgTable(
+  'qa_visual_evidence',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId('evd')),
+    messageId: text('message_id')
+      .notNull()
+      .references(() => qaMessages.id, { onDelete: 'cascade' }),
+    videoContextSegmentId: text('video_context_segment_id')
+      .notNull()
+      .references(() => videoContextSegments.id, { onDelete: 'cascade' }),
+    relevanceScore: real('relevance_score'),
+    ...lifecycle_dates,
+  },
+  (t) => [
+    unique('qa_visual_evidence_message_segment_uniq').on(t.messageId, t.videoContextSegmentId),
+    index('qa_visual_evidence_message_id_idx').on(t.messageId),
+    index('qa_visual_evidence_segment_id_idx').on(t.videoContextSegmentId),
   ],
 );
