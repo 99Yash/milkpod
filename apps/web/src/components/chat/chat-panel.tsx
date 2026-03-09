@@ -28,6 +28,51 @@ import {
 // passing `initialMessages` directly.
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve messages for a thread with stale-while-revalidate semantics:
+ * show cached data immediately, then refresh from the server in the background.
+ */
+function resolveThreadMessages(
+  threadId: string,
+  cancelled: () => boolean,
+  onMessages: (msgs: MilkpodMessage[]) => void,
+  onLoaded: () => void,
+): void {
+  const cached = getCachedChatMessages(threadId);
+
+  if (cached) {
+    onMessages(cached.messages);
+    onLoaded();
+    // Revalidate in background
+    fetchChatMessages(threadId)
+      .then((result) => {
+        if (!cancelled() && result) onMessages(result.messages);
+      })
+      .catch(() => {});
+    return;
+  }
+
+  fetchChatMessages(threadId, { preferCache: true })
+    .then((result) => {
+      if (cancelled()) return;
+      if (result) {
+        onMessages(result.messages);
+      } else {
+        toast.error('Failed to load chat history');
+        onMessages([]);
+      }
+    })
+    .catch(() => {
+      if (!cancelled()) {
+        toast.error('Failed to load chat history');
+        onMessages([]);
+      }
+    })
+    .finally(() => {
+      if (!cancelled()) onLoaded();
+    });
+}
+
 function useRestoredThread(
   assetId?: string,
   explicitThreadId?: string,
@@ -45,48 +90,15 @@ function useRestoredThread(
 
   useEffect(() => {
     let cancelled = false;
+    const isCancelled = () => cancelled;
+    const onLoaded = () => { if (!cancelled) setIsLoading(false); };
 
     if (explicitThreadId) {
-      const cached = getCachedChatMessages(explicitThreadId);
       setThreadId(explicitThreadId);
-
-      if (cached) {
-        setMessages(cached.messages);
-        setIsLoading(false);
-        fetchChatMessages(explicitThreadId)
-          .then((result) => {
-            if (!cancelled && result) {
-              setMessages(result.messages);
-            }
-          })
-          .catch(() => {
-            // Ignore revalidation failures when cached messages are available.
-          });
-        return () => {
-          cancelled = true;
-        };
-      }
-
       setIsLoading(true);
-      fetchChatMessages(explicitThreadId, { preferCache: true })
-        .then((result) => {
-          if (cancelled) return;
-          if (result) {
-            setMessages(result.messages);
-          } else {
-            toast.error('Failed to load chat history');
-            setMessages([]);
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            toast.error('Failed to load chat history');
-            setMessages([]);
-          }
-        })
-        .finally(() => {
-          if (!cancelled) setIsLoading(false);
-        });
+      resolveThreadMessages(explicitThreadId, isCancelled, (msgs) => {
+        if (!cancelled) setMessages(msgs);
+      }, onLoaded);
       return () => { cancelled = true; };
     }
 
@@ -94,42 +106,17 @@ function useRestoredThread(
 
     setIsLoading(true);
     fetchLatestThreadForAsset(assetId)
-      .then(async (thread) => {
+      .then((thread) => {
         if (cancelled || !thread) return;
-
-        const cached = getCachedChatMessages(thread.id);
-        if (cached) {
-          setMessages(cached.messages);
-          setThreadId(thread.id);
-          setIsLoading(false);
-          fetchChatMessages(thread.id)
-            .then((result) => {
-              if (!cancelled && result) {
-                setMessages(result.messages);
-              }
-            })
-            .catch(() => {
-              // Ignore revalidation failures when cached messages are available.
-            });
-          return;
-        }
-
-        const result = await fetchChatMessages(thread.id, { preferCache: true });
-        if (cancelled) return;
-        if (result) {
-          setMessages(result.messages);
-        } else {
-          toast.error('Failed to load chat history');
-          setMessages([]);
-        }
         setThreadId(thread.id);
+        resolveThreadMessages(thread.id, isCancelled, (msgs) => {
+          if (!cancelled) setMessages(msgs);
+        }, onLoaded);
       })
       .catch(() => {
         if (!cancelled) toast.error('Failed to restore chat history');
       })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
+      .finally(onLoaded);
     return () => { cancelled = true; };
   }, [assetId, explicitThreadId]);
 

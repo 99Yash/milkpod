@@ -56,15 +56,6 @@ const innertubePlayerResponseSchema = z.object({
     .optional(),
 });
 
-function formatValidationIssues(error: z.ZodError): string {
-  return error.issues
-    .map((issue) => {
-      const path = issue.path.length > 0 ? issue.path.join('.') : 'response';
-      return `${path}: ${issue.message}`;
-    })
-    .join('; ');
-}
-
 const VIDEO_ID_RE =
   /(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
 
@@ -101,7 +92,7 @@ export async function resolveYouTubeMetadata(
   const parsed = oembedResponseSchema.safeParse(payload);
   if (!parsed.success) {
     throw new Error(
-      `YouTube oEmbed returned an invalid payload: ${formatValidationIssues(parsed.error)}`
+      `YouTube oEmbed returned an invalid payload: ${parsed.error.message}`
     );
   }
   const data = parsed.data;
@@ -158,7 +149,7 @@ async function fetchInnertubePlayer(
   const parsed = innertubePlayerResponseSchema.safeParse(payload);
   if (!parsed.success) {
     throw new Error(
-      `Innertube player API returned an invalid payload: ${formatValidationIssues(parsed.error)}`
+      `Innertube player API returned an invalid payload: ${parsed.error.message}`
     );
   }
 

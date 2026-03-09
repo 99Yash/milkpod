@@ -6,6 +6,7 @@ import { qaEvidence, transcriptSegments, transcripts } from '@milkpod/db/schemas
 import { eq, sql } from 'drizzle-orm';
 import { AssetService } from '../assets/service';
 import { MomentService } from './service';
+import { formatTime } from '../../utils';
 import {
   getMomentChunkConfig,
   chunkSegmentsForMoments,
@@ -506,8 +507,3 @@ export function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
 }
 
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}

@@ -5,7 +5,9 @@ import { db } from '@milkpod/db';
 import { videoContextSegments } from '@milkpod/db/schemas';
 import { asc, eq } from 'drizzle-orm';
 import { AssetService } from '../assets/service';
+import { formatVisualContextText } from '../ingest/video-context';
 import { CommentService } from './service';
+import { formatTime } from '../../utils';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -126,10 +128,7 @@ function fuseWindows(
     if (overlapping.length > 0) {
       const parts = overlapping.map((vs) => {
         visualSegmentIds.push(vs.segmentId);
-        const sub = [vs.summary];
-        if (vs.ocrText) sub.push(`[On-Screen Text] ${vs.ocrText}`);
-        if (vs.entities?.length) sub.push(`[Entities] ${vs.entities.join(', ')}`);
-        return sub.join('\n');
+        return formatVisualContextText(vs);
       });
       visual = parts.join('\n---\n');
     }
@@ -267,12 +266,3 @@ export async function generateComments(
   return CommentService.insertMany(rows);
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
