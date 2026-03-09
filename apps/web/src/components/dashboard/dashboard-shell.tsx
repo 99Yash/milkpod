@@ -80,11 +80,6 @@ type UserStat = {
   icon: LucideIcon;
 };
 
-const userStats: UserStat[] = [
-  { id: 'videos', label: 'Videos', value: '0', icon: Video },
-  { id: 'minutes', label: 'Minutes', value: '0', icon: Sparkles },
-];
-
 type DashboardShellProps = {
   initialTab?: DashboardTab;
   children: ReactNode;
@@ -393,6 +388,26 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const { data: session } = authClient.useSession();
   const user = session?.user;
+
+  const [userStats, setUserStats] = useState<UserStat[]>([
+    { id: 'videos', label: 'Videos', value: '–', icon: Video },
+    { id: 'minutes', label: 'Minutes', value: '–', icon: Sparkles },
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.api.usage.stats.get().then(({ data }) => {
+      if (!cancelled && data) {
+        setUserStats([
+          { id: 'videos', label: 'Videos', value: String(data.videoCount), icon: Video },
+          { id: 'minutes', label: 'Minutes', value: String(data.totalMinutes), icon: Sparkles },
+        ]);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const displayName =
     user?.name?.trim() || user?.email?.split('@')[0] || 'New member';
   const emailLabel = user?.email ?? 'Connect your email';

@@ -17,4 +17,11 @@ export const usage = new Elysia({ prefix: '/api/usage' })
       return { remaining, budget: DAILY_WORD_BUDGET, isAdmin: false };
     },
     { auth: true },
+  )
+  .get(
+    '/stats',
+    async ({ user }) => {
+      return UsageService.getUserStats(user.id);
+    },
+    { auth: true },
   );
