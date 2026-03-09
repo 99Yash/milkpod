@@ -13,6 +13,7 @@ import { ChatMessage } from './message';
 import { ModelPicker } from './model-picker';
 import { WordLimitPicker } from './word-limit-picker';
 import { DailyQuota } from './daily-quota';
+import { ThinkingIndicator } from './thinking-indicator';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 import {
   fetchChatMessages,
@@ -340,9 +341,8 @@ function ChatPanelContent({
                 />
               ))}
               {isLoading && messages.at(-1)?.role !== 'assistant' && (
-                <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-                  <Spinner className="size-4" />
-                  <span>Thinking...</span>
+                <div className="py-4">
+                  <ThinkingIndicator />
                 </div>
               )}
             </div>
