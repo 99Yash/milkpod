@@ -76,7 +76,7 @@ Make YouTube ingestion robust without relying on caption availability.
 - Transcript has timestamps + detected language metadata.
 - Existing caption-only English path does not regress.
 
-## Phase 2 - Language-Aware Retrieval Heuristic
+## Phase 2 - Language-Aware Retrieval Heuristic ✅
 
 ### Goal
 Prevent English-FTS bias for non-English transcripts while preserving English lexical quality.
@@ -100,9 +100,9 @@ if (useHybridLexical) {
 ```
 
 ### Deliverables
-- Implement heuristic in transcript search service.
-- Add transcript-language aware ranking metadata in search responses.
-- Update AI system prompt/tool instructions to keep answer language aligned with user/transcript language unless user explicitly requests another language.
+- ~~Implement heuristic in transcript search service.~~ ✅
+- ~~Add transcript-language aware ranking metadata in search responses.~~ ✅
+- ~~Update AI system prompt/tool instructions to keep answer language aligned with user/transcript language unless user explicitly requests another language.~~ ✅
 
 ### Files
 - `packages/api/src/modules/assets/search-service.ts`

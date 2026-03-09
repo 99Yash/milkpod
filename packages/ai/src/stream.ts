@@ -43,6 +43,7 @@ export interface ChatRequest {
   collectionId?: string;
   modelId?: ModelId;
   wordLimit?: number | null;
+  transcriptLanguage?: string | null;
   onFinish?: (params: { responseMessage: MilkpodMessage; wordCount: number }) => Promise<void>;
   headers?: Record<string, string>;
 }
@@ -134,6 +135,7 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
       assetTitle: req.assetTitle,
       collectionId: req.collectionId,
       wordLimit: effectiveWordLimit,
+      transcriptLanguage: req.transcriptLanguage,
     }),
     messages: modelMessages,
     tools,

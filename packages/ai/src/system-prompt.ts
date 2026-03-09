@@ -43,6 +43,7 @@ export interface SystemPromptContext {
   assetTitle?: string;
   collectionId?: string;
   wordLimit?: number | null;
+  transcriptLanguage?: string | null;
 }
 
 export function buildSystemPrompt(context: SystemPromptContext = {}): string {
@@ -69,6 +70,15 @@ export function buildSystemPrompt(context: SystemPromptContext = {}): string {
     }
 
     parts.push(`<context>\n${lines.join('\n')}\n</context>`);
+  }
+
+  if (
+    context.transcriptLanguage &&
+    !context.transcriptLanguage.toLowerCase().startsWith('en')
+  ) {
+    parts.push(
+      `<language_guidance>The transcript is in "${context.transcriptLanguage}". Match the language of the user's message when responding. If the user writes in this language, respond in the same language. Only switch languages if the user explicitly requests it.</language_guidance>`
+    );
   }
 
   const effectiveLimit =

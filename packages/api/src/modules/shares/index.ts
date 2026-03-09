@@ -102,10 +102,15 @@ export const shares = new Elysia({ prefix: '/api/shares' })
       // Log before streaming so aborted requests still count
       await ShareService.logQuery(result.link.id, questionText);
 
+      const transcriptLanguage = result.link.assetId
+        ? await AssetService.getTranscriptLanguage(result.link.assetId)
+        : null;
+
       return createChatStream({
         messages: body.messages,
         assetId: result.link.assetId ?? undefined,
         collectionId: result.link.collectionId ?? undefined,
+        transcriptLanguage,
         headers: {
           'X-RateLimit-Remaining': String(remaining - 1),
         },
