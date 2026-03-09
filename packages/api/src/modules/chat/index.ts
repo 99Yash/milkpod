@@ -38,12 +38,14 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       }
 
       let assetTitle: string | undefined;
+      let transcriptLanguage: string | null = null;
       if (body.assetId) {
         const asset = await AssetService.getById(body.assetId, userId);
         if (!asset) {
           return status(403, { message: 'Access denied to asset' });
         }
         assetTitle = asset.title ?? undefined;
+        transcriptLanguage = await AssetService.getTranscriptLanguage(body.assetId);
       }
 
       if (body.collectionId) {
@@ -98,6 +100,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         collectionId: body.collectionId,
         modelId: body.modelId,
         wordLimit: reserved,
+        transcriptLanguage,
         headers: { 'X-Thread-Id': threadId },
         onFinish: async ({ responseMessage, wordCount }) => {
           try {

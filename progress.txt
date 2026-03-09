@@ -9,3 +9,13 @@ Files changed:
 - packages/api/src/modules/ingest/index.ts — Route now accepts optional transcriptionStrategy, defaults to 'audio-first'
 Outcome: YouTube ingest now defaults to audio-first transcription (ElevenLabs scribe_v2 via audio stream URL), falling back to captions. Transcript metadata records method used and fallback reason. No schema migration needed (providerMetadata jsonb column already existed).
 
+## Phase 2 - Language-Aware Retrieval Heuristic ✅ (2026-03-09)
+Files changed:
+- packages/api/src/modules/assets/search-service.ts — Replaced FTS-first-with-semantic-fallback with language-aware heuristic: English transcript + Latin query → hybrid ranked search (0.65 lexical + 0.35 semantic normalized scores); non-English → semantic-first with high-confidence lexical supplementation. Added countUnicodeLetters/countLatinLetters helpers.
+- packages/api/src/modules/assets/service.ts — Added getTranscriptLanguage(assetId) helper to fetch transcript language for an asset.
+- packages/ai/src/system-prompt.ts — Added transcriptLanguage to SystemPromptContext; non-English transcripts get language_guidance section instructing AI to match user's language.
+- packages/ai/src/stream.ts — Added transcriptLanguage to ChatRequest interface; threads it through to buildSystemPrompt.
+- packages/api/src/modules/chat/index.ts — Fetches transcript language when assetId is present; passes it to createChatStream.
+- packages/api/src/modules/shares/index.ts — Fetches transcript language for shared asset chat; passes it to createChatStream.
+Outcome: Retrieval now adapts to transcript/query language. English queries on English transcripts use blended lexical+semantic ranking. Non-English (e.g. Hindi) queries use semantic-first search, avoiding English FTS bias. System prompt instructs AI to respond in the transcript's language when non-English. No schema changes needed.
+
