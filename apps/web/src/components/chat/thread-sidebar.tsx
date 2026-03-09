@@ -196,9 +196,9 @@ function ThreadItem({
           }
         }}
         className={cn(
-          'group relative flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
+          'group relative flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors focus-visible:z-10 hover:z-10',
           isActive
-            ? 'bg-accent text-accent-foreground'
+            ? 'z-10 bg-accent text-accent-foreground'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         )}
       >

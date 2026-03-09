@@ -51,12 +51,14 @@ export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
   const canExpand = segments.length > 0;
 
   return (
-    <Collapsible className="my-1">
+    <Collapsible className="my-1.5">
       <CollapsibleTrigger
         disabled={!canExpand}
         className={cn(
-          'group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors',
-          canExpand && 'cursor-pointer hover:text-foreground'
+          'group inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs text-muted-foreground transition-all',
+          canExpand
+            ? 'cursor-pointer bg-muted/50 hover:bg-muted hover:text-foreground'
+            : 'bg-muted/30',
         )}
       >
         {isLoading || isStreaming ? (
@@ -81,8 +83,8 @@ export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
 
       {canExpand && (
         <CollapsibleContent>
-          <div className="mt-1.5 overflow-hidden rounded-lg border border-border/50 bg-muted/30">
-            <div className="max-h-48 space-y-0.5 overflow-y-auto p-2.5 text-xs text-muted-foreground">
+          <div className="mt-2 overflow-hidden rounded-xl border border-border/40 bg-muted/20 shadow-sm">
+            <div className="max-h-48 space-y-0.5 overflow-y-auto p-3 text-xs text-muted-foreground">
               {segments.map((segment) => (
                 <div
                   key={segment.id}

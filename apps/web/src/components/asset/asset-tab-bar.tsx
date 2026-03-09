@@ -26,7 +26,7 @@ export function AssetTabBar({ assetId }: AssetTabBarProps) {
   const activeTab = getActiveTab(pathname);
 
   return (
-    <div className="flex shrink-0 gap-1 border-b border-border/40">
+    <div className="flex shrink-0 gap-1 border-b border-border/40 px-1 pt-1">
       {tabs.map(({ id, label, icon: Icon, suffix }) => {
         const isActive = id === activeTab;
         return (
@@ -34,16 +34,16 @@ export function AssetTabBar({ assetId }: AssetTabBarProps) {
             key={id}
             href={`/asset/${assetId}${suffix}`}
             className={cn(
-              'relative flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors',
+              'relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
               isActive
-                ? 'text-foreground'
-                : 'text-muted-foreground hover:text-foreground/80',
+                ? 'bg-muted text-foreground'
+                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground/80',
             )}
           >
             <Icon className="size-4" />
             {label}
             {isActive && (
-              <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-foreground" />
+              <span className="absolute inset-x-1 -bottom-[5px] h-0.5 rounded-full bg-foreground" />
             )}
           </Link>
         );
