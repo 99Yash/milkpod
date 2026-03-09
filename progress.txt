@@ -19,3 +19,15 @@ Files changed:
 - packages/api/src/modules/shares/index.ts — Fetches transcript language for shared asset chat; passes it to createChatStream.
 Outcome: Retrieval now adapts to transcript/query language. English queries on English transcripts use blended lexical+semantic ranking. Non-English (e.g. Hindi) queries use semantic-first search, avoiding English FTS bias. System prompt instructs AI to respond in the transcript's language when non-English. No schema changes needed.
 
+## Phase 3 - Visual Context Extraction and Indexing ✅ (2026-03-09)
+Files changed:
+- packages/db/src/schema/video-context-segments.ts (new) — New video_context_segment table: id, assetId, startTime, endTime, summary, ocrText, entities (jsonb), confidence, providerMetadata. Indexes on assetId and (assetId, startTime). Cascade delete from media_asset.
+- packages/db/src/schema/video-context-embeddings.ts (new) — New video_context_embedding table: id, segmentId (FK to video_context_segment), content, embedding (vector 1536d), model, dimensions. HNSW cosine index for similarity search. Cascade delete from video_context_segment.
+- packages/db/src/schemas.ts — Added barrel exports for new video context schemas.
+- packages/ai/src/provider.ts — Added visualModel export (Gemini 2.5 Flash) for visual context extraction.
+- packages/api/src/modules/ingest/video-context.ts (new) — Visual context extraction module: calls Gemini 2.5 Flash with YouTube URL as file input, extracts timestamped visual segments (20-45 sec windows, max 50 per asset), validates/clamps segments, stores in DB, generates text embeddings from summary+OCR+entities. Uses independent retry with logging-only error handler (doesn't modify asset record). Runs non-blocking after transcript pipeline completes (FR9).
+- packages/api/src/modules/ingest/service.ts — Added storeVideoContextSegments() and storeVideoContextEmbeddings() methods to IngestService.
+- packages/api/src/modules/ingest/pipeline.ts — Added triggerVisualExtraction() helper that fires extractVideoContext() non-blocking after finalizePipeline completes. Called from all three YouTube transcription paths (captions-first, audio-first, captions fallback). Visual extraction failure does not block transcript readiness.
+- packages/db/src/migrations/0018_nostalgic_mikhail_rasputin.sql — Migration creating video_context_segment and video_context_embedding tables with indexes and foreign keys.
+Outcome: YouTube video ingest now triggers non-blocking visual context extraction after transcript is ready. Gemini 2.5 Flash analyzes the video via direct URL input, producing timestamped visual segments with summaries, OCR text, and entity lists. Segments are embedded using existing text embedding pipeline and stored with HNSW indexes for similarity search. Visual extraction failures are isolated and do not affect transcript readiness (FR9). Stage-level logging emitted.
+

@@ -114,22 +114,22 @@ if (useHybridLexical) {
 - English queries keep strong exact-term recall.
 - Ask AI answers Hindi transcript questions in Hindi by default.
 
-## Phase 3 - Visual Context Extraction and Indexing (YouTube-first)
+## Phase 3 - Visual Context Extraction and Indexing (YouTube-first) ✅
 
 ### Goal
 Persist timestamped visual context suitable for retrieval.
 
 ### Deliverables
-- New DB entities:
+- ~~New DB entities:~~ ✅
   - `video_context_segment`
   - `video_context_embedding`
-- Visual extraction stage for `mediaType=video`:
+- ~~Visual extraction stage for `mediaType=video`:~~ ✅
   - Gemini 2.5 Flash over YouTube URL
   - segment output with `startTime`, `endTime`, `summary`, optional `ocrText` and `entities`, confidence
-- Segment constraints:
+- ~~Segment constraints:~~ ✅
   - target 20-45 sec event windows
   - hard cap on segments per asset for cost control
-- Embedding strategy:
+- ~~Embedding strategy:~~ ✅
   - embed normalized text: summary + OCR + entities
 
 ### Files
@@ -139,6 +139,7 @@ Persist timestamped visual context suitable for retrieval.
 - `packages/api/src/modules/ingest/pipeline.ts`
 - `packages/api/src/modules/ingest/service.ts`
 - `packages/api/src/modules/ingest/video-context.ts` (new)
+- `packages/ai/src/provider.ts`
 
 ### Acceptance Criteria
 - Video assets store timestamped visual segments + embeddings.
