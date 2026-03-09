@@ -1,14 +1,14 @@
 'use client';
 
-import { isToolOrDynamicToolUIPart } from 'ai';
-import { Streamdown } from 'streamdown';
-import type { Components } from 'streamdown';
-import { isToolOutput } from '@milkpod/ai/types';
 import type { MilkpodMessage, RetrieveSegmentsOutput } from '@milkpod/ai/types';
+import { isToolOutput } from '@milkpod/ai/types';
+import { isToolUIPart } from 'ai';
+import type { Components } from 'streamdown';
+import { Streamdown } from 'streamdown';
 import { cn } from '~/lib/utils';
-import { ToolResult } from './tool-result';
-import { TimestampLink } from './timestamp-link';
 import { useAssetSource } from './asset-source-context';
+import { TimestampLink } from './timestamp-link';
+import { ToolResult } from './tool-result';
 
 // Matches [MM:SS], [HH:MM:SS], and ranges like [MM:SS–MM:SS] or [MM:SS-MM:SS]
 const TS = /\d+(?::\d{2}){1,2}/;
@@ -30,9 +30,9 @@ function linkifyTimestamps(text: string): string {
       const startSec = parseSeconds(start);
       if (end) {
         const endSec = parseSeconds(end);
-        return `[${start}](#t=${startSec})–[${end}](#t=${endSec})`;
+        return `[\\[${start}\\]](#t=${startSec}) – [\\[${end}\\]](#t=${endSec})`;
       }
-      return `[${start}](#t=${startSec})`;
+      return `[\\[${start}\\]](#t=${startSec})`;
     },
   );
 }
@@ -42,11 +42,19 @@ const streamdownComponents: Components = {
     if (typeof href === 'string' && href.startsWith('#t=')) {
       const seconds = Number(href.slice(3));
       if (!Number.isFinite(seconds) || seconds < 0) {
-        return <a href={href} {...rest}>{children}</a>;
+        return (
+          <a href={href} {...rest}>
+            {children}
+          </a>
+        );
       }
       return <TimestampLink seconds={seconds}>{children}</TimestampLink>;
     }
-    return <a href={href} {...rest}>{children}</a>;
+    return (
+      <a href={href} {...rest}>
+        {children}
+      </a>
+    );
   },
 };
 
@@ -70,21 +78,26 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
 
   return (
     <div
-      className={cn('flex gap-3 py-4', isUser ? 'justify-end' : 'justify-start')}
+      className={cn(
+        'flex gap-3 py-4',
+        isUser ? 'justify-end' : 'justify-start',
+      )}
     >
       <div
         className={cn(
           'max-w-[80%] space-y-2',
-          isUser && 'rounded-2xl bg-primary px-4 py-2.5 text-primary-foreground'
+          isUser &&
+            'rounded-2xl bg-primary px-4 py-2.5 text-primary-foreground',
         )}
       >
         {message.parts.map((part, i) => {
           if (part.type === 'reasoning') return null;
 
           if (part.type === 'text') {
-            const text = !isUser && shouldLinkify
-              ? linkifyTimestamps(part.text)
-              : part.text;
+            const text =
+              !isUser && shouldLinkify
+                ? linkifyTimestamps(part.text)
+                : part.text;
 
             return (
               <Streamdown
@@ -98,7 +111,7 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
             );
           }
 
-          if (isToolOrDynamicToolUIPart(part)) {
+          if (isToolUIPart(part)) {
             const hasOutput = part.state === 'output-available';
             const isStreaming = hasOutput && part.preliminary === true;
             const output =
@@ -119,12 +132,14 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
           return null;
         })}
 
-        {!isUser && !isStreaming && message.metadata?.finishReason === 'length' && (
-          <p className="text-xs text-muted-foreground">
-            Response trimmed due to output limit — try a higher word limit or
-            ask a follow-up.
-          </p>
-        )}
+        {!isUser &&
+          !isStreaming &&
+          message.metadata?.finishReason === 'length' && (
+            <p className="text-xs text-muted-foreground">
+              Response trimmed due to output limit — try a higher word limit or
+              ask a follow-up.
+            </p>
+          )}
       </div>
     </div>
   );

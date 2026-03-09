@@ -77,9 +77,6 @@ importers:
       '@milkpod/env':
         specifier: workspace:*
         version: link:../../packages/env
-      dotenv:
-        specifier: 'catalog:'
-        version: 17.2.3
       elysia:
         specifier: 'catalog:'
         version: 1.4.22(@sinclair/typebox@0.34.41)(exact-mirror@0.2.3(@sinclair/typebox@0.34.41))(file-type@21.1.0)(openapi-types@12.1.3)(typescript@5.9.3)

@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export type YouTubeMetadata = {
   id: string;
   title: string;
@@ -17,6 +19,39 @@ type CaptionTrack = {
   languageCode: string;
   kind?: string;
 };
+
+const oembedResponseSchema = z.object({
+  title: z.string().optional(),
+  author_name: z.string().optional(),
+  thumbnail_url: z.string().optional(),
+});
+
+const captionTrackSchema = z.object({
+  baseUrl: z.string(),
+  languageCode: z.string(),
+  kind: z.string().optional(),
+});
+
+const innertubePlayerResponseSchema = z.object({
+  captions: z
+    .object({
+      playerCaptionsTracklistRenderer: z
+        .object({
+          captionTracks: z.array(captionTrackSchema).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
+function formatValidationIssues(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.length > 0 ? issue.path.join('.') : 'response';
+      return `${path}: ${issue.message}`;
+    })
+    .join('; ');
+}
 
 const VIDEO_ID_RE =
   /(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
@@ -48,11 +83,16 @@ export async function resolveYouTubeMetadata(
     throw new Error(`YouTube oEmbed failed (${response.status})`);
   }
 
-  const data = (await response.json()) as {
-    title?: string;
-    author_name?: string;
-    thumbnail_url?: string;
-  };
+  const payload = await response.json().catch(() => {
+    throw new Error('YouTube oEmbed returned a non-JSON response');
+  });
+  const parsed = oembedResponseSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new Error(
+      `YouTube oEmbed returned an invalid payload: ${formatValidationIssues(parsed.error)}`
+    );
+  }
+  const data = parsed.data;
 
   return {
     id,
@@ -96,11 +136,16 @@ async function fetchCaptionTracks(videoId: string): Promise<CaptionTrack[]> {
     throw new Error(`Innertube player API failed (${res.status})`);
   }
 
-  const data = (await res.json()) as {
-    captions?: {
-      playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[] };
-    };
-  };
+  const payload = await res.json().catch(() => {
+    throw new Error('Innertube player API returned a non-JSON response');
+  });
+  const parsed = innertubePlayerResponseSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new Error(
+      `Innertube player API returned an invalid payload: ${formatValidationIssues(parsed.error)}`
+    );
+  }
+  const data = parsed.data;
 
   const tracks =
     data.captions?.playerCaptionsTracklistRenderer?.captionTracks;
