@@ -335,12 +335,9 @@ function SidebarPlanUsage() {
           </div>
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Words today</span>
-            <Badge
-              variant="outline"
-              className="border-border/60 text-[10px] uppercase tracking-wide text-muted-foreground"
-            >
+            <span className="text-2xl font-semibold leading-none text-muted-foreground">
               ∞
-            </Badge>
+            </span>
           </div>
         </DashboardPanelContent>
       </DashboardPanel>
