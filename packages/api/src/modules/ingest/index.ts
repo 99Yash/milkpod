@@ -51,7 +51,8 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       }
 
       // Fire-and-forget pipeline
-      orchestratePipeline(asset.id, body.url, userId).catch((err) => {
+      const strategy = body.transcriptionStrategy ?? 'audio-first';
+      orchestratePipeline(asset.id, body.url, userId, strategy).catch((err) => {
         console.error(`Pipeline failed for asset ${asset.id}:`, err);
       });
 

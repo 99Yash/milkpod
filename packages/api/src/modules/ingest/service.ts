@@ -59,7 +59,8 @@ export abstract class IngestService {
     assetId: string,
     language: string,
     segments: Segment[],
-    provider = 'elevenlabs'
+    provider = 'elevenlabs',
+    providerMetadata?: Record<string, unknown>
   ) {
     return db().transaction(async (tx) => {
       const [transcript] = await tx
@@ -69,6 +70,7 @@ export abstract class IngestService {
           language,
           provider,
           totalSegments: segments.length,
+          ...(providerMetadata && { providerMetadata }),
         })
         .returning();
 

@@ -32,6 +32,13 @@ const captionTrackSchema = z.object({
   kind: z.string().optional(),
 });
 
+const adaptiveFormatSchema = z.object({
+  itag: z.number(),
+  url: z.string().optional(),
+  mimeType: z.string(),
+  bitrate: z.number().optional(),
+});
+
 const innertubePlayerResponseSchema = z.object({
   captions: z
     .object({
@@ -40,6 +47,11 @@ const innertubePlayerResponseSchema = z.object({
           captionTracks: z.array(captionTrackSchema).optional(),
         })
         .optional(),
+    })
+    .optional(),
+  streamingData: z
+    .object({
+      adaptiveFormats: z.array(adaptiveFormatSchema).optional(),
     })
     .optional(),
 });
@@ -104,11 +116,15 @@ export async function resolveYouTubeMetadata(
   };
 }
 
+type InnertubePlayerResponse = z.infer<typeof innertubePlayerResponseSchema>;
+
 /**
- * Fetches caption tracks for a YouTube video via the Innertube player API
- * using the Android client (avoids bot detection that blocks the WEB client).
+ * Fetches the Innertube player response for a YouTube video using the
+ * Android client (avoids bot detection that blocks the WEB client).
  */
-async function fetchCaptionTracks(videoId: string): Promise<CaptionTrack[]> {
+async function fetchInnertubePlayer(
+  videoId: string
+): Promise<InnertubePlayerResponse> {
   const res = await fetch(
     `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}`,
     {
@@ -145,7 +161,12 @@ async function fetchCaptionTracks(videoId: string): Promise<CaptionTrack[]> {
       `Innertube player API returned an invalid payload: ${formatValidationIssues(parsed.error)}`
     );
   }
-  const data = parsed.data;
+
+  return parsed.data;
+}
+
+async function fetchCaptionTracks(videoId: string): Promise<CaptionTrack[]> {
+  const data = await fetchInnertubePlayer(videoId);
 
   const tracks =
     data.captions?.playerCaptionsTracklistRenderer?.captionTracks;
@@ -154,6 +175,30 @@ async function fetchCaptionTracks(videoId: string): Promise<CaptionTrack[]> {
   }
 
   return tracks;
+}
+
+/**
+ * Resolves a direct audio stream URL for a YouTube video from the
+ * Innertube player response's streamingData.adaptiveFormats.
+ */
+export async function resolveYouTubeAudioUrl(url: string): Promise<string> {
+  const videoId = extractVideoId(url);
+  const data = await fetchInnertubePlayer(videoId);
+
+  const formats = data.streamingData?.adaptiveFormats;
+  if (!formats || formats.length === 0) {
+    throw new Error('No streaming formats available for this video');
+  }
+
+  const audioFormats = formats
+    .filter((f) => f.mimeType.startsWith('audio/') && f.url)
+    .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0));
+
+  if (audioFormats.length === 0) {
+    throw new Error('No audio stream available for this video');
+  }
+
+  return audioFormats[0]!.url!;
 }
 
 /**
