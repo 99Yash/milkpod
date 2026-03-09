@@ -85,7 +85,7 @@ export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
 
   return (
     <div
-      className="my-1.5 animate-in fade-in-0 slide-in-from-bottom-1 duration-300"
+      className="my-0.5 animate-in fade-in-0 slide-in-from-bottom-1 duration-300"
       data-tool={toolName}
     >
       <Collapsible className="group/tool space-y-1.5">
