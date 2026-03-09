@@ -43,7 +43,8 @@ Rules:
 - Higher confidence for segments with slides, code, diagrams, or demos; lower for talking head only`;
 }
 
-function buildEmbeddingText(segment: {
+/** Compose a single text block from visual segment fields (used for embeddings and prompt context). */
+export function formatVisualContextText(segment: {
   summary: string;
   ocrText?: string | null;
   entities?: string[] | null;
@@ -139,7 +140,7 @@ export async function extractVideoContext(
   // 3. Generate and store embeddings for visual context
   const textsToEmbed = storedSegments.map((seg) => ({
     id: seg.id,
-    text: buildEmbeddingText(seg),
+    text: formatVisualContextText(seg),
   }));
 
   const embeddingItems: {

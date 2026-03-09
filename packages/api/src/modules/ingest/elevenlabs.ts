@@ -18,15 +18,6 @@ const transcriptionResultSchema = z.object({
 export type ElevenLabsWord = z.infer<typeof elevenLabsWordSchema>;
 export type TranscriptionResult = z.infer<typeof transcriptionResultSchema>;
 
-function formatValidationIssues(error: z.ZodError): string {
-  return error.issues
-    .map((issue) => {
-      const path = issue.path.length > 0 ? issue.path.join('.') : 'response';
-      return `${path}: ${issue.message}`;
-    })
-    .join('; ');
-}
-
 async function parseTranscriptionResult(
   response: Response
 ): Promise<TranscriptionResult> {
@@ -37,7 +28,7 @@ async function parseTranscriptionResult(
   const parsed = transcriptionResultSchema.safeParse(payload);
   if (!parsed.success) {
     throw new Error(
-      `ElevenLabs API returned an invalid transcription payload: ${formatValidationIssues(parsed.error)}`
+      `ElevenLabs API returned an invalid transcription payload: ${parsed.error.message}`
     );
   }
 

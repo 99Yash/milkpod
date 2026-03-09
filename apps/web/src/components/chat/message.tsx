@@ -5,15 +5,7 @@ import { useAutoAnimate } from '@formkit/auto-animate/react';
 import type { MilkpodMessage, ToolOutput } from '@milkpod/ai/types';
 import { isToolOutput } from '@milkpod/ai/types';
 import { isToolUIPart } from 'ai';
-import {
-  BookOpenText,
-  BrainCircuit,
-  ChevronRight,
-  FileSearch,
-  Search,
-  Wrench,
-  type LucideIcon,
-} from 'lucide-react';
+import { BrainCircuit, ChevronRight } from 'lucide-react';
 import type { Components } from 'streamdown';
 import { Streamdown } from 'streamdown';
 import {
@@ -25,6 +17,7 @@ import { Spinner } from '~/components/ui/spinner';
 import { cn } from '~/lib/utils';
 import { useAssetSource } from './asset-source-context';
 import { TimestampLink } from './timestamp-link';
+import { TOOL_META, normalizeToolName, type ActivityKind } from './tool-meta';
 import { ToolResult } from './tool-result';
 
 // Matches [MM:SS], [HH:MM:SS], and ranges like [MM:SS–MM:SS] or [MM:SS-MM:SS]
@@ -75,47 +68,12 @@ const streamdownComponents: Components = {
   },
 };
 
-type ActivityKind = 'thinking' | 'retrieve' | 'context' | 'read' | 'tool';
-
 type ActivitySummaryItem = {
   key: ActivityKind;
   count: number;
   label: string;
-  icon: LucideIcon;
+  icon: React.ComponentType<{ className?: string }>;
 };
-
-function getToolKey(toolName: string): ActivityKind {
-  const normalized = toolName.replace(/^tool-/, '');
-
-  switch (normalized) {
-    case 'retrieve_segments':
-      return 'retrieve';
-    case 'get_transcript_context':
-      return 'context';
-    case 'read_transcript':
-      return 'read';
-    default:
-      return 'tool';
-  }
-}
-
-function getActivityConfig(key: ActivityKind): {
-  label: string;
-  icon: LucideIcon;
-} {
-  switch (key) {
-    case 'thinking':
-      return { label: 'Thinking', icon: BrainCircuit };
-    case 'retrieve':
-      return { label: 'Search', icon: Search };
-    case 'context':
-      return { label: 'Context', icon: FileSearch };
-    case 'read':
-      return { label: 'Read', icon: BookOpenText };
-    case 'tool':
-      return { label: 'Tool', icon: Wrench };
-  }
-}
 
 function getReasoningSnippet(part: MilkpodMessage['parts'][number]): string {
   if ('text' in part && typeof part.text === 'string') {
@@ -135,17 +93,17 @@ interface ChatMessageProps {
 }
 
 function getFallbackToolOutput(toolName: string): ToolOutput {
-  const normalized = toolName.replace(/^tool-/, '');
+  const kind = normalizeToolName(toolName);
 
-  switch (normalized) {
-    case 'get_transcript_context':
+  switch (kind) {
+    case 'context':
       return {
         tool: 'context',
         status: 'loading',
         segments: [],
         message: 'Loading transcript context...',
       };
-    case 'read_transcript':
+    case 'read':
       return {
         tool: 'read',
         status: 'loading',
@@ -153,7 +111,7 @@ function getFallbackToolOutput(toolName: string): ToolOutput {
         segments: [],
         message: 'Reading transcript...',
       };
-    case 'retrieve_segments':
+    case 'retrieve':
       return {
         tool: 'retrieve',
         status: 'searching',
@@ -198,12 +156,12 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
     const counts = new Map<ActivityKind, number>();
 
     for (const part of activityParts) {
-      const key = part.type === 'reasoning' ? 'thinking' : getToolKey(part.type);
+      const key: ActivityKind = part.type === 'reasoning' ? 'thinking' : normalizeToolName(part.type);
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
 
     return Array.from(counts.entries()).map(([key, count]) => {
-      const config = getActivityConfig(key);
+      const config = TOOL_META[key];
       return {
         key,
         count,

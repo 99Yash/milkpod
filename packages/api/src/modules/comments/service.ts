@@ -52,7 +52,10 @@ export abstract class CommentService {
       startTime: number;
       endTime: number;
       source: SourceValue;
-      evidenceRefs?: unknown;
+      evidenceRefs?: {
+        transcriptSegmentIds: string[];
+        visualSegmentIds: string[];
+      };
     }>,
   ): Promise<Comment[]> {
     if (rows.length === 0) return [];

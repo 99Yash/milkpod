@@ -1,13 +1,7 @@
 'use client';
 
 import { useAutoAnimate } from '@formkit/auto-animate/react';
-import {
-  BookOpenText,
-  ChevronRight,
-  FileSearch,
-  Search,
-  Wrench,
-} from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import NumberFlow from '@number-flow/react';
 import type { ToolOutput } from '@milkpod/ai/types';
 import { Spinner } from '~/components/ui/spinner';
@@ -21,6 +15,7 @@ import { formatTime } from '~/lib/format';
 import { useTimestampAction } from './use-timestamp-action';
 import { VideoMomentDialog } from './video-moment-dialog';
 import { ShimmerText } from './shimmer-text';
+import { TOOL_META } from './tool-meta';
 
 interface ToolResultProps {
   toolName: string;
@@ -79,16 +74,7 @@ function normalizeSegments(output: ToolOutput) {
 }
 
 function getToolIcon(output: ToolOutput) {
-  switch (output.tool) {
-    case 'retrieve':
-      return Search;
-    case 'context':
-      return FileSearch;
-    case 'read':
-      return BookOpenText;
-    default:
-      return Wrench;
-  }
+  return TOOL_META[output.tool]?.icon ?? TOOL_META.tool.icon;
 }
 
 export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
