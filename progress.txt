@@ -421,3 +421,63 @@ Checklist verification:
 
 pnpm check-types: PASS (all 7 packages)
 
+## Task 8 - Backend: Search & Assets [DONE]
+
+Files reviewed:
+- packages/api/src/modules/assets/search-service.ts
+- packages/api/src/modules/assets/service.ts
+- packages/api/src/modules/assets/index.ts
+
+Issues found and fixed:
+1. index.ts:148 - New upload pipeline retry catch logged full error object `err`. Could expose
+   S3 URLs, internal error details in production logs. Same class of issue fixed in Tasks 3, 5, 7.
+   Fix: Changed to `err instanceof Error ? err.message : String(err)`.
+2. index.ts:153-154 - Pre-existing YouTube pipeline retry catch also logged full error object.
+   Since the retry handler was modified in this diff (upload branch added), fixing for consistency.
+   Fix: Changed to `err instanceof Error ? err.message : String(err)`.
+3. index.ts:127 - Delete handler catch used `err` directly in non-Error branch instead of
+   `String(err)`, inconsistent with the safe logging pattern established in prior tasks.
+   Fix: Changed to `String(err)`.
+
+Issues noted (no fix needed):
+4. service.ts:26-31,34-77 - `AssetService.list()` and `AssetService.search()` return unbounded
+   result sets (no `.limit()`). Pre-existing code not changed in this diff. In practice bounded by
+   per-user asset count (low hundreds typical). Enhancement for scale, not a regression.
+5. service.ts:63 - `ilike` search with `%${query.q}%` allows LIKE wildcards (`%`, `_`) from user
+   input. No SQL injection (parameterized via Drizzle ORM). Users search only their own assets,
+   so wildcard abuse has no security impact. Standard search behavior.
+6. search-service.ts:86-87 - `Math.max(...ftsResults.map(r => r.rank), 0.001)` — when arrays are
+   empty, spread produces no args but the `0.001` floor prevents `-Infinity` or division by zero.
+   When one side is empty, the other side's normalization is correct because the loop never
+   accesses the empty side's max. Safe by construction.
+7. service.ts:107-114 - `getTranscriptLanguage` is used in chat/index.ts and shares/index.ts for
+   language-aware retrieval. Clean single-row query with `.limit(1)`. Correct.
+
+Checklist verification:
+- Search queries use proper indexes: GIN index `transcript_segment_search_idx` on
+  `to_tsvector('english', text)` (migration 0008). HNSW index on embeddings.embedding
+  (migration 0009). Both confirmed in schema definitions. Correct.
+- Score normalization correct: hybridSearch normalizes by max value with 0.001 floor. No
+  NaN/Infinity possible. Blending weights (0.65 + 0.35 = 1.0) sum correctly. Empty array
+  edge cases handled by floor values. Correct.
+- Language detection edge cases: Empty query → letterCount=0 → latinRatio=0 → semantic-first.
+  Numbers-only query → letterCount=0 (digits are \p{N}, not \p{L}) → semantic-first.
+  Mixed scripts (e.g. "こんにちは hello") → latinRatio < 0.6 → semantic-first. All correct.
+- Pagination on search results: Search endpoint limit is clamped to [1, 100] with default 50.
+  Both ftsSearch and semanticSearch pass limit through to .limit(). hybridSearch slices to
+  limit. semanticFirstSearch caps at limit. Correct.
+- No SQL injection: buildTsQuery strips all non-letter, non-digit chars via tokenizeQuery.
+  Result is passed as parameterized value via Drizzle sql`to_tsquery('english', ${tsquery})`.
+  ilike in AssetService.search uses parameterized ORM method. Correct.
+- Auth scoping: Search endpoint requires `{ auth: true }` and verifies ownership via
+  `AssetService.getById(params.id, user.id)` before calling search. All list/CRUD endpoints
+  are user-scoped via `eq(mediaAssets.userId, userId)`. SSE events filtered by userId.
+  Delete and retry both user-scoped. Correct.
+- Rate limiting: `/api/assets` covered under 'crud' category (100 req/min). Correct.
+- Input validation: Search query validated via `t.String({ minLength: 1 })`. Limit as optional
+  string, parsed and clamped in handler. Asset CRUD validated via AssetModel schemas. Correct.
+- HTTP status codes: 404 (not found), 409 (not failed for retry), 422 (no source URL). Correct.
+- Error handling: Fixed — all catch blocks now log error message only, not full objects.
+
+pnpm check-types: PASS (all 7 packages)
+

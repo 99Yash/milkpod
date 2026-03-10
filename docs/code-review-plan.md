@@ -154,7 +154,7 @@ Checklist:
 - Shared chat properly attributes usage to owner
 - No N+1 queries in message saving or evidence extraction
 
-## Task 8 - Backend: Search & Assets
+## ~~Task 8 - Backend: Search & Assets~~ ✅
 
 Files:
 - packages/api/src/modules/assets/search-service.ts
