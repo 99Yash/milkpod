@@ -101,29 +101,18 @@ export function AssetShell({ assetId, initialAsset, children }: AssetShellProps)
         sourceId={asset.sourceId}
       >
         <div className="flex flex-col lg:h-[calc(100svh-7rem-4px)]">
-          {/* Compact header */}
-          <div className="shrink-0 space-y-2.5 border-b border-border/30 pb-4 pt-1">
-            {/* Row 1: nav + title + actions */}
-            <div className="flex items-center gap-3">
+          {/* Header */}
+          <div className="shrink-0 space-y-3 pb-4 pt-1">
+            {/* Row 1: back + actions */}
+            <div className="flex items-center justify-between">
               <Link
                 href="/dashboard?tab=library"
-                className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
               >
-                <ArrowLeft className="size-4" />
+                <ArrowLeft className="size-3.5" />
                 <span className="sr-only sm:not-sr-only">Library</span>
               </Link>
-              <div className="h-5 w-px bg-border" />
-              {asset.thumbnailUrl && (
-                <img
-                  src={asset.thumbnailUrl}
-                  alt="Video thumbnail"
-                  className="hidden h-10 w-auto shrink-0 rounded-md object-cover sm:block"
-                />
-              )}
-              <h1 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-                {asset.title}
-              </h1>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex items-center gap-2">
                 <Badge
                   variant={asset.status === 'failed' ? 'destructive' : 'outline'}
                   className="text-xs"
@@ -139,23 +128,28 @@ export function AssetShell({ assetId, initialAsset, children }: AssetShellProps)
               </div>
             </div>
 
-            {/* Row 2: metadata chips */}
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 pl-[calc(theme(spacing.4)+theme(spacing.3)+1px)] text-xs text-muted-foreground">
+            {/* Row 2: title */}
+            <h1 className="text-lg font-semibold leading-snug text-foreground">
+              {asset.title}
+            </h1>
+
+            {/* Row 3: metadata */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
               {asset.channelName && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5">
-                  <User className="size-3" />
+                <span className="inline-flex items-center gap-1.5">
+                  <User className="size-3.5" />
                   {asset.channelName}
                 </span>
               )}
               {asset.duration && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5">
-                  <Clock className="size-3" />
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="size-3.5" />
                   {formatDuration(asset.duration)}
                 </span>
               )}
               {speakers.size > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5">
-                  <Mic className="size-3" />
+                <span className="inline-flex items-center gap-1.5">
+                  <Mic className="size-3.5" />
                   {speakers.size} speaker{speakers.size > 1 ? 's' : ''}
                 </span>
               )}

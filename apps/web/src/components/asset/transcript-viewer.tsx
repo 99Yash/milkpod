@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { TranscriptSegment } from '@milkpod/api/types';
 import { coalesceSegments } from './transcript/types';
 import type { ViewMode } from './transcript/types';
@@ -8,10 +9,8 @@ import { analyzeContent, detectChapters } from './transcript/chapter-detection';
 import { TranscriptToolbar } from './transcript/transcript-toolbar';
 import { FlatView } from './transcript/flat-view';
 import { ChapteredView } from './transcript/chaptered-view';
-import {
-  searchTranscript,
-  type TranscriptSearchResult,
-} from '~/lib/api-fetchers';
+import { searchTranscript } from '~/lib/api-fetchers';
+import { queryKeys } from '~/lib/query-keys';
 import { buildHighlightRegex } from '~/lib/number-words';
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -35,39 +34,19 @@ export function TranscriptViewer({
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
-  const [isSearching, setIsSearching] = useState(false);
-  const [serverResults, setServerResults] = useState<
-    TranscriptSearchResult[] | null
-  >(null);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(id);
   }, [search]);
 
-  useEffect(() => {
-    if (!assetId || debouncedSearch.length < SERVER_SEARCH_MIN_LENGTH) {
-      setServerResults(null);
-      return;
-    }
+  const searchEnabled = Boolean(assetId) && debouncedSearch.length >= SERVER_SEARCH_MIN_LENGTH;
 
-    let cancelled = false;
-    setIsSearching(true);
-
-    searchTranscript(assetId, debouncedSearch).then((results) => {
-      if (cancelled) return;
-      setServerResults(results);
-      setIsSearching(false);
-    }).catch(() => {
-      if (cancelled) return;
-      setServerResults(null);
-      setIsSearching(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [assetId, debouncedSearch]);
+  const { data: serverResults = null, isLoading: isSearching } = useQuery({
+    queryKey: queryKeys.transcriptSearch(assetId!, debouncedSearch),
+    queryFn: () => searchTranscript(assetId!, debouncedSearch),
+    enabled: searchEnabled,
+  });
 
   const groups = useMemo(() => coalesceSegments(segments), [segments]);
   const profile = useMemo(() => analyzeContent(groups), [groups]);

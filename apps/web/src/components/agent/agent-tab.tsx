@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { fetchAssets } from '~/lib/api-fetchers';
+import { queryKeys } from '~/lib/query-keys';
 import { ChatPanel } from '~/components/chat/chat-panel';
 import {
   DashboardPanel,
@@ -16,54 +18,25 @@ interface AgentTabProps {
 }
 
 export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
-  const readyInitial = initialAssets?.filter((a) => a.status === 'ready');
-  const [assets, setAssets] = useState<Asset[]>(readyInitial ?? []);
-  const [isLoading, setIsLoading] = useState(!initialAssets);
+  const { data: assets = [], isLoading } = useQuery({
+    queryKey: queryKeys.assets.list(),
+    queryFn: () => fetchAssets(),
+    select: (data) => data.filter((a) => a.status === 'ready'),
+    initialData: initialAssets,
+  });
+
   const [selectedId, setSelectedId] = useState<string | undefined>(
-    initialAssetId ?? readyInitial?.[0]?.id
+    initialAssetId ?? initialAssets?.filter((a) => a.status === 'ready')[0]?.id
   );
 
   useEffect(() => {
-    if (initialAssets) {
-      const ready = initialAssets.filter((a) => a.status === 'ready');
-      setAssets(ready);
-      setIsLoading(false);
-      setSelectedId((prev) => {
-        if (initialAssetId) return initialAssetId;
-        if (prev && ready.some((asset) => asset.id === prev)) return prev;
-        return ready[0]?.id;
-      });
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoading(true);
-    fetchAssets()
-      .then((data) => {
-        if (cancelled) return;
-        const ready = data.filter((a) => a.status === 'ready');
-        setAssets(ready);
-        setSelectedId((prev) => {
-          if (initialAssetId) return initialAssetId;
-          if (prev && ready.some((asset) => asset.id === prev)) return prev;
-          return ready[0]?.id;
-        });
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [initialAssetId, initialAssets]);
-
-  useEffect(() => {
-    if (initialAssetId) {
-      setSelectedId(initialAssetId);
-    }
+    if (initialAssetId) setSelectedId(initialAssetId);
   }, [initialAssetId]);
+
+  const effectiveSelectedId = useMemo(() => {
+    if (selectedId && assets.some((a) => a.id === selectedId)) return selectedId;
+    return assets[0]?.id;
+  }, [selectedId, assets]);
 
   if (isLoading) {
     return (
@@ -108,7 +81,7 @@ export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
           Agent
         </h2>
         <select
-          value={selectedId ?? ''}
+          value={effectiveSelectedId ?? ''}
           onChange={(e) => setSelectedId(e.target.value)}
           className="rounded-md border border-border/60 bg-background px-3 py-1.5 text-xs text-foreground"
         >
@@ -120,7 +93,7 @@ export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
         </select>
       </div>
       <DashboardPanel className="h-[600px]">
-        {selectedId && <ChatPanel key={selectedId} assetId={selectedId} />}
+        {effectiveSelectedId && <ChatPanel key={effectiveSelectedId} assetId={effectiveSelectedId} />}
       </DashboardPanel>
     </section>
   );

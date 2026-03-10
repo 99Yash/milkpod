@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchAssets } from '~/lib/api-fetchers';
+import { queryKeys } from '~/lib/query-keys';
 import { AssetCard } from './asset-card';
 import { Spinner } from '~/components/ui/spinner';
 import type { Asset } from '@milkpod/api/types';
@@ -22,51 +24,49 @@ interface AssetProgress {
 }
 
 export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }: AssetListProps) {
-  const [assets, setAssets] = useState<Asset[]>(initialAssets ?? []);
-  const [isLoading, setIsLoading] = useState(!initialAssets);
+  const queryClient = useQueryClient();
   const [progressMap, setProgressMap] = useState<Record<string, AssetProgress>>({});
-  const didInitialFetchRef = useRef(false);
+
+  const query = useMemo(() => {
+    const q: Record<string, string> = {};
+    if (filters?.q) q.q = filters.q;
+    if (filters?.status) q.status = filters.status;
+    if (filters?.sourceType) q.sourceType = filters.sourceType;
+    return q;
+  }, [filters?.q, filters?.status, filters?.sourceType]);
 
   const hasActiveFilters = Boolean(
     filters?.q || filters?.status || filters?.sourceType,
   );
 
-  const loadAssets = useCallback(async () => {
-    try {
-      const query: Record<string, string> = {};
-      if (filters?.q) query.q = filters.q;
-      if (filters?.status) query.status = filters.status;
-      if (filters?.sourceType) query.sourceType = filters.sourceType;
+  const { data: assets = [], isLoading, refetch } = useQuery({
+    queryKey: queryKeys.assets.list(query),
+    queryFn: () => fetchAssets(query),
+    initialData: !hasActiveFilters ? initialAssets : undefined,
+  });
 
-      const data = await fetchAssets(query);
-      setAssets(data);
-    } catch {
-      // silent — toast handled by query cache
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filters?.q, filters?.status, filters?.sourceType]);
-
+  // Handle refreshKey from parent (skip initial mount)
+  const mountedRef = useRef(false);
   useEffect(() => {
-    if (!didInitialFetchRef.current) {
-      didInitialFetchRef.current = true;
-      if (initialAssets && !hasActiveFilters && !refreshKey) {
-        return;
-      }
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
     }
-
-    loadAssets();
-  }, [hasActiveFilters, initialAssets, loadAssets, refreshKey]);
+    refetch();
+  }, [refreshKey, refetch]);
 
   // SSE: update asset status and progress in real-time
-  // Falls back to polling loadAssets() if SSE permanently fails
+  // Falls back to polling via query invalidation if SSE permanently fails
   useAssetEvents(
     useCallback(
       (event: AssetStatusEvent) => {
-        setAssets((prev) =>
-          prev.map((a) =>
-            a.id === event.assetId ? { ...a, status: event.status } : a
-          )
+        // Optimistic status update across all cached asset lists
+        queryClient.setQueriesData<Asset[]>(
+          { queryKey: queryKeys.assets.lists() },
+          (prev) =>
+            prev?.map((a) =>
+              a.id === event.assetId ? { ...a, status: event.status } : a
+            )
         );
         setProgressMap((prev) => ({
           ...prev,
@@ -75,22 +75,26 @@ export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }:
             message: event.message,
           },
         }));
-        // Re-fetch full data when asset becomes ready
+        // Re-fetch full data when asset reaches terminal state
         if (event.status === 'ready' || event.status === 'failed') {
-          // Clean up progress for terminal states
           setProgressMap((prev) => {
             const next = { ...prev };
             delete next[event.assetId];
             return next;
           });
           if (event.status === 'ready') {
-            loadAssets();
+            queryClient.invalidateQueries({ queryKey: queryKeys.assets.all });
           }
         }
       },
-      [loadAssets]
+      [queryClient]
     ),
-    { onPollFallback: loadAssets }
+    {
+      onPollFallback: useCallback(
+        () => { queryClient.invalidateQueries({ queryKey: queryKeys.assets.all }); },
+        [queryClient]
+      ),
+    }
   );
 
   if (isLoading) {
@@ -116,7 +120,7 @@ export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }:
           key={asset.id}
           asset={asset}
           onSelect={onSelectAsset}
-          onRetry={loadAssets}
+          onRetry={() => queryClient.invalidateQueries({ queryKey: queryKeys.assets.all })}
           progress={progressMap[asset.id]?.progress}
           progressMessage={progressMap[asset.id]?.message}
         />

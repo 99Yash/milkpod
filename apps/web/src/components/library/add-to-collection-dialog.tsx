@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
 import {
@@ -12,6 +13,7 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog';
 import { fetchCollections } from '~/lib/api-fetchers';
+import { queryKeys } from '~/lib/query-keys';
 import { api } from '~/lib/api';
 import type { Collection } from '@milkpod/api/types';
 import { cn } from '~/lib/utils';
@@ -29,19 +31,18 @@ export function AddToCollectionDialog({
   onOpenChange,
   onAdded,
 }: AddToCollectionDialogProps) {
-  const [collections, setCollections] = useState<Collection[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const { data: collections = [], isLoading } = useQuery({
+    queryKey: queryKeys.collections.list(),
+    queryFn: fetchCollections,
+    enabled: open,
+  });
+
+  // Reset selection when dialog opens
   useEffect(() => {
-    if (!open) return;
-    setIsLoading(true);
-    setSelectedId(null);
-    fetchCollections()
-      .then((result) => setCollections(result))
-      .catch(() => {})
-      .finally(() => setIsLoading(false));
+    if (open) setSelectedId(null);
   }, [open]);
 
   const handleAdd = async () => {
