@@ -41,7 +41,13 @@ export const comments = new Elysia({ prefix: '/api/comments' })
         }
       }
 
-      return generateComments(body.assetId, user.id);
+      try {
+        return await generateComments(body.assetId, user.id);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[comments] Generation failed for asset ${body.assetId}:`, msg);
+        return status(500, { message: 'Comment generation failed. Please try again later.' });
+      }
     },
     { auth: true, body: CommentModel.generate },
   )

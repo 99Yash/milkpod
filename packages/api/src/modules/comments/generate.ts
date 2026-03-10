@@ -227,6 +227,7 @@ export async function generateComments(
       description: 'Timestamped comments generated from fused evidence',
     }),
     maxOutputTokens: 4096,
+    timeout: { totalMs: 300_000 },
   });
 
   const rawComments = result.output ?? [];
@@ -270,8 +271,9 @@ export async function generateComments(
 
   // Increment comments quota counter
   if (persisted.length > 0) {
-    QuotaService.increment(userId, 'comments', persisted.length).catch((err) => {
-      console.warn(`[comments] Failed to increment comments quota for ${assetId}:`, err);
+    QuotaService.increment(userId, 'comments', persisted.length).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[comments] Failed to increment comments quota for ${assetId}:`, msg);
     });
   }
 
