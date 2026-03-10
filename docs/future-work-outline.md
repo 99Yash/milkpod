@@ -66,7 +66,7 @@ Implementation path:
 2. ~~**Provider integration**: provider interface, first adapter, checkout/portal/cancel/webhook routes.~~ ✅
 3. ~~**Enforcement**: plan-aware word budgets, model gating, ingest minute quotas,
    share-link limits, and shared-chat budget accounting.~~ ✅
-4. **Frontend UX**: pricing page, billing dashboard, upgrade prompts at all gates.
+4. ~~**Frontend UX**: pricing page, billing dashboard, upgrade prompts at all gates.~~ ✅
 5. **Verification**: entitlement unit tests + webhook/idempotency integration tests.
 
 ## 3) Open decisions that block implementation sequencing

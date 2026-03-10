@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import { MessageCircle, RefreshCw } from 'lucide-react';
 import type { Comment } from '@milkpod/api/types';
 import { api } from '~/lib/api';
+import { handleUpgradeError } from '~/lib/upgrade-prompt';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
 import { CommentCard } from './comment-card';
@@ -24,7 +25,10 @@ export function CommentsTab({ assetId, initialComments }: CommentsTabProps) {
         assetId,
         regenerate,
       });
-      if (error) throw new Error(String(error));
+      if (error) {
+        if (handleUpgradeError(error)) return;
+        throw new Error(String(error));
+      }
       setComments((data as Comment[]) ?? []);
     } catch {
       // Error handled by global handler
