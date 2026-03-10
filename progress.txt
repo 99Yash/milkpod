@@ -544,3 +544,85 @@ Checklist verification:
 
 pnpm check-types: PASS (all 7 packages)
 
+## Task 10 - Frontend: Billing UI [DONE]
+
+Files reviewed:
+- apps/web/src/components/billing/pricing-grid.tsx
+- apps/web/src/components/billing/billing-dashboard.tsx
+- apps/web/src/lib/upgrade-prompt.ts
+- apps/web/src/app/pricing/page.tsx
+- apps/web/src/app/dashboard/billing/page.tsx
+
+Issues found and fixed:
+1. pricing-grid.tsx — `currentPlan` prop always passed as `null` from PricingPage, making the
+   "Current plan" indicator permanently broken. Users could never see which plan they're on.
+   Fix: Removed `currentPlan` prop. PricingGrid now fetches the user's plan on mount via
+   `api.api.billing.summary.get()` and manages `currentPlan` as internal state. Updated
+   PricingPage to render `<PricingGrid />` without the prop.
+2. pricing-grid.tsx:118-145 — Interval toggle (Monthly/Yearly) lacked ARIA attributes. Toggle
+   buttons functioned as a radio group but had no semantic role for screen readers.
+   Fix: Added `role="radiogroup"` with `aria-label="Billing interval"` on container. Added
+   `role="radio"` and `aria-checked` on each toggle button.
+3. pricing-grid.tsx:105-107 — Silent failure when checkout API responds without `checkoutUrl`.
+   If `data` was truthy but lacked `checkoutUrl`, nothing happened — no redirect, no error.
+   Fix: Added `else` branch with `toast.error('Failed to start checkout. Please try again.')`.
+4. billing-dashboard.tsx:66-75 — `useEffect` fetch had no `.catch()` handler. Network errors
+   would leave the loading spinner forever (promise rejection never handled). Also,
+   `setLoading(false)` was called outside the `cancelled` guard, causing state updates on
+   potentially unmounted components.
+   Fix: Added `.catch()` that sets `setLoading(false)` (so error state is shown). Moved
+   `setLoading(false)` inside the `if (!cancelled)` guard.
+5. billing-dashboard.tsx:188 — Past due payment warning lacked `role="alert"` for screen reader
+   announcement. Added `role="alert"` and `aria-hidden="true"` on the decorative icon.
+6. billing-dashboard.tsx:289 — Usage progress bars lacked ARIA progressbar semantics. Screen
+   readers couldn't convey usage percentages.
+   Fix: Added `role="progressbar"`, `aria-valuenow`, `aria-valuemin`, `aria-valuemax`, and
+   `aria-label` to each progress bar container.
+
+Issues noted (no fix needed):
+7. pricing-grid.tsx:26-77 — Plan prices ($19/$190, $49/$490) and feature strings are hardcoded
+   in the frontend. Backend `plans.ts` defines quotas/entitlements but not prices (those live
+   in Polar). Feature strings match backend quotas exactly (120min free, 1200min pro, etc.).
+   Common pattern for static pricing pages. Would need a pricing API for full dynamism.
+8. billing-dashboard.tsx:70,118 — `data as BillingSummary` type assertion on Eden treaty
+   response. Eden treaty's type inference is complex; casting to the known shape is pragmatic.
+   The BillingSummary type mirrors the backend's BillingService.getSummary return type exactly.
+9. billing-dashboard.tsx:107-124 — `handleCancel` has no confirmation dialog before canceling
+   subscription. Enhancement for UX, not a code quality issue. The action is soft-cancel
+   (at period end), so it's reversible via the billing portal.
+10. upgrade-prompt.ts — Uses `window.location.href` without SSR guard. However, the function is
+    only called from toast action click handlers (client-side events). The module imports `sonner`
+    (client-only), so accidental server import would fail at the sonner import. Self-protecting.
+
+Checklist verification:
+- No browser APIs used without SSR guards: Correct. `window.location.href` only in event
+  handlers (handleCheckout, handlePortal) and toast actions. No SSR execution path.
+- No `any` types: Correct. One `as BillingSummary` assertion (pragmatic for Eden treaty).
+  `UpgradeErrorPayload` uses index signature with `unknown` (not `any`).
+- Loading, error, and empty states: All handled. PricingGrid: loading state for checkout
+  button. BillingDashboard: loading spinner, error fallback ("Failed to load"), empty/null
+  data handled. Past due warning shown conditionally.
+- No redundant state: Correct. `isPaid`, `isPastDue`, `isCanceling`, `periodEnd` are derived
+  values computed from `summary` (not stored as separate state). `price` derived from
+  `interval` + plan. `pct` computed inline.
+- Proper cleanup in useEffects: Fixed — both PricingGrid and BillingDashboard useEffects now
+  have `cancelled` flag checked before state updates, with proper `.catch()` handlers.
+- No hardcoded prices that should come from API: Prices are inherently static (set in Polar
+  dashboard). Backend doesn't serve prices. Feature strings verified against backend quotas.
+- Accessible: Fixed — ARIA radiogroup on interval toggle, role="alert" on past due warning,
+  role="progressbar" on usage bars. Semantic HTML throughout (h1/h2/h3, ul/li, p tags).
+  Buttons have proper type="button".
+- Tailwind v4: Uses theme tokens throughout (bg-card, text-foreground, border-border,
+  bg-muted, text-muted-foreground, bg-primary, text-primary-foreground, bg-destructive,
+  text-destructive). `size-*` used for icons. Minimal arbitrary values (`text-[10px]` for
+  badges — no theme token for 10px text). No issues.
+- No console.log in production: Correct. No console.log/warn/error in any frontend file.
+  Error handling uses `toast.error()` throughout.
+- Error handling beyond console.log: Correct. All API errors show user-facing toasts.
+  Checkout, portal, and cancel all have try/catch with toast feedback.
+- Checkout flow handles failures: Yes. Specific error codes handled (billing_disabled,
+  no_customer). Generic fallback toasts for unknown errors. Network errors caught.
+  Missing checkoutUrl now shows error toast (fixed).
+
+pnpm check-types: PASS (all 7 packages)
+

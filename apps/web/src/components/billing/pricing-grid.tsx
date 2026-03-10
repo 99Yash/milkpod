@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check } from 'lucide-react';
 import { toast } from 'sonner';
@@ -76,14 +76,23 @@ const plans: PlanDef[] = [
   },
 ];
 
-interface PricingGridProps {
-  currentPlan: PlanId | null;
-}
-
-export function PricingGrid({ currentPlan }: PricingGridProps) {
+export function PricingGrid() {
   const router = useRouter();
   const [interval, setInterval] = useState<Interval>('month');
   const [loadingPlan, setLoadingPlan] = useState<PlanId | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<PlanId | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.api.billing.summary.get().then(({ data }) => {
+      if (!cancelled && data && 'plan' in data) {
+        setCurrentPlan(data.plan as PlanId);
+      }
+    }).catch(() => {
+      // Non-critical — grid still works without current plan indicator
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleCheckout = async (planId: PlanId) => {
     if (planId === 'free') return;
@@ -104,6 +113,8 @@ export function PricingGrid({ currentPlan }: PricingGridProps) {
       }
       if (data && 'checkoutUrl' in data && typeof data.checkoutUrl === 'string') {
         window.location.href = data.checkoutUrl;
+      } else {
+        toast.error('Failed to start checkout. Please try again.');
       }
     } catch {
       toast.error('Failed to start checkout. Please try again.');
@@ -115,9 +126,11 @@ export function PricingGrid({ currentPlan }: PricingGridProps) {
   return (
     <div className="space-y-6">
       {/* Interval toggle */}
-      <div className="flex items-center justify-center gap-1 rounded-lg border border-border/60 bg-muted/30 p-1 w-fit mx-auto">
+      <div role="radiogroup" aria-label="Billing interval" className="flex items-center justify-center gap-1 rounded-lg border border-border/60 bg-muted/30 p-1 w-fit mx-auto">
         <button
           type="button"
+          role="radio"
+          aria-checked={interval === 'month'}
           onClick={() => setInterval('month')}
           className={cn(
             'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
@@ -130,6 +143,8 @@ export function PricingGrid({ currentPlan }: PricingGridProps) {
         </button>
         <button
           type="button"
+          role="radio"
+          aria-checked={interval === 'year'}
           onClick={() => setInterval('year')}
           className={cn(
             'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
