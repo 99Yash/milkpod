@@ -6,6 +6,13 @@ import { BillingService } from './service';
 
 export const billing = new Elysia({ prefix: '/api/billing' })
   .use(authMacro)
+  // Preserve raw body for webhook signature verification — Elysia auto-parses
+  // JSON which may re-serialize differently, breaking HMAC verification.
+  .onParse({ as: 'local' }, async ({ request, path }) => {
+    if (path === '/api/billing/webhook') {
+      return request.text();
+    }
+  })
 
   // -------------------------------------------------------------------------
   // GET /api/billing/summary — authenticated
@@ -33,16 +40,22 @@ export const billing = new Elysia({ prefix: '/api/billing' })
       const env = serverEnv();
       const origin = env.CORS_ORIGIN;
 
-      const { checkoutUrl } = await provider.createCheckoutSession({
-        userId: user.id,
-        email: user.email,
-        planId: body.planId,
-        interval: body.interval,
-        successUrl: `${origin}/dashboard?checkout=success`,
-        cancelUrl: `${origin}/pricing?checkout=canceled`,
-      });
+      try {
+        const { checkoutUrl } = await provider.createCheckoutSession({
+          userId: user.id,
+          email: user.email,
+          planId: body.planId,
+          interval: body.interval,
+          successUrl: `${origin}/dashboard?checkout=success`,
+          cancelUrl: `${origin}/pricing?checkout=canceled`,
+        });
 
-      return { checkoutUrl };
+        return { checkoutUrl };
+      } catch (err) {
+        console.error('[billing] Checkout error:', err instanceof Error ? err.message : err);
+        set.status = 502;
+        return { error: 'checkout_failed', message: 'Could not create checkout session' };
+      }
     },
     {
       auth: true,
@@ -71,12 +84,18 @@ export const billing = new Elysia({ prefix: '/api/billing' })
         return { error: 'no_customer', message: 'No billing account found' };
       }
 
-      const { portalUrl } = await provider.createPortalSession({
-        customerId: customer.providerCustomerId,
-        returnUrl: `${serverEnv().CORS_ORIGIN}/dashboard`,
-      });
+      try {
+        const { portalUrl } = await provider.createPortalSession({
+          customerId: customer.providerCustomerId,
+          returnUrl: `${serverEnv().CORS_ORIGIN}/dashboard`,
+        });
 
-      return { portalUrl };
+        return { portalUrl };
+      } catch (err) {
+        console.error('[billing] Portal error:', err instanceof Error ? err.message : err);
+        set.status = 502;
+        return { error: 'portal_failed', message: 'Could not create portal session' };
+      }
     },
     { auth: true },
   )
@@ -99,12 +118,18 @@ export const billing = new Elysia({ prefix: '/api/billing' })
         return { error: 'no_subscription', message: 'No active subscription found' };
       }
 
-      await provider.cancelSubscription({
-        subscriptionId: sub.providerSubscriptionId,
-        atPeriodEnd: body.atPeriodEnd,
-      });
+      try {
+        await provider.cancelSubscription({
+          subscriptionId: sub.providerSubscriptionId,
+          atPeriodEnd: body.atPeriodEnd,
+        });
 
-      return { ok: true };
+        return { ok: true };
+      } catch (err) {
+        console.error('[billing] Cancel error:', err instanceof Error ? err.message : err);
+        set.status = 502;
+        return { error: 'cancel_failed', message: 'Could not cancel subscription' };
+      }
     },
     {
       auth: true,
@@ -126,7 +151,7 @@ export const billing = new Elysia({ prefix: '/api/billing' })
         return { error: 'billing_disabled' };
       }
 
-      // Read raw body as string for signature verification
+      // body is raw text from onParse hook above
       const rawBody = typeof body === 'string' ? body : JSON.stringify(body);
 
       // Extract headers needed for signature verification
@@ -160,16 +185,11 @@ export const billing = new Elysia({ prefix: '/api/billing' })
         if (msg.includes('unique') || msg.includes('duplicate')) {
           return { ok: true, duplicate: true };
         }
-        console.error('[billing] Webhook processing error:', err);
+        console.error('[billing] Webhook processing error:', msg);
         set.status = 500;
         return { error: 'processing_failed' };
       }
 
       return { ok: true };
-    },
-    {
-      // Webhook endpoints receive raw body — parse: false isn't available
-      // in Elysia, but the body will be parsed as JSON automatically.
-      // We re-serialize for signature verification above.
     },
   );

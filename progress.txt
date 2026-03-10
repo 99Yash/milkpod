@@ -90,3 +90,70 @@ Checklist verification:
 
 pnpm check-types: PASS (all 7 packages)
 
+## Task 3 - Backend: Billing Module [DONE]
+
+Files reviewed:
+- packages/api/src/modules/billing/service.ts
+- packages/api/src/modules/billing/provider.ts
+- packages/api/src/modules/billing/providers/polar.ts
+- packages/api/src/modules/billing/resolve-provider.ts
+- packages/api/src/modules/billing/index.ts
+
+Issues found and fixed:
+1. polar.ts:123,148,171 - Missing timeouts on all three Polar API fetch calls (checkout,
+   portal, cancel). Could hang indefinitely if Polar API is unresponsive.
+   Fix: Added `signal: AbortSignal.timeout(30_000)` (30s) to all three fetch calls.
+2. polar.ts:37-42 - `resolvePlanProductId` always returned first (monthly) product ID,
+   ignoring the interval parameter. Yearly checkout would use monthly pricing.
+   Fix: Added `interval` parameter; selects ids[0] for monthly, ids[1] for yearly.
+   Added validation that the selected ID exists.
+3. index.ts:130 - Webhook signature verification uses re-serialized JSON body. Elysia
+   auto-parses JSON body, then `JSON.stringify(body)` may produce different bytes than
+   the original, causing HMAC verification to fail.
+   Fix: Added `onParse` lifecycle hook scoped to `/api/billing/webhook` that returns
+   `request.text()` to preserve the raw body string for signature verification.
+4. rate-limit.ts:66-88 - `/api/billing` paths were not covered by the rate limiter.
+   Checkout, portal, and cancel endpoints had no rate limiting.
+   Fix: Added 'billing' rate category (10 req/min burst) and categorize rule for
+   `/api/billing` paths.
+5. service.ts:7 - Duplicate import: `dailyUsage` imported on separate line from same
+   `@milkpod/db/schemas` module. Fix: Merged into single import statement.
+6. index.ts:36,74,102 - Provider API errors (from Polar) bubbled up as unhandled
+   exceptions, returning 500 with potentially sensitive Polar error text.
+   Fix: Wrapped checkout, portal, and cancel provider calls in try/catch blocks.
+   Return 502 with safe generic error messages. Log only error message, not full object.
+7. index.ts:163 - Webhook error logging used `console.error(..., err)` which could log
+   full error object including raw Polar payloads with customer data.
+   Fix: Changed to log only `msg` (error message string).
+
+Issues noted (no fix needed):
+8. billing.ts:72 - Webhook unique constraint on providerEventId alone (not compound with
+   provider). Confirmed from Task 1 review: provider event IDs are unique strings;
+   multi-provider collision risk negligible.
+9. polar.ts:225-226 - Fallback providerEventId uses `Date.now()` for non-Standard-Webhook
+   events. In practice dead code since verifyWebhookSignature rejects requests missing
+   the webhook-id header. Acceptable as defensive fallback.
+10. resolve-provider.ts:5 - Module-level cache for provider singleton uses three-state
+    (undefined/null/provider). Clean pattern; avoids re-resolving env on every call.
+
+Checklist verification:
+- Webhook signature: Uses timingSafeEqual from node:crypto. Timestamp tolerance (5 min)
+  prevents replay attacks. HMAC-SHA256 with base64 secret decoding. Correct.
+- Webhook idempotency: Pre-check via isEventProcessed + unique constraint insert in
+  transaction. Race condition on concurrent delivery handled via catch on unique violation.
+- Transactions: processWebhookEvent wraps all DB mutations in a single transaction.
+- No sensitive billing data in logs: Fixed — only error messages logged, not full objects.
+- Provider API error handling: Fixed — checkout/portal/cancel now catch and return safe errors.
+- Auth checks: summary (auth:true), checkout (auth:true), portal (auth:true),
+  cancel (auth:true). Webhook is unauthenticated but signature-verified.
+- Rate limiting: Fixed — billing endpoints now rate-limited (10 req/min burst).
+- HTTP status codes: 503 (billing disabled), 404 (no customer/subscription), 401
+  (invalid signature), 502 (provider error), 500 (processing failed). Correct.
+- No hardcoded product IDs: All from env vars (POLAR_PRODUCT_PRO, POLAR_PRODUCT_TEAM).
+  Secrets from env (POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET).
+- Provider abstraction: Clean BillingProvider interface. polarProvider implements all
+  methods. resolve-provider.ts handles singleton + provider selection. Extensible.
+- Fetch timeouts: Fixed — all Polar API calls now have 30s timeouts.
+
+pnpm check-types: PASS (all 7 packages)
+

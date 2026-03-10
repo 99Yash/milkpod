@@ -63,19 +63,21 @@ function consume(
 
 // --- Route categorization ---
 
-type RateCategory = 'ingest' | 'chat' | 'crud' | 'auth';
+type RateCategory = 'ingest' | 'chat' | 'crud' | 'auth' | 'billing';
 
 const LIMITS = {
   ingest: { capacity: 10, refillRate: 10 / 60 },
   chat: { capacity: 30, refillRate: 30 / 60 },
   crud: { capacity: 100, refillRate: 100 / 60 },
   auth: { capacity: 10, refillRate: 10 / 60 },
+  billing: { capacity: 10, refillRate: 10 / 60 },
 } satisfies Record<RateCategory, BucketConfig>;
 
 function categorize(path: string): RateCategory | null {
   if (path.startsWith('/api/ingest')) return 'ingest';
   if (path.startsWith('/api/chat')) return 'chat';
   if (path.startsWith('/api/auth/')) return 'auth';
+  if (path.startsWith('/api/billing')) return 'billing';
   if (
     path.startsWith('/api/assets') ||
     path.startsWith('/api/collections') ||
