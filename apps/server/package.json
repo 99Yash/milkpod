@@ -7,7 +7,8 @@
     "check-types": "tsc -b",
     "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
     "dev": "tsx watch --env-file=.env src/index.ts",
-    "start": "node --env-file=.env dist/index.js"
+    "start": "node --env-file=.env dist/index.js",
+    "deploy": "pnpm --filter @milkpod/db db:migrate"
   },
   "dependencies": {
     "elysia": "catalog:",
