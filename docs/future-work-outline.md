@@ -63,7 +63,7 @@ Current state:
 
 Implementation path:
 1. ~~**Foundation**: plans catalog, billing schema, entitlement resolver, summary endpoint.~~ ✅
-2. **Provider integration**: provider interface, first adapter, checkout/portal/cancel/webhook routes.
+2. ~~**Provider integration**: provider interface, first adapter, checkout/portal/cancel/webhook routes.~~ ✅
 3. **Enforcement**: plan-aware word budgets, model gating, ingest minute quotas,
    share-link limits, and shared-chat budget accounting.
 4. **Frontend UX**: pricing page, billing dashboard, upgrade prompts at all gates.
@@ -71,7 +71,7 @@ Implementation path:
 
 ## 3) Open decisions that block implementation sequencing
 
-1. Billing provider choice (`polar` vs `razorpay`).
+1. ~~Billing provider choice (`polar` vs `razorpay`).~~ ✅ Polar selected as first provider. Provider abstraction (`BillingProvider` interface) allows adding Razorpay later.
 2. Annual billing timing (ship monthly first vs launch both).
 3. ~~Multimodal quota thresholds per plan and overage policy.~~ ✅ Free: 120 min / 200 visual / 100 comments; Pro: 1200 / 2000 / 1000; Team: 4000 / 6000 / 3000. Overage blocked with 402 upgrade prompt.
 4. ~~Upload retention defaults (TTL length, legal hold process, hard-delete SLA).~~ ✅ Defaults: 90 days via `RAW_MEDIA_RETENTION_DAYS`, legal hold via `retention_hold` column, purge via admin API.
