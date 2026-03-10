@@ -18,6 +18,7 @@ import { usage } from './modules/usage';
 import { moments } from './modules/moments';
 import { comments } from './modules/comments';
 import { retention } from './modules/retention';
+import { visualParity } from './modules/visual-parity';
 
 const socialSignInResponseSchema = z.object({
   url: z.string().optional(),
@@ -131,6 +132,7 @@ export const app = new Elysia({ name: 'api' })
   .use(usage)
   .use(moments)
   .use(comments)
-  .use(retention);
+  .use(retention)
+  .use(visualParity);
 
 export type App = typeof app;

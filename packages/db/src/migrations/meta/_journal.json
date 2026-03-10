@@ -155,6 +155,13 @@
       "when": 1773117999530,
       "tag": "0021_simple_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1773118500502,
+      "tag": "0022_pink_captain_marvel",
+      "breakpoints": true
     }
   ]
 }

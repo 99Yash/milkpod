@@ -73,14 +73,16 @@ export async function extractVideoContext(
         entityId: assetId,
         logPrefix: 'ingest:visual',
         onError: async (_id, msg) => {
-          console.warn(`[ingest:visual] ${stage} error for ${assetId}: ${msg}`);
+          await IngestService.incrementVisualAttempts(assetId, msg);
         },
       },
       fn
     );
 
   console.log(`[ingest] Starting visual context extraction for asset ${assetId}`);
+  await IngestService.updateVisualStatus(assetId, 'processing');
 
+  try {
   // 1. Extract visual segments via Gemini
   const segments = await retry('visual-extraction', async () => {
     const result = await generateText({
@@ -115,6 +117,7 @@ export async function extractVideoContext(
 
   if (segments.length === 0) {
     console.log(`[ingest] No visual segments found for asset ${assetId}`);
+    await IngestService.updateVisualStatus(assetId, 'completed');
     return;
   }
 
@@ -174,7 +177,13 @@ export async function extractVideoContext(
     await IngestService.storeVideoContextEmbeddings(embeddingItems);
   }
 
+  await IngestService.updateVisualStatus(assetId, 'completed');
   console.log(
     `[ingest] Visual context complete for asset ${assetId}: ${storedSegments.length} segments, ${embeddingItems.length} embeddings`
   );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown visual extraction error';
+    await IngestService.updateVisualStatus(assetId, 'failed', { visualLastError: message });
+    throw err;
+  }
 }

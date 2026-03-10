@@ -1,6 +1,7 @@
 import { db } from '@milkpod/db';
 import {
   assetStatusEnum,
+  visualStatusEnum,
   mediaAssets,
   transcripts,
   transcriptSegments,
@@ -14,6 +15,7 @@ import type { Segment } from './segments';
 import type { VisualSegment } from './video-context';
 
 type AssetStatus = (typeof assetStatusEnum.enumValues)[number];
+type VisualStatus = (typeof visualStatusEnum.enumValues)[number];
 
 export abstract class IngestService {
   static async updateStatus(
@@ -161,6 +163,30 @@ export abstract class IngestService {
     await db()
       .update(mediaAssets)
       .set({ rawMediaRetentionUntil: deadline })
+      .where(eq(mediaAssets.id, assetId));
+  }
+
+  static async updateVisualStatus(
+    assetId: string,
+    visualStatus: VisualStatus,
+    opts?: { visualLastError?: string },
+  ) {
+    await db()
+      .update(mediaAssets)
+      .set({
+        visualStatus,
+        ...(opts?.visualLastError != null && { visualLastError: opts.visualLastError }),
+      })
+      .where(eq(mediaAssets.id, assetId));
+  }
+
+  static async incrementVisualAttempts(assetId: string, visualLastError: string) {
+    await db()
+      .update(mediaAssets)
+      .set({
+        visualAttempts: sql`${mediaAssets.visualAttempts} + 1`,
+        visualLastError,
+      })
       .where(eq(mediaAssets.id, assetId));
   }
 

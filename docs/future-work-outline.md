@@ -26,18 +26,18 @@ Implementation path:
 3. ~~Add legal-hold bypass support (`retention_hold=true`) for support/admin flows.~~
 4. ~~Add metrics (`purge_attempted`, `purge_succeeded`, `purge_failed`) and alerting on failures.~~
 
-### 1.2 Full upload multimodal parity hardening
+### ~~1.2 Full upload multimodal parity hardening~~ ✅
 
 Why:
 - Upload videos now have durable URLs and visual extraction trigger paths, but
   parity should be enforced and observable as a first-class workflow.
 
 Implementation path:
-1. Add visual-stage state tracking (`visual_status`, `visual_attempts`, `visual_last_error`).
-2. Add a requeue path that refreshes signed URLs when visual jobs outlive URL TTL.
-3. Add integration tests for upload video: transcript, visual extraction,
-   hybrid chat retrieval, and comments.
-4. Add parity dashboards comparing success rates for YouTube vs upload sources.
+1. ~~Add visual-stage state tracking (`visual_status`, `visual_attempts`, `visual_last_error`).~~
+2. ~~Add a requeue path that refreshes signed URLs when visual jobs outlive URL TTL.~~
+3. ~~Add integration tests for upload video: transcript, visual extraction,
+   hybrid chat retrieval, and comments.~~
+4. ~~Add parity dashboards comparing success rates for YouTube vs upload sources.~~
 
 ### 1.3 Tenant-level multimodal quota policy
 
