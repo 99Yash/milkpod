@@ -29,10 +29,11 @@ type SourceStats = {
 export abstract class VisualParityService {
   /**
    * Find video assets eligible for visual requeue:
-   * - visual_status is 'failed' or 'pending' (stale)
-   * - OR visual_status is null but asset is a 'ready' video (never attempted)
+   * - visual_status is 'failed'
+   * - OR visual_status is null (never attempted)
    * - asset transcript status is 'ready'
    * - mediaType is 'video'
+   * - raw media not yet deleted
    */
   static async findRequeueCandidates(limit = 50) {
     return db()

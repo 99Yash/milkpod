@@ -18,14 +18,16 @@ interface ToolResultProps {
 
 function getLabel(output: ToolOutput) {
   switch (output.tool) {
-    case 'retrieve':
+    case 'retrieve': {
+      const total = output.segments.length + (output.visualSegments?.length ?? 0);
       return output.status === 'searching'
         ? { prefix: 'Searching', count: 0, suffix: '' }
         : {
             prefix: 'Found',
-            count: output.segments.length,
+            count: total,
             suffix: 'relevant segments',
           };
+    }
     case 'context':
       return output.status === 'loading'
         ? { prefix: 'Loading context', count: 0, suffix: '' }

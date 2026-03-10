@@ -50,6 +50,20 @@ export function createQAToolSet(context: ToolContext = {}) {
         message: `Searching for: "${query}"...`,
       };
 
+      // Short-circuit when no scope — retrieval functions would return [] anyway,
+      // but this avoids the embedding API call entirely.
+      if (!context.assetId && !context.collectionId) {
+        yield {
+          tool: 'retrieve',
+          status: 'found',
+          query,
+          segments: [],
+          visualSegments: [],
+          message: 'No asset or collection selected to search.',
+        };
+        return;
+      }
+
       const queryEmbedding = await generateEmbedding(query);
       const retrievalOpts = {
         assetId: context.assetId,
