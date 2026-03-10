@@ -91,6 +91,17 @@ Key differences from older versions:
 - For schema changes drizzle-kit can't auto-detect (renames vs creates), use `drizzle-kit generate --custom --name <name>` and write SQL manually
 - After creating/modifying schema files, run `pnpm build` before `pnpm check-types` — downstream packages (`@milkpod/api`) resolve types from `dist/` via the `types` field in package.json exports. Stale `.d.ts` files cause phantom type errors.
 
+## Code Review Standards
+
+`review-prompt.md` contains the comprehensive code review checklist for this project. When reviewing code or writing new code, follow its standards:
+
+- **Backend**: N+1 queries, input validation, auth/authz on every route, rate limiting coverage, timeouts on all external calls, safe error logging (`err.message` not `err`), proper HTTP status codes, transactions for atomic ops, exhaustive switches
+- **Frontend**: No redundant state, useEffect cleanup, stable keys, SSR guards, no `any`, ARIA/keyboard accessibility, `toast.error()` not silent catches, Tailwind v4 theme tokens
+- **Library leverage**: Before writing manual logic, verify the library doesn't already provide it. Read `.d.ts` files in `node_modules/.pnpm/` for actual type signatures. Search library GitHub repos via `mcp__grep__searchGitHub` (elysiajs/elysia, drizzle-team/drizzle-orm, vercel/ai) for API examples. Prefer Drizzle relational queries over manual joins, Elysia `.guard()`/`.onError()` over per-route boilerplate, AI SDK `Output` over manual JSON parsing.
+- **Composability**: Extract shared patterns (admin checks, ownership resolution, quota enforcement) into typed utilities. Functions should be generic over dependencies. Keep module interfaces narrow.
+
+See `review-prompt.md` for the full checklist, library-specific guidance, and high-signal nudges from prior reviews.
+
 ## Keeping Agent Docs Useful
 
 - Treat `packages/env/src/server.ts` and `packages/env/src/client.ts` as source of truth for app-level env validation
