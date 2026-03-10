@@ -14,6 +14,19 @@ const MAX_UPLOAD_SIZE = 100 * 1024 * 1024;
 
 const ACCEPTED_MIME_PREFIXES = ['audio/', 'video/'] as const;
 
+async function checkVideoQuota(userId: string, email: string) {
+  if (isAdminEmail(email)) return null;
+  const quota = await QuotaService.checkQuota(userId, 'video_minutes');
+  if (quota.allowed) return null;
+  return status(402, {
+    message: 'Monthly video processing limit reached. Upgrade your plan for more minutes.',
+    code: 'QUOTA_EXCEEDED',
+    unit: quota.unit,
+    used: quota.used,
+    limit: quota.limit,
+  });
+}
+
 export const ingest = new Elysia({ prefix: '/api/ingest' })
   .use(authMacro)
   .post(
@@ -38,19 +51,8 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
         return existing;
       }
 
-      // Quota soft-check: reject if user already exhausted monthly video minutes
-      if (!isAdminEmail(user.email)) {
-        const quota = await QuotaService.checkQuota(userId, 'video_minutes');
-        if (!quota.allowed) {
-          return status(402, {
-            message: 'Monthly video processing limit reached. Upgrade your plan for more minutes.',
-            code: 'QUOTA_EXCEEDED',
-            unit: quota.unit,
-            used: quota.used,
-            limit: quota.limit,
-          });
-        }
-      }
+      const quotaError = await checkVideoQuota(userId, user.email);
+      if (quotaError) return quotaError;
 
       // Create asset
       const asset = await AssetService.create(userId, {
@@ -106,19 +108,8 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
         });
       }
 
-      // Quota soft-check: reject if user already exhausted monthly video minutes
-      if (!isAdminEmail(user.email)) {
-        const quota = await QuotaService.checkQuota(userId, 'video_minutes');
-        if (!quota.allowed) {
-          return status(402, {
-            message: 'Monthly video processing limit reached. Upgrade your plan for more minutes.',
-            code: 'QUOTA_EXCEEDED',
-            unit: quota.unit,
-            used: quota.used,
-            limit: quota.limit,
-          });
-        }
-      }
+      const quotaError = await checkVideoQuota(userId, user.email);
+      if (quotaError) return quotaError;
 
       let storedUpload;
       try {

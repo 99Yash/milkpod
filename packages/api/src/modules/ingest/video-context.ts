@@ -84,112 +84,113 @@ export async function extractVideoContext(
   await IngestService.updateVisualStatus(assetId, 'processing');
 
   try {
-  // 1. Extract visual segments via Gemini
-  const segments = await retry('visual-extraction', async () => {
-    const result = await generateText({
-      model: visualModel,
-      system: buildExtractionPrompt(duration),
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'file',
-              data: new URL(sourceUrl),
-              mediaType: 'video/mp4',
-            },
-            {
-              type: 'text',
-              text: 'Analyze this video and extract timestamped visual context segments.',
-            },
-          ],
-        },
-      ],
-      output: Output.array({
-        element: visualSegmentSchema,
-        name: 'visual_segments',
-        description: 'Timestamped visual context segments from the video',
-      }),
-      maxOutputTokens: 4096,
+    // 1. Extract visual segments via Gemini
+    const segments = await retry('visual-extraction', async () => {
+      const result = await generateText({
+        model: visualModel,
+        system: buildExtractionPrompt(duration),
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'file',
+                data: new URL(sourceUrl),
+                mediaType: 'video/mp4',
+              },
+              {
+                type: 'text',
+                text: 'Analyze this video and extract timestamped visual context segments.',
+              },
+            ],
+          },
+        ],
+        output: Output.array({
+          element: visualSegmentSchema,
+          name: 'visual_segments',
+          description: 'Timestamped visual context segments from the video',
+        }),
+        maxOutputTokens: 4096,
+        timeout: { totalMs: 300_000 },
+      });
+
+      return result.output ?? [];
     });
 
-    return result.output ?? [];
-  });
+    if (segments.length === 0) {
+      console.log(`[ingest] No visual segments found for asset ${assetId}`);
+      await IngestService.updateVisualStatus(assetId, 'completed');
+      return;
+    }
 
-  if (segments.length === 0) {
-    console.log(`[ingest] No visual segments found for asset ${assetId}`);
-    await IngestService.updateVisualStatus(assetId, 'completed');
-    return;
-  }
+    // Clamp and validate segments
+    const validSegments = segments
+      .filter((s) => s.endTime > s.startTime && s.summary.length > 0)
+      .map((s) => ({
+        ...s,
+        startTime: Math.max(0, s.startTime),
+        endTime: Math.min(duration, s.endTime),
+        confidence: Math.max(0, Math.min(1, s.confidence)),
+      }))
+      .slice(0, MAX_SEGMENTS_PER_ASSET);
 
-  // Clamp and validate segments
-  const validSegments = segments
-    .filter((s) => s.endTime > s.startTime && s.summary.length > 0)
-    .map((s) => ({
-      ...s,
-      startTime: Math.max(0, s.startTime),
-      endTime: Math.min(duration, s.endTime),
-      confidence: Math.max(0, Math.min(1, s.confidence)),
-    }))
-    .slice(0, MAX_SEGMENTS_PER_ASSET);
+    console.log(`[ingest] Extracted ${validSegments.length} visual segments for asset ${assetId}`);
 
-  console.log(`[ingest] Extracted ${validSegments.length} visual segments for asset ${assetId}`);
-
-  // 2. Store visual segments
-  const storedSegments = await IngestService.storeVideoContextSegments(
-    assetId,
-    validSegments,
-  );
-
-  // 3. Generate and store embeddings for visual context
-  const textsToEmbed = storedSegments.map((seg) => ({
-    id: seg.id,
-    text: formatVisualContextText(seg),
-  }));
-
-  const embeddingItems: {
-    segmentId: string;
-    content: string;
-    embedding: number[];
-    model: string;
-    dimensions: number;
-  }[] = [];
-
-  for (let i = 0; i < textsToEmbed.length; i += EMBED_BATCH) {
-    const batch = textsToEmbed.slice(i, i + EMBED_BATCH);
-    const vectors = await retry('visual-embedding', () =>
-      generateEmbeddings(batch.map((t) => t.text))
+    // 2. Store visual segments
+    const storedSegments = await IngestService.storeVideoContextSegments(
+      assetId,
+      validSegments,
     );
 
-    for (const [j, item] of batch.entries()) {
-      const vector = vectors[j];
-      if (!vector) continue;
-      embeddingItems.push({
-        segmentId: item.id,
-        content: item.text,
-        embedding: vector,
-        model: EMBEDDING_MODEL_NAME,
-        dimensions: EMBEDDING_DIMENSIONS,
+    // 3. Generate and store embeddings for visual context
+    const textsToEmbed = storedSegments.map((seg) => ({
+      id: seg.id,
+      text: formatVisualContextText(seg),
+    }));
+
+    const embeddingItems: {
+      segmentId: string;
+      content: string;
+      embedding: number[];
+      model: string;
+      dimensions: number;
+    }[] = [];
+
+    for (let i = 0; i < textsToEmbed.length; i += EMBED_BATCH) {
+      const batch = textsToEmbed.slice(i, i + EMBED_BATCH);
+      const vectors = await retry('visual-embedding', () =>
+        generateEmbeddings(batch.map((t) => t.text))
+      );
+
+      for (const [j, item] of batch.entries()) {
+        const vector = vectors[j];
+        if (!vector) continue;
+        embeddingItems.push({
+          segmentId: item.id,
+          content: item.text,
+          embedding: vector,
+          model: EMBEDDING_MODEL_NAME,
+          dimensions: EMBEDDING_DIMENSIONS,
+        });
+      }
+    }
+
+    if (embeddingItems.length > 0) {
+      await IngestService.storeVideoContextEmbeddings(embeddingItems);
+    }
+
+    await IngestService.updateVisualStatus(assetId, 'completed');
+
+    // Increment visual segments quota counter
+    if (storedSegments.length > 0) {
+      QuotaService.increment(userId, 'visual_segments', storedSegments.length).catch((err) => {
+        console.warn(`[ingest] Failed to increment visual segments quota for ${assetId}:`, err);
       });
     }
-  }
 
-  if (embeddingItems.length > 0) {
-    await IngestService.storeVideoContextEmbeddings(embeddingItems);
-  }
-
-  await IngestService.updateVisualStatus(assetId, 'completed');
-
-  // Increment visual segments quota counter
-  if (storedSegments.length > 0) {
-    QuotaService.increment(userId, 'visual_segments', storedSegments.length).catch((err) => {
-      console.warn(`[ingest] Failed to increment visual segments quota for ${assetId}:`, err);
-    });
-  }
-
-  console.log(
-    `[ingest] Visual context complete for asset ${assetId}: ${storedSegments.length} segments, ${embeddingItems.length} embeddings`
-  );
+    console.log(
+      `[ingest] Visual context complete for asset ${assetId}: ${storedSegments.length} segments, ${embeddingItems.length} embeddings`
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown visual extraction error';
     await IngestService.updateVisualStatus(assetId, 'failed', { visualLastError: message });
