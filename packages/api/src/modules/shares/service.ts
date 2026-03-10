@@ -7,6 +7,7 @@ import {
   collectionItems,
   transcripts,
   transcriptSegments,
+  user,
 } from '@milkpod/db/schemas';
 import { and, eq, gte, isNull, count } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
@@ -33,6 +34,14 @@ export abstract class ShareService {
       .returning();
     if (!link) throw new Error('Failed to insert share link');
     return link;
+  }
+
+  static async countActive(userId: string): Promise<number> {
+    const [result] = await db()
+      .select({ total: count() })
+      .from(shareLinks)
+      .where(and(eq(shareLinks.userId, userId), isNull(shareLinks.revokedAt)));
+    return result?.total ?? 0;
   }
 
   static async list(userId: string): Promise<ShareLink[]> {
@@ -178,5 +187,14 @@ export abstract class ShareService {
 
   static async logQuery(shareLinkId: string, question: string) {
     await db().insert(shareQueries).values({ shareLinkId, question });
+  }
+
+  static async getOwnerEmail(userId: string): Promise<string | null> {
+    const [row] = await db()
+      .select({ email: user.email })
+      .from(user)
+      .where(eq(user.id, userId))
+      .limit(1);
+    return row?.email ?? null;
   }
 }

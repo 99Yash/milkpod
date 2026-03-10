@@ -3,12 +3,27 @@ import { authMacro } from '../../middleware/auth';
 import { CollectionModel } from './model';
 import { CollectionService } from './service';
 import { AssetService } from '../assets/service';
+import { resolveUserPlan, getEntitlementsForPlan } from '../quota/plans';
 
 export const collections = new Elysia({ prefix: '/api/collections' })
   .use(authMacro)
   .post(
     '/',
     async ({ body, user }) => {
+      // Enforce collection limit per plan
+      const plan = await resolveUserPlan(user.id);
+      const entitlements = getEntitlementsForPlan(plan);
+      if (entitlements.maxCollections !== null) {
+        const currentCount = await CollectionService.countForUser(user.id);
+        if (currentCount >= entitlements.maxCollections) {
+          return status(402, {
+            message: `Collection limit reached (${entitlements.maxCollections}). Upgrade your plan for more.`,
+            code: 'COLLECTION_LIMIT',
+            used: currentCount,
+            limit: entitlements.maxCollections,
+          });
+        }
+      }
       return CollectionService.create(user.id, body);
     },
     { auth: true, body: CollectionModel.create }
