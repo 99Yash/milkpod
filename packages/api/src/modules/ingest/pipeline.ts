@@ -8,6 +8,7 @@ import { transcribeAudio } from './elevenlabs';
 import { extractVideoContext } from './video-context';
 import type { TranscriptionStrategy } from './model';
 import { createUploadDownloadUrl } from './upload-storage';
+import { QuotaService } from '../quota/service';
 
 type TranscriptionMethod = 'audio' | 'captions' | 'audio_fallback_to_captions';
 
@@ -59,6 +60,14 @@ async function finalizePipeline(
   // Mark as ready
   await IngestService.updateStatus(assetId, 'ready');
   emitAssetStatus(userId, assetId, 'ready');
+
+  // Increment video minutes quota counter
+  const durationMinutes = lastSegment ? Math.ceil(lastSegment.endTime / 60) : 0;
+  if (durationMinutes > 0) {
+    QuotaService.increment(userId, 'video_minutes', durationMinutes).catch((err) => {
+      console.warn(`[ingest] Failed to increment video minutes quota for ${assetId}:`, err);
+    });
+  }
 }
 
 /** Fire visual context extraction without blocking the transcript pipeline (FR9). */

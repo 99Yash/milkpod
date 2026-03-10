@@ -8,6 +8,7 @@ import {
 } from '@milkpod/ai/embeddings';
 import { withRetry } from './retry';
 import { IngestService } from './service';
+import { QuotaService } from '../quota/service';
 
 const MAX_SEGMENTS_PER_ASSET = 50;
 const EMBED_BATCH = 64;
@@ -63,7 +64,7 @@ export function formatVisualContextText(segment: {
 export async function extractVideoContext(
   assetId: string,
   sourceUrl: string,
-  _userId: string,
+  userId: string,
   duration: number,
 ): Promise<void> {
   const retry = <T>(stage: string, fn: () => Promise<T>) =>
@@ -178,6 +179,14 @@ export async function extractVideoContext(
   }
 
   await IngestService.updateVisualStatus(assetId, 'completed');
+
+  // Increment visual segments quota counter
+  if (storedSegments.length > 0) {
+    QuotaService.increment(userId, 'visual_segments', storedSegments.length).catch((err) => {
+      console.warn(`[ingest] Failed to increment visual segments quota for ${assetId}:`, err);
+    });
+  }
+
   console.log(
     `[ingest] Visual context complete for asset ${assetId}: ${storedSegments.length} segments, ${embeddingItems.length} embeddings`
   );

@@ -19,6 +19,7 @@ import { moments } from './modules/moments';
 import { comments } from './modules/comments';
 import { retention } from './modules/retention';
 import { visualParity } from './modules/visual-parity';
+import { quota, quotaAdmin } from './modules/quota';
 
 const socialSignInResponseSchema = z.object({
   url: z.string().optional(),
@@ -133,6 +134,8 @@ export const app = new Elysia({ name: 'api' })
   .use(moments)
   .use(comments)
   .use(retention)
-  .use(visualParity);
+  .use(visualParity)
+  .use(quota)
+  .use(quotaAdmin);
 
 export type App = typeof app;

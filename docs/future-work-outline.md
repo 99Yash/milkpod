@@ -39,17 +39,17 @@ Implementation path:
    hybrid chat retrieval, and comments.~~
 4. ~~Add parity dashboards comparing success rates for YouTube vs upload sources.~~
 
-### 1.3 Tenant-level multimodal quota policy
+### ~~1.3 Tenant-level multimodal quota policy~~ ✅
 
 Why:
 - PRD still lists this as an open decision and implementation gap.
 
 Implementation path:
-1. Define quota units (`video_minutes_processed`, `visual_segments_generated`,
-   `comments_generated`) per plan.
-2. Add counters and reservation APIs around ingest/comment pipelines.
-3. Return upgrade-aware API errors when limits are exceeded.
-4. Surface usage in dashboard and billing summary endpoints.
+1. ~~Define quota units (`video_minutes_processed`, `visual_segments_generated`,
+   `comments_generated`) per plan.~~
+2. ~~Add counters and reservation APIs around ingest/comment pipelines.~~
+3. ~~Return upgrade-aware API errors when limits are exceeded.~~
+4. ~~Surface usage in dashboard and billing summary endpoints.~~
 
 ## 2) SaaS billing and entitlement system
 
@@ -73,5 +73,5 @@ Implementation path:
 
 1. Billing provider choice (`polar` vs `razorpay`).
 2. Annual billing timing (ship monthly first vs launch both).
-3. Multimodal quota thresholds per plan and overage policy.
+3. ~~Multimodal quota thresholds per plan and overage policy.~~ ✅ Free: 120 min / 200 visual / 100 comments; Pro: 1200 / 2000 / 1000; Team: 4000 / 6000 / 3000. Overage blocked with 402 upgrade prompt.
 4. ~~Upload retention defaults (TTL length, legal hold process, hard-delete SLA).~~ ✅ Defaults: 90 days via `RAW_MEDIA_RETENTION_DAYS`, legal hold via `retention_hold` column, purge via admin API.

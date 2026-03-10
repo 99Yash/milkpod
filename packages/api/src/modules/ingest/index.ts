@@ -6,6 +6,8 @@ import { AssetService } from '../assets/service';
 import { resolveYouTubeMetadata } from './youtube';
 import { orchestratePipeline, orchestrateUploadPipeline } from './pipeline';
 import { isUploadStorageConfigured, storeUploadedMedia } from './upload-storage';
+import { QuotaService } from '../quota/service';
+import { isAdminEmail } from '../usage/service';
 
 /** 100 MB */
 const MAX_UPLOAD_SIZE = 100 * 1024 * 1024;
@@ -34,6 +36,20 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       );
       if (existing) {
         return existing;
+      }
+
+      // Quota soft-check: reject if user already exhausted monthly video minutes
+      if (!isAdminEmail(user.email)) {
+        const quota = await QuotaService.checkQuota(userId, 'video_minutes');
+        if (!quota.allowed) {
+          return status(402, {
+            message: 'Monthly video processing limit reached. Upgrade your plan for more minutes.',
+            code: 'QUOTA_EXCEEDED',
+            unit: quota.unit,
+            used: quota.used,
+            limit: quota.limit,
+          });
+        }
       }
 
       // Create asset
@@ -88,6 +104,20 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
         return status(503, {
           message: 'Upload storage is not configured on the server.',
         });
+      }
+
+      // Quota soft-check: reject if user already exhausted monthly video minutes
+      if (!isAdminEmail(user.email)) {
+        const quota = await QuotaService.checkQuota(userId, 'video_minutes');
+        if (!quota.allowed) {
+          return status(402, {
+            message: 'Monthly video processing limit reached. Upgrade your plan for more minutes.',
+            code: 'QUOTA_EXCEEDED',
+            unit: quota.unit,
+            used: quota.used,
+            limit: quota.limit,
+          });
+        }
       }
 
       let storedUpload;

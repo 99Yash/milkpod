@@ -1,6 +1,8 @@
 import { Elysia, status } from 'elysia';
 import { authMacro } from '../../middleware/auth';
 import { AssetService } from '../assets/service';
+import { QuotaService } from '../quota/service';
+import { isAdminEmail } from '../usage/service';
 import { generateComments } from './generate';
 import { CommentModel } from './model';
 import { CommentService } from './service';
@@ -23,6 +25,20 @@ export const comments = new Elysia({ prefix: '/api/comments' })
       } else {
         const existing = await CommentService.list(user.id, body.assetId);
         if (existing.length > 0) return existing;
+      }
+
+      // Quota check: only enforced when actually generating new comments
+      if (!isAdminEmail(user.email)) {
+        const quota = await QuotaService.checkQuota(user.id, 'comments');
+        if (!quota.allowed) {
+          return status(402, {
+            message: 'Monthly comment generation limit reached. Upgrade your plan for more.',
+            code: 'QUOTA_EXCEEDED',
+            unit: quota.unit,
+            used: quota.used,
+            limit: quota.limit,
+          });
+        }
       }
 
       return generateComments(body.assetId, user.id);

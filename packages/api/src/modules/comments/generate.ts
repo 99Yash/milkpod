@@ -7,6 +7,7 @@ import { asc, eq } from 'drizzle-orm';
 import { AssetService } from '../assets/service';
 import { formatVisualContextText } from '../ingest/video-context';
 import { CommentService } from './service';
+import { QuotaService } from '../quota/service';
 import { formatTime } from '../../utils';
 
 // ---------------------------------------------------------------------------
@@ -265,6 +266,15 @@ export async function generateComments(
     });
 
   // 6. Persist
-  return CommentService.insertMany(rows);
+  const persisted = await CommentService.insertMany(rows);
+
+  // Increment comments quota counter
+  if (persisted.length > 0) {
+    QuotaService.increment(userId, 'comments', persisted.length).catch((err) => {
+      console.warn(`[comments] Failed to increment comments quota for ${assetId}:`, err);
+    });
+  }
+
+  return persisted;
 }
 
