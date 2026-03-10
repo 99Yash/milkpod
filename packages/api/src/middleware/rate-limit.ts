@@ -80,6 +80,7 @@ function categorize(path: string): RateCategory | null {
   if (path.startsWith('/api/billing')) return 'billing';
   if (path.startsWith('/api/comments')) return 'ingest';
   if (path.startsWith('/api/admin/')) return 'ingest';
+  if (path.startsWith('/api/shares/chat/')) return 'chat';
   if (
     path.startsWith('/api/assets') ||
     path.startsWith('/api/collections') ||

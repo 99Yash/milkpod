@@ -8,6 +8,9 @@ import { CollectionService } from '../collections/service';
 import { resolveUserPlan, getEntitlementsForPlan } from '../quota/plans';
 import { isAdminEmail, UsageService } from '../usage/service';
 
+/** Default word reservation for anonymous share-link Q&A. */
+const SHARE_CHAT_WORD_LIMIT = 500;
+
 export const shares = new Elysia({ prefix: '/api/shares' })
   .use(authMacro)
   // Create a share link
@@ -126,12 +129,12 @@ export const shares = new Elysia({ prefix: '/api/shares' })
       );
       let reserved = 0;
       if (!ownerAdmin) {
-        reserved = await UsageService.reserveWords(ownerId, 500, ownerEntitlements.aiWordsDaily);
+        reserved = await UsageService.reserveWords(ownerId, SHARE_CHAT_WORD_LIMIT, ownerEntitlements.aiWordsDaily);
         if (reserved <= 0) {
           return status(429, { message: 'The share link owner\'s daily word limit is exhausted.' });
         }
       } else {
-        reserved = 500;
+        reserved = SHARE_CHAT_WORD_LIMIT;
       }
 
       // Extract question text from last user message for audit log
@@ -166,7 +169,7 @@ export const shares = new Elysia({ prefix: '/api/shares' })
               try {
                 await UsageService.releaseWords(ownerId, unused);
               } catch (err) {
-                console.error(`[shares] Failed to release unused words for owner ${ownerId}:`, err);
+                console.error(`[shares] Failed to release unused words for owner ${ownerId}:`, err instanceof Error ? err.message : String(err));
               }
             }
           }

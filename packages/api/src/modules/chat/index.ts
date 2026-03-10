@@ -108,7 +108,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
             generateThreadTitle(textPart.text)
               .then((title) => ThreadService.update(threadId, userId, { title }))
               .catch((err) =>
-                console.error(`[chat] Failed to generate title for thread ${threadId}:`, err),
+                console.error(`[chat] Failed to generate title for thread ${threadId}:`, err instanceof Error ? err.message : String(err)),
               );
           }
         }
@@ -128,7 +128,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
           try {
             await ChatService.saveMessages(threadId!, [responseMessage]);
           } catch (err) {
-            console.error(`[chat] Failed to save assistant message for thread ${threadId}:`, err);
+            console.error(`[chat] Failed to save assistant message for thread ${threadId}:`, err instanceof Error ? err.message : String(err));
           }
           // Release unused reserved words back to the budget
           if (!admin) {
@@ -137,7 +137,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
               try {
                 await UsageService.releaseWords(userId, unused);
               } catch (err) {
-                console.error(`[chat] Failed to release unused words for user ${userId}:`, err);
+                console.error(`[chat] Failed to release unused words for user ${userId}:`, err instanceof Error ? err.message : String(err));
               }
             }
           }
