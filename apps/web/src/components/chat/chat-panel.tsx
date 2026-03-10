@@ -108,7 +108,11 @@ function useRestoredThread(
     setIsLoading(true);
     fetchLatestThreadForAsset(assetId)
       .then((thread) => {
-        if (cancelled || !thread) return;
+        if (cancelled) return;
+        if (!thread) {
+          onLoaded();
+          return;
+        }
         setThreadId(thread.id);
         resolveThreadMessages(thread.id, isCancelled, (msgs) => {
           if (!cancelled) setMessages(msgs);
@@ -116,8 +120,8 @@ function useRestoredThread(
       })
       .catch(() => {
         if (!cancelled) toast.error('Failed to restore chat history');
-      })
-      .finally(onLoaded);
+        onLoaded();
+      });
     return () => { cancelled = true; };
   }, [assetId, explicitThreadId]);
 
@@ -381,6 +385,7 @@ function ChatPanelContent({
                 type="submit"
                 variant="ghost"
                 size="icon-sm"
+                aria-label="Send message"
                 className="rounded-xl bg-muted-foreground/15 text-muted-foreground hover:bg-muted-foreground/25 hover:text-foreground disabled:bg-muted-foreground/8"
                 disabled={isLoading || !input.trim()}
               >

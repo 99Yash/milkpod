@@ -225,7 +225,7 @@ Checklist:
 - Source badges are accessible (not color-only)
 - No redundant re-renders
 
-## Task 12 - Frontend: Chat UI
+## ~~Task 12 - Frontend: Chat UI~~ ✅
 
 Files:
 - apps/web/src/components/chat/chat-panel.tsx
