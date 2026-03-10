@@ -20,6 +20,7 @@ import { comments } from './modules/comments';
 import { retention } from './modules/retention';
 import { visualParity } from './modules/visual-parity';
 import { quota, quotaAdmin } from './modules/quota';
+import { billing } from './modules/billing';
 
 const socialSignInResponseSchema = z.object({
   url: z.string().optional(),
@@ -136,6 +137,7 @@ export const app = new Elysia({ name: 'api' })
   .use(retention)
   .use(visualParity)
   .use(quota)
-  .use(quotaAdmin);
+  .use(quotaAdmin)
+  .use(billing);
 
 export type App = typeof app;

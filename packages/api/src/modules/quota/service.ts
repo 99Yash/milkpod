@@ -30,7 +30,7 @@ export abstract class QuotaService {
    */
   static async getMonthlyUsage(userId: string): Promise<MonthlyUsageSnapshot> {
     const period = currentPeriod();
-    const plan = resolveUserPlan(userId);
+    const plan = await resolveUserPlan(userId);
     const limits = getQuotaForPlan(plan);
 
     const [row] = await db()

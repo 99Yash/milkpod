@@ -62,7 +62,7 @@ Current state:
   `packages/api/src/modules/billing`.
 
 Implementation path:
-1. **Foundation**: plans catalog, billing schema, entitlement resolver, summary endpoint.
+1. ~~**Foundation**: plans catalog, billing schema, entitlement resolver, summary endpoint.~~ ✅
 2. **Provider integration**: provider interface, first adapter, checkout/portal/cancel/webhook routes.
 3. **Enforcement**: plan-aware word budgets, model gating, ingest minute quotas,
    share-link limits, and shared-chat budget accounting.
