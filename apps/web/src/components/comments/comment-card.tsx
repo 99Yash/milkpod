@@ -74,7 +74,7 @@ export function CommentCard({ comment, onDismiss }: CommentCardProps) {
         </p>
 
         {/* Actions */}
-        <div className="flex items-center gap-1 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex items-center gap-1 pt-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
           <button
             type="button"
             onClick={handleDismiss}

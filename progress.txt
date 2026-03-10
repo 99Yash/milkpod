@@ -626,3 +626,70 @@ Checklist verification:
 
 pnpm check-types: PASS (all 7 packages)
 
+## Task 11 - Frontend: Comments UI [DONE]
+
+Files reviewed:
+- apps/web/src/components/comments/comment-card.tsx
+- apps/web/src/components/comments/comments-tab.tsx
+- apps/web/src/app/asset/[id]/comments/page.tsx
+
+Issues found and fixed:
+1. comments-tab.tsx:3 - Unused `useCallback` import. Never used in the component.
+   Fix: Removed `useCallback` from the import statement.
+2. comments-tab.tsx:33-34 - Silent error swallowing in `handleGenerate`. The catch block had only
+   a comment "Error handled by global handler" but no global error handler exists. Generate failures
+   (network errors, server errors) gave the user zero feedback — loading spinner stopped but nothing
+   else happened.
+   Fix: Added `toast.error('Failed to generate comments. Please try again.')` in the catch block.
+   Added `import { toast } from 'sonner'`.
+3. comments-tab.tsx:40-47 - `handleDismiss` silently ignored API errors. When the dismiss endpoint
+   failed (network error, auth issue, 404), the comment stayed in the list with no feedback.
+   Fix: Added early return with `toast.error('Failed to dismiss comment.')` when error is truthy.
+4. comment-card.tsx:77 - Dismiss button container used `opacity-0 group-hover:opacity-100` but had
+   no `focus-within` variant. Keyboard users tabbing to the dismiss button couldn't see it — the
+   button was functionally accessible but visually hidden without hover.
+   Fix: Added `group-focus-within:opacity-100` to make the actions row visible when any child
+   receives keyboard focus.
+
+Issues noted (no fix needed):
+5. comments-tab.tsx:33 - `data as Comment[]` type assertion on Eden treaty response. Same pragmatic
+   pattern as `as BillingSummary` in billing-dashboard.tsx (noted in Task 10 #8). Eden treaty's
+   inference is complex; the Comment type matches the backend's return type exactly. Acceptable.
+6. comment-card.tsx:65 - `text-[10px]` arbitrary value on source badge. No theme token exists for
+   10px text size. Same pattern noted in Task 10 (pricing grid). Acceptable.
+7. comment-card.tsx:22-26 - Source badges use color for differentiation (blue=Audio, purple=Visual,
+   amber=Hybrid). However, each badge also has a text label (Audio/Visual/Hybrid), so the color is
+   supplementary, not the sole indicator. Accessible by design — no fix needed.
+8. page.tsx - Clean server component. Auth check via `assertAuthenticated`, proper Next.js 16 async
+   params handling, data fetched server-side and passed as props. No issues.
+
+Checklist verification:
+- Stable, unique keys for comment list: Yes. `comment.id` used as key in CommentCard map. IDs are
+  DB-generated with `createId('cmt')` prefix — unique and stable. Not array indices. Correct.
+- Proper loading/empty/error states: Yes. Three states handled: `generating` (spinner + message),
+  `isEmpty` (icon + explanation + generate button), populated (comment list + regenerate button).
+  Error states now show toasts (fixed). Correct.
+- Dismiss action loading state: Yes. CommentCard tracks `dismissing` state locally — disables the
+  button during the API call, re-enables on completion (try/finally pattern). Now also shows error
+  toast on failure (fixed). Correct.
+- Timestamp click navigation works correctly: Yes. Uses `useTimestampAction` hook which reads asset
+  source from context. `isClickable` checks sourceType !== 'upload' && sourceUrl exists. handleClick
+  generates embed URL or external link. Non-clickable timestamps render as plain text. Correct.
+- Source badges are accessible (not color-only): Yes. Each badge has a text label (Audio/Visual/
+  Hybrid) via `sourceLabels` record. Colors are supplementary. Correct.
+- No redundant re-renders: No React.memo on CommentCard, but component is simple (no expensive
+  renders). `handleDismiss` and `handleGenerate` are regular functions (not useCallback-wrapped),
+  but since CommentCard is not memoized, wrapping wouldn't help. Unused `useCallback` import
+  removed. No unnecessary re-render concerns for a list capped at 20 items.
+- No `any` types: Correct. One `as Comment[]` assertion (pragmatic for Eden treaty).
+- No console.log in production: Correct. Error handling uses `toast.error()` throughout (fixed).
+- No dangerouslySetInnerHTML: Correct. Comment body rendered as text content in `<p>` tag.
+- Tailwind v4: Uses theme tokens (border-border, text-foreground, text-muted-foreground, bg-muted).
+  `size-*` for icons. One `text-[10px]` arbitrary value (no theme equivalent). Correct.
+- Accessibility: Dismiss button now visible on keyboard focus (fixed). Buttons have `type="button"`.
+  Semantic HTML (`<p>`, `<div>`, `<button>`). Badge uses semantic `<Badge>` component. Correct.
+- No SSR issues: Both components are `'use client'`. No direct browser API usage in render path.
+  `useTimestampAction` accesses `window.open` only inside event handler. Correct.
+
+pnpm check-types: PASS (all 7 packages)
+

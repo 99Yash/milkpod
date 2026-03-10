@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { MessageCircle, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Comment } from '@milkpod/api/types';
 import { api } from '~/lib/api';
 import { handleUpgradeError } from '~/lib/upgrade-prompt';
@@ -31,7 +32,7 @@ export function CommentsTab({ assetId, initialComments }: CommentsTabProps) {
       }
       setComments((data as Comment[]) ?? []);
     } catch {
-      // Error handled by global handler
+      toast.error('Failed to generate comments. Please try again.');
     } finally {
       setGenerating(false);
     }
@@ -41,9 +42,11 @@ export function CommentsTab({ assetId, initialComments }: CommentsTabProps) {
     const { error } = await api.api
       .comments({ id: commentId })
       .feedback.post({ action: 'dismiss' });
-    if (!error) {
-      setComments((prev) => prev.filter((c) => c.id !== commentId));
+    if (error) {
+      toast.error('Failed to dismiss comment.');
+      return;
     }
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
   }
 
   const isEmpty = !generating && comments.length === 0;
