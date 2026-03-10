@@ -210,7 +210,7 @@ Checklist:
 - Error handling beyond console.log (toast, error boundary)
 - Checkout flow handles failures gracefully
 
-## Task 11 - Frontend: Comments UI
+## ~~Task 11 - Frontend: Comments UI~~ ✅
 
 Files:
 - apps/web/src/components/comments/comment-card.tsx
