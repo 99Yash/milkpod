@@ -124,7 +124,7 @@ export const assets = new Elysia({ prefix: '/api/assets' })
       deleteStoredUpload(deleted.sourceUrl).catch((err) => {
         console.warn(
           `[assets] Failed to delete stored upload for ${deleted.id}:`,
-          err instanceof Error ? err.message : err
+          err instanceof Error ? err.message : String(err)
         );
       });
     }
@@ -145,13 +145,13 @@ export const assets = new Elysia({ prefix: '/api/assets' })
 
     if (asset.sourceType === 'upload') {
       orchestrateUploadPipeline(asset.id, asset.sourceUrl, user.id, asset.mediaType).catch((err) => {
-        console.error(`Upload pipeline failed for asset ${asset.id}:`, err);
+        console.error(`Upload pipeline failed for asset ${asset.id}:`, err instanceof Error ? err.message : String(err));
       });
       return { message: 'Retry started' };
     }
 
     orchestratePipeline(asset.id, asset.sourceUrl, user.id).catch((err) => {
-      console.error(`Pipeline failed for asset ${asset.id}:`, err);
+      console.error(`Pipeline failed for asset ${asset.id}:`, err instanceof Error ? err.message : String(err));
     });
 
     return { message: 'Retry started' };
