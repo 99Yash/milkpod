@@ -84,3 +84,19 @@ Files changed:
 - packages/api/src/index.ts — Mounted visual-parity module.
 Outcome: Visual extraction now has full lifecycle tracking via `visual_status`, `visual_attempts`, and `visual_last_error` columns on media_asset, decoupled from transcript readiness. Admin requeue endpoint finds failed or never-attempted video assets, refreshes signed URLs for uploads (solving TTL expiration), and re-triggers visual extraction. Parity stats endpoint returns visual extraction success/failure/pending counts grouped by source type (YouTube vs upload) for observability dashboards. All video assets (YouTube and upload) follow the same visual status lifecycle.
 
+## Task 1.3 - Tenant-Level Multimodal Quota Policy ✅ (2026-03-10)
+Files changed:
+- packages/db/src/schema/monthly-usage.ts (new) — New `monthly_usage` table: id, userId, periodStart (first of month), videoMinutesUsed, visualSegmentsUsed, commentsGenerated. Composite unique on (userId, periodStart). Cascade delete from user.
+- packages/db/src/schemas.ts — Added barrel export for monthly-usage schema.
+- packages/db/src/migrations/0023_pale_texas_twister.sql — Migration creating monthly_usage table with FK and unique constraint.
+- packages/api/src/modules/quota/plans.ts (new) — Plan catalog defining PlanId ('free' | 'pro' | 'team'), MultimodalQuota type, and per-plan quota thresholds. Free: 120 video min, 200 visual segments, 100 comments/month. Pro: 1200/2000/1000. Team: 4000/6000/3000. `resolveUserPlan()` defaults to 'free' until billing integration.
+- packages/api/src/modules/quota/service.ts (new) — QuotaService with `getMonthlyUsage(userId)`, `checkQuota(userId, unit, requested)` for pre-checks, `increment(userId, unit, amount)` with advisory locks for atomic counter updates, and `getAggregateStats()` for admin dashboards.
+- packages/api/src/modules/quota/index.ts (new) — Elysia routes: GET `/api/quota` (user-facing: current usage + limits by plan), GET `/api/admin/quota/stats` (admin: aggregate stats across all users for current period).
+- packages/api/src/modules/ingest/index.ts — Added quota soft-check before YouTube and upload ingest: rejects with 402 + upgrade-aware error when monthly video minutes exhausted. Admins bypass quota.
+- packages/api/src/modules/ingest/pipeline.ts — Added `QuotaService.increment(userId, 'video_minutes', durationMinutes)` after finalizePipeline marks asset ready.
+- packages/api/src/modules/ingest/video-context.ts — Added `QuotaService.increment(userId, 'visual_segments', count)` after visual segments are stored. Changed `_userId` → `userId` parameter.
+- packages/api/src/modules/comments/index.ts — Added quota check before comment generation: rejects with 402 + upgrade-aware error when monthly comments exhausted. Admins bypass.
+- packages/api/src/modules/comments/generate.ts — Added `QuotaService.increment(userId, 'comments', count)` after comments are persisted.
+- packages/api/src/index.ts — Mounted quota and quotaAdmin modules.
+Outcome: Multimodal quota policy is now enforced per-user per-month for three resource types: video minutes processed, visual segments generated, and comments generated. Quotas are defined per plan (free/pro/team) in code. Pre-checks in ingest and comment routes return 402 with upgrade-aware error payloads (code, unit, used, limit) when limits are exhausted. Counters are atomically incremented with advisory locks after successful pipeline/extraction/generation completion. Admin endpoint provides aggregate stats. User endpoint surfaces current usage vs limits. Admins (ADMIN_EMAILS) bypass all quota checks. `resolveUserPlan()` defaults to 'free' and is ready for billing integration to return the actual plan.
+
