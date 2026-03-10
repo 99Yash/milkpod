@@ -12,8 +12,8 @@ export {
 } from './embeddings';
 
 // Retrieval
-export { findRelevantSegments, getTranscriptContext } from './retrieval';
-export type { RelevantSegment, RetrievalOptions } from './retrieval';
+export { findRelevantSegments, findRelevantVisualSegments, getTranscriptContext } from './retrieval';
+export type { RelevantSegment, RelevantVisualSegment, RetrievalOptions } from './retrieval';
 
 // Tools
 export { createQAToolSet } from './tools';
