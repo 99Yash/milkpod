@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
 import {
@@ -13,6 +14,7 @@ import {
 } from '~/components/ui/dialog';
 import { api } from '~/lib/api';
 import { fetchAssets } from '~/lib/api-fetchers';
+import { queryKeys } from '~/lib/query-keys';
 import type { Asset } from '@milkpod/api/types';
 import { cn } from '~/lib/utils';
 
@@ -31,25 +33,20 @@ export function AddAssetToCollectionDialog({
   onOpenChange,
   onAdded,
 }: AddAssetToCollectionDialogProps) {
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const { data: assets = [], isLoading } = useQuery({
+    queryKey: queryKeys.assets.list(),
+    queryFn: () => fetchAssets(),
+    select: (data) => data.filter((a) => !existingAssetIds.includes(a.id)),
+    enabled: open,
+  });
+
+  // Reset selection when dialog opens
   useEffect(() => {
-    if (!open) return;
-    setIsLoading(true);
-    setSelectedId(null);
-    fetchAssets()
-      .then((data) => {
-        const available = data.filter(
-          (a) => !existingAssetIds.includes(a.id)
-        );
-        setAssets(available);
-      })
-      .catch(() => {})
-      .finally(() => setIsLoading(false));
-  }, [open, existingAssetIds]);
+    if (open) setSelectedId(null);
+  }, [open]);
 
   const handleAdd = async () => {
     if (!selectedId) return;

@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { ShareDialog } from '~/components/share/share-dialog';
 import { toast } from 'sonner';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchCollectionDetail } from '~/lib/api-fetchers';
+import { queryKeys } from '~/lib/query-keys';
 import { api } from '~/lib/api';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
@@ -39,31 +41,19 @@ function formatDuration(seconds: number): string {
 }
 
 export function CollectionDetail({ collectionId }: CollectionDetailProps) {
-  const [collection, setCollection] = useState<CollectionWithItems | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const queryClient = useQueryClient();
   const [removingItemId, setRemovingItemId] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
-  const fetchCollection = useCallback(async () => {
-    try {
-      const result = await fetchCollectionDetail(collectionId);
-      if (!result) {
-        setNotFound(true);
-        return;
-      }
-      setCollection(result);
-    } catch {
-      toast.error('Failed to load collection');
-      setNotFound(true);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [collectionId]);
+  const { data: collection = null, isLoading } = useQuery({
+    queryKey: queryKeys.collections.detail(collectionId),
+    queryFn: () => fetchCollectionDetail(collectionId),
+  });
 
-  useEffect(() => {
-    fetchCollection();
-  }, [fetchCollection]);
+  const notFound = !isLoading && !collection;
+
+  const refetchCollection = () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.collections.detail(collectionId) });
 
   const handleRemoveItem = async (itemId: string) => {
     setRemovingItemId(itemId);
@@ -72,7 +62,7 @@ export function CollectionDetail({ collectionId }: CollectionDetailProps) {
         .collections({ id: collectionId })
         .items({ itemId })
         .delete();
-      await fetchCollection();
+      await refetchCollection();
     } catch {
       toast.error('Failed to remove item');
     } finally {
@@ -252,7 +242,7 @@ export function CollectionDetail({ collectionId }: CollectionDetailProps) {
         existingAssetIds={collection.items.map((i) => i.asset.id)}
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
-        onAdded={fetchCollection}
+        onAdded={refetchCollection}
       />
     </div>
   );
