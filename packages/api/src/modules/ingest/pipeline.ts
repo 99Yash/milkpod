@@ -188,6 +188,9 @@ export async function orchestrateUploadPipeline(
       transcriptionMethod: 'audio',
     });
 
+    // Set raw media retention deadline for upload assets
+    await IngestService.setRetentionDeadline(assetId);
+
     if (mediaType === 'video') {
       const visualUrl = await retry('resolving-upload-visual-url', () =>
         createUploadDownloadUrl(sourceUrl, { expiresInSeconds: 3600 })
