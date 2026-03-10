@@ -157,3 +157,56 @@ Checklist verification:
 
 pnpm check-types: PASS (all 7 packages)
 
+## Task 4 - Backend: Quota, Usage & Plans [DONE]
+
+Files reviewed:
+- packages/api/src/modules/quota/plans.ts
+- packages/api/src/modules/quota/service.ts
+- packages/api/src/modules/quota/index.ts
+- packages/api/src/modules/usage/service.ts
+- packages/api/src/modules/usage/index.ts
+
+Issues found and fixed:
+1. quota/index.ts:12-13 - Redundant `resolveUserPlan` DB query. The `GET /api/quota` handler
+   called `QuotaService.getMonthlyUsage(user.id)` (which internally resolves the plan via DB query)
+   and then separately called `resolveUserPlan(user.id)` — hitting billing_subscriptions twice.
+   Fix: Added `planId` to `MonthlyUsageSnapshot` return type in service.ts. Updated handler to
+   use `usage.planId` instead of the separate call. Removed unused `resolveUserPlan` import.
+2. rate-limit.ts:81-88 - `/api/quota` and `/api/usage` paths were not covered by the rate limiter.
+   These endpoints query the DB per call and were unprotected from abuse.
+   Fix: Added `/api/quota` and `/api/usage` to the categorize function under 'crud' (100 req/min).
+3. quota/service.ts:135-152 - `unitToColumn` and `mapUnitToFields` switch statements lacked
+   exhaustive `default: never` checks. If `QuotaUnit` is extended in the future, these would
+   silently return `undefined` at runtime without a compile-time error.
+   Fix: Added `default: { const _exhaustive: never = unit; throw new Error(...); }` to both.
+
+Issues noted (no fix needed):
+4. Quota check-then-increment TOCTOU: `checkQuota` is a soft pre-check; `increment` happens
+   after processing completes (recording actual usage). This is a deliberate "soft quota" pattern —
+   slight over-quota on concurrent requests is an acceptable tradeoff vs. pre-reservation complexity.
+   The advisory lock in `increment` ensures atomic counter updates.
+5. usage/service.ts:30,49 - `DAILY_WORD_BUDGET` fallback in `getRemainingWords`/`reserveWords`.
+   All current callers pass the plan-derived budget via `resolveWordBudget`. The fallback exists
+   per the saas-plan design doc as the free-tier default. Acceptable.
+6. usage/service.ts:113-120 - `releaseWords` uses raw SQL instead of Drizzle ORM builder.
+   This is intentional — `GREATEST()` and multi-column SET in a single update are cleaner
+   as raw SQL. Parameterized via `sql` template tag, so no injection risk.
+
+Checklist verification:
+- Advisory locks: Properly acquired via `pg_advisory_xact_lock` with `hashtext()` keys.
+  Lock is scoped to the transaction (`_xact_lock`), so auto-released on commit/rollback. No leak.
+- Counter increments: Atomic — advisory lock serializes; `sql` expression for increment ensures
+  no stale reads. Insert-or-update pattern handles first-use case.
+- Quota checks: Soft check-then-act pattern (see #4). Acceptable by design.
+- Plan resolution queries: Single query with `.limit(1)` against billing_subscriptions.
+  No N+1. Redundant call in handler now eliminated (see #1).
+- No unbounded queries: `getAggregateStats` uses `sum`/`count` aggregation, not full row scan.
+  `getMonthlyUsage` returns one row (unique constraint on userId+periodStart).
+- Admin bypass: Admin check via `isAdminEmail` (server-derived session email, not spoofable).
+  Admin stats endpoint gated with 403. Ingest/comments admin bypass in their respective handlers.
+- HTTP status codes: 402 (quota exceeded in callers), 403 (admin-only), 429 (rate limit).
+- Error payloads: Quota check callers return `message` and upgrade prompt text for client-side use.
+- Rate limiting: Fixed — quota and usage endpoints now rate-limited.
+
+pnpm check-types: PASS (all 7 packages)
+
