@@ -59,7 +59,7 @@ Checklist:
 - File upload validation (size, mime type)
 - No connection leaks; cleanup on failure paths
 
-## Task 3 - Backend: Billing Module
+## ~~Task 3 - Backend: Billing Module~~ ✅
 
 Files:
 - packages/api/src/modules/billing/service.ts

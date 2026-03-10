@@ -34,11 +34,13 @@ function resolveProductPlanId(productId: string): PlanId {
   return 'free';
 }
 
-function resolvePlanProductId(planId: 'pro' | 'team'): string {
+function resolvePlanProductId(planId: 'pro' | 'team', interval: 'month' | 'year'): string {
   const key = planId === 'pro' ? 'POLAR_PRODUCT_PRO' : 'POLAR_PRODUCT_TEAM';
   const ids = env(key).split(',').map((s) => s.trim());
-  // First ID is the default (monthly)
-  return ids[0]!;
+  // Env format: "monthly_id,yearly_id"
+  const id = interval === 'year' ? ids[1] : ids[0];
+  if (!id) throw new Error(`No ${interval}ly product ID configured for ${planId} plan`);
+  return id;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,11 +120,12 @@ export const polarProvider: BillingProvider = {
   name: 'polar',
 
   async createCheckoutSession(params) {
-    const productId = resolvePlanProductId(params.planId);
+    const productId = resolvePlanProductId(params.planId, params.interval);
 
     const res = await fetch(`${POLAR_API}/v1/checkouts/`, {
       method: 'POST',
       headers: headers(),
+      signal: AbortSignal.timeout(30_000),
       body: JSON.stringify({
         products: [productId],
         customer_email: params.email,
@@ -148,6 +151,7 @@ export const polarProvider: BillingProvider = {
     const res = await fetch(`${POLAR_API}/v1/customer-sessions/`, {
       method: 'POST',
       headers: headers(),
+      signal: AbortSignal.timeout(30_000),
       body: JSON.stringify({
         customer_id: params.customerId,
         return_url: params.returnUrl,
@@ -171,6 +175,7 @@ export const polarProvider: BillingProvider = {
     const res = await fetch(`${POLAR_API}/v1/subscriptions/${params.subscriptionId}`, {
       method: 'PATCH',
       headers: headers(),
+      signal: AbortSignal.timeout(30_000),
       body: JSON.stringify(body),
     });
 
