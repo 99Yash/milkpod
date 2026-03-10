@@ -10,7 +10,7 @@ export const quota = new Elysia({ prefix: '/api/quota' })
     '/',
     async ({ user }) => {
       const usage = await QuotaService.getMonthlyUsage(user.id);
-      const plan = resolveUserPlan(user.id);
+      const plan = await resolveUserPlan(user.id);
 
       return {
         plan,

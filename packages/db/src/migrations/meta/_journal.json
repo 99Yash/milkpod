@@ -169,6 +169,13 @@
       "when": 1773119172749,
       "tag": "0023_pale_texas_twister",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1773119654065,
+      "tag": "0024_flaky_nomad",
+      "breakpoints": true
     }
   ]
 }

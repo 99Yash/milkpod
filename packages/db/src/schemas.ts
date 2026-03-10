@@ -18,3 +18,4 @@ export * from './schema/video-context-segments';
 export * from './schema/video-context-embeddings';
 export * from './schema/comments';
 export * from './schema/monthly-usage';
+export * from './schema/billing';

@@ -13,6 +13,9 @@ import type {
   assetMoments,
   assetMomentFeedback,
   assetComments,
+  billingCustomers,
+  billingSubscriptions,
+  billingWebhookEvents,
 } from '@milkpod/db/schemas';
 
 // ---------------------------------------------------------------------------
@@ -32,6 +35,9 @@ export type ShareQuery = InferSelectModel<typeof shareQueries>;
 export type Moment = InferSelectModel<typeof assetMoments>;
 export type MomentFeedback = InferSelectModel<typeof assetMomentFeedback>;
 export type Comment = InferSelectModel<typeof assetComments>;
+export type BillingCustomer = InferSelectModel<typeof billingCustomers>;
+export type BillingSubscription = InferSelectModel<typeof billingSubscriptions>;
+export type BillingWebhookEvent = InferSelectModel<typeof billingWebhookEvents>;
 
 // ---------------------------------------------------------------------------
 // Asset status — discriminated union + type predicates
