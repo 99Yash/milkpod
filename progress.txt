@@ -1,31 +1,792 @@
-# Audit Fix Progress
+# Code Review Progress
 
-## Task 1: Add missing database indexes (DB-1) ✅
-**Files changed**: `packages/db/src/schema/collections.ts`, `packages/db/src/schema/qa.ts`, `packages/db/src/schema/share-queries.ts`, `packages/db/src/schema/media-assets.ts`, `packages/db/src/schema/transcript-segments.ts`
-**Migration**: `packages/db/src/migrations/0013_warm_starjammers.sql`
-**Outcome**: Added 7 missing indexes — `collection_item_collection_id_idx`, `collection_item_asset_id_idx`, `qa_evidence_message_id_idx`, `qa_evidence_segment_id_idx`, `share_query_link_created_idx`, `media_asset_user_status_idx`, `transcript_segment_transcript_index_idx`. Migration generated and applied. Type checks pass.
+## Task 1 - Database Schema & Migrations [DONE]
 
-## Task 2: Fix guardrails to fail closed (SEC-1) ✅
-**Files changed**: `packages/ai/src/guardrails.ts`
-**Outcome**: Changed catch block from fail-open (`{ allowed: true }`) to fail-closed with heuristic fallback. Added `heuristicCheck()` function that: (1) denies messages over 2000 chars, (2) denies messages matching 7 jailbreak/prompt-injection patterns (e.g. "ignore previous instructions", "you are now a", "system prompt", "DAN"), (3) allows everything else. Added optional `reason` field to `GuardrailResult` interface. The caller in `stream.ts` already handles denials correctly — no changes needed there. Type checks pass.
+Files reviewed:
+- packages/db/src/schema/billing.ts
+- packages/db/src/schema/comments.ts
+- packages/db/src/schema/media-assets.ts
+- packages/db/src/schema/monthly-usage.ts
+- packages/db/src/schema/qa.ts
+- packages/db/src/schema/video-context-embeddings.ts
+- packages/db/src/schema/video-context-segments.ts
+- packages/db/src/schemas.ts
+- Migrations 0018-0024
 
-## Task 3: Add timeout to AI streaming requests (SEC-3) ✅
-**Files changed**: `packages/ai/src/stream.ts`
-**Outcome**: Added `timeout: { totalMs: 120_000, chunkMs: 30_000 }` to the `streamText()` call — uses AI SDK v6's built-in timeout support instead of a manual AbortController. `totalMs` caps the entire multi-step stream at 2 minutes; `chunkMs` detects a hung provider if no data arrives for 30 seconds. Added `AbortError` handling to `toUIMessageStreamResponse.onError` — returns "Response timed out. Please try again." to the user. Type checks pass.
+Issues found and fixed:
+1. qa.ts:102 - ID prefix collision: qaVisualEvidence used createId('evd'), same as qaEvidence.
+   Fix: Changed to createId('vevd') so visual evidence IDs are distinguishable in logs/debugging.
+2. comments.ts:37 - Missing $type<>() on evidenceRefs jsonb column. Other jsonb columns
+   in codebase use typed annotations. Fix: Added $type<{ transcriptSegmentIds: string[];
+   visualSegmentIds: string[] }>() matching usage in comments/service.ts.
 
-## Task 4: Switch rate limiter to user-based with IP fallback (SEC-4) ✅
-**Files changed**: `packages/api/src/middleware/rate-limit.ts`
-**Outcome**: Changed rate limiter from IP-only keying to user-based with IP fallback. The `onBeforeHandle` hook now calls `auth().api.getSession()` to try to resolve the user — if authenticated, bucket key is `user:${userId}:${category}`, otherwise falls back to `ip:${clientIp}:${category}`. Session lookup is wrapped in try/catch so failures gracefully degrade to IP-based limiting. Extracted `getClientIp()` helper. All existing bucket categories unchanged (ingest: 10/min, chat: 30/min, crud: 100/min). Type checks pass.
+Issues noted (no fix needed):
+3. billing.ts:72 - Webhook unique constraint on providerEventId alone (not compound with provider).
+   Acceptable: provider event IDs are UUIDs/unique strings; multi-provider collision risk negligible.
+   Service code (isEventProcessed) would also need updating. Defer to Task 3 billing review.
+4. media-assets.ts - No index on visualStatus. Admin-only visual-parity queries filter on this.
+   Table typically small enough; sequential scan acceptable for infrequent admin ops.
 
-## Task 5: Add request body size limit (API-2) ✅
-**Files changed**: `apps/server/src/index.ts`
-**Outcome**: Set `maxRequestBodySize: 2 * 1024 * 1024` (2MB) in the Elysia `.listen()` options. The default was 128MB which allowed arbitrarily large payloads. 2MB is sufficient for all JSON endpoints — this app doesn't handle file uploads (ingest takes URLs). Type checks pass.
+Checklist verification:
+- Data types: All appropriate (real for times, integer for counters, date for periods, jsonb typed)
+- Indexes: Proper coverage on FKs, composite queries, HNSW for vector search
+- Cascade deletes: All FK references have onDelete cascade (or set null for optional refs)
+- Enum values: Exhaustive and match application usage
+- No redundant columns: Proper normalization across tables
+- Migrations 0018-0024: All additive (CREATE TABLE, ADD COLUMN, CREATE INDEX) - safe for zero-downtime
+- Column defaults: Sensible (0 for counters, false for booleans, now() for timestamps)
 
-## Task 6: Fix word quota race condition (SEC-2, DB-9) ✅
-**Files changed**: `packages/api/src/modules/usage/service.ts`
-**Outcome**: Replaced the CTE-based `reserveWords()` with a transaction + per-user advisory lock (`pg_advisory_xact_lock`). The old CTE had a race condition: when the row didn't exist yet, concurrent requests' `prev` CTEs both found no row to lock, so the ON CONFLICT path miscalculated `words_added` from a stale snapshot — allowing parallel requests to double-spend quota. The new approach: (1) acquires `pg_advisory_xact_lock(hashtext('usage:{userId}'))` to serialize all usage ops for a user, (2) reads current usage, (3) calculates exact available budget, (4) inserts or updates accordingly. Also wrapped `releaseWords()` in the same advisory lock pattern (DB-9) — prevents reserve/release interleaving for the same user. Removed unused `createId` import. Type checks pass.
+pnpm check-types: PASS (all 7 packages)
 
-## Task 7: Fix EventSource memory leak and add polling fallback (UX-1) ✅
-**Files changed**: `apps/web/src/hooks/use-asset-events.ts`, `apps/web/src/components/library/asset-list.tsx`, `apps/web/src/components/asset/asset-shell.tsx`
-**Outcome**: Moved SSE connection logic from a `useCallback` wrapper directly into the `useEffect` body — eliminates the unnecessary indirection. Added polling fallback: after 3 consecutive reconnect attempts at `MAX_RECONNECT_DELAY` (30s), the hook switches from SSE to polling via a new optional `onPollFallback` callback at 5-second intervals. If SSE recovers (via `onopen`), polling is stopped and counters reset. Both reconnect timeout and poll interval are cleaned up on unmount via the effect destructor. Updated both consumers — `asset-list.tsx` passes `loadAssets` as poll fallback, `asset-shell.tsx` passes a `refreshAsset` callback that refetches the single asset detail. Type checks pass.
+## Task 2 - Backend: Ingest Module [DONE]
+
+Files reviewed:
+- packages/api/src/modules/ingest/pipeline.ts
+- packages/api/src/modules/ingest/youtube.ts
+- packages/api/src/modules/ingest/video-context.ts
+- packages/api/src/modules/ingest/upload-storage.ts
+- packages/api/src/modules/ingest/elevenlabs.ts
+- packages/api/src/modules/ingest/service.ts
+- packages/api/src/modules/ingest/model.ts
+- packages/api/src/modules/ingest/index.ts
+
+Issues found and fixed:
+1. elevenlabs.ts:47 - Missing timeout on ElevenLabs API fetch call. Transcription requests could
+   hang indefinitely. Fix: Added `signal: AbortSignal.timeout(300_000)` (5 min) to fetch options.
+2. video-context.ts:89 - Missing timeout on Gemini generateText call for visual extraction.
+   Fix: Added `timeout: { totalMs: 300_000 }` (AI SDK v6 timeout param).
+3. video-context.ts:86-193 - Inconsistent indentation: code inside try block was at same indent
+   level as the try keyword (2 spaces instead of 4). Fix: Re-indented entire try block body.
+4. index.ts:41-53 & 109-121 - Duplicated quota check block copy-pasted between YouTube ingest
+   and upload endpoints. Fix: Extracted `checkVideoQuota()` helper function; both handlers now
+   call it with `const quotaError = await checkVideoQuota(userId, user.email)`.
+
+Issues noted (no fix needed):
+5. service.ts:137 - Hardcoded model name 'gemini-2.5-flash' in providerMetadata for visual context
+   segments. Acceptable: this is historical metadata recording what model was used at extraction
+   time. Matches the actual visualModel definition in @milkpod/ai/provider.ts.
+6. upload-storage.ts:132 - `Buffer.from(await file.arrayBuffer())` loads full file into memory
+   (up to 100MB). Streaming to S3 would be more memory-efficient but the 100MB cap keeps this
+   manageable. Enhancement, not a bug.
+
+Checklist verification:
+- N+1 queries: None found. Batch inserts for segments, embeddings. Transactions used properly.
+- Input validation: Both routes validated — URL format (URI schema), file MIME/size (manual checks),
+  transcriptionStrategy (union type). External API responses validated with Zod schemas.
+- Auth checks: Both endpoints have `{ auth: true }`. Admin bypass gated via isAdminEmail().
+- Error handling: Meaningful messages; pipeline errors stored in DB lastError, not leaked to client.
+  Error responses from ElevenLabs include status code but no secrets.
+- Timeouts: YouTube oEmbed (15s), Innertube (30s), caption fetch (30s) all had timeouts. Fixed
+  ElevenLabs (now 5min) and Gemini generateText (now 5min).
+- Transactions: storeTranscript and resetForRetry both use transactions. Single-insert operations
+  are atomic by nature.
+- Idempotency: YouTube ingest checks findBySourceId before creating. Upload is inherently non-idempotent.
+- Hardcoded secrets: None. INNERTUBE_API_KEY is a public key. ElevenLabs key from serverEnv().
+  S3 credentials from env.
+- Rate limiting: Global rateLimiter middleware categorizes /api/ingest as 'ingest' (10 req/min burst).
+- HTTP status codes: 422 (bad input), 402 (quota exceeded), 503 (not configured), 500 (internal).
+- File upload validation: MIME prefix check (audio/video), size limit (100MB), Elysia t.File() type.
+- Connection management: S3 client is a reused singleton. No leaks.
+
+pnpm check-types: PASS (all 7 packages)
+
+## Task 3 - Backend: Billing Module [DONE]
+
+Files reviewed:
+- packages/api/src/modules/billing/service.ts
+- packages/api/src/modules/billing/provider.ts
+- packages/api/src/modules/billing/providers/polar.ts
+- packages/api/src/modules/billing/resolve-provider.ts
+- packages/api/src/modules/billing/index.ts
+
+Issues found and fixed:
+1. polar.ts:123,148,171 - Missing timeouts on all three Polar API fetch calls (checkout,
+   portal, cancel). Could hang indefinitely if Polar API is unresponsive.
+   Fix: Added `signal: AbortSignal.timeout(30_000)` (30s) to all three fetch calls.
+2. polar.ts:37-42 - `resolvePlanProductId` always returned first (monthly) product ID,
+   ignoring the interval parameter. Yearly checkout would use monthly pricing.
+   Fix: Added `interval` parameter; selects ids[0] for monthly, ids[1] for yearly.
+   Added validation that the selected ID exists.
+3. index.ts:130 - Webhook signature verification uses re-serialized JSON body. Elysia
+   auto-parses JSON body, then `JSON.stringify(body)` may produce different bytes than
+   the original, causing HMAC verification to fail.
+   Fix: Added `onParse` lifecycle hook scoped to `/api/billing/webhook` that returns
+   `request.text()` to preserve the raw body string for signature verification.
+4. rate-limit.ts:66-88 - `/api/billing` paths were not covered by the rate limiter.
+   Checkout, portal, and cancel endpoints had no rate limiting.
+   Fix: Added 'billing' rate category (10 req/min burst) and categorize rule for
+   `/api/billing` paths.
+5. service.ts:7 - Duplicate import: `dailyUsage` imported on separate line from same
+   `@milkpod/db/schemas` module. Fix: Merged into single import statement.
+6. index.ts:36,74,102 - Provider API errors (from Polar) bubbled up as unhandled
+   exceptions, returning 500 with potentially sensitive Polar error text.
+   Fix: Wrapped checkout, portal, and cancel provider calls in try/catch blocks.
+   Return 502 with safe generic error messages. Log only error message, not full object.
+7. index.ts:163 - Webhook error logging used `console.error(..., err)` which could log
+   full error object including raw Polar payloads with customer data.
+   Fix: Changed to log only `msg` (error message string).
+
+Issues noted (no fix needed):
+8. billing.ts:72 - Webhook unique constraint on providerEventId alone (not compound with
+   provider). Confirmed from Task 1 review: provider event IDs are unique strings;
+   multi-provider collision risk negligible.
+9. polar.ts:225-226 - Fallback providerEventId uses `Date.now()` for non-Standard-Webhook
+   events. In practice dead code since verifyWebhookSignature rejects requests missing
+   the webhook-id header. Acceptable as defensive fallback.
+10. resolve-provider.ts:5 - Module-level cache for provider singleton uses three-state
+    (undefined/null/provider). Clean pattern; avoids re-resolving env on every call.
+
+Checklist verification:
+- Webhook signature: Uses timingSafeEqual from node:crypto. Timestamp tolerance (5 min)
+  prevents replay attacks. HMAC-SHA256 with base64 secret decoding. Correct.
+- Webhook idempotency: Pre-check via isEventProcessed + unique constraint insert in
+  transaction. Race condition on concurrent delivery handled via catch on unique violation.
+- Transactions: processWebhookEvent wraps all DB mutations in a single transaction.
+- No sensitive billing data in logs: Fixed — only error messages logged, not full objects.
+- Provider API error handling: Fixed — checkout/portal/cancel now catch and return safe errors.
+- Auth checks: summary (auth:true), checkout (auth:true), portal (auth:true),
+  cancel (auth:true). Webhook is unauthenticated but signature-verified.
+- Rate limiting: Fixed — billing endpoints now rate-limited (10 req/min burst).
+- HTTP status codes: 503 (billing disabled), 404 (no customer/subscription), 401
+  (invalid signature), 502 (provider error), 500 (processing failed). Correct.
+- No hardcoded product IDs: All from env vars (POLAR_PRODUCT_PRO, POLAR_PRODUCT_TEAM).
+  Secrets from env (POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET).
+- Provider abstraction: Clean BillingProvider interface. polarProvider implements all
+  methods. resolve-provider.ts handles singleton + provider selection. Extensible.
+- Fetch timeouts: Fixed — all Polar API calls now have 30s timeouts.
+
+pnpm check-types: PASS (all 7 packages)
+
+## Task 4 - Backend: Quota, Usage & Plans [DONE]
+
+Files reviewed:
+- packages/api/src/modules/quota/plans.ts
+- packages/api/src/modules/quota/service.ts
+- packages/api/src/modules/quota/index.ts
+- packages/api/src/modules/usage/service.ts
+- packages/api/src/modules/usage/index.ts
+
+Issues found and fixed:
+1. quota/index.ts:12-13 - Redundant `resolveUserPlan` DB query. The `GET /api/quota` handler
+   called `QuotaService.getMonthlyUsage(user.id)` (which internally resolves the plan via DB query)
+   and then separately called `resolveUserPlan(user.id)` — hitting billing_subscriptions twice.
+   Fix: Added `planId` to `MonthlyUsageSnapshot` return type in service.ts. Updated handler to
+   use `usage.planId` instead of the separate call. Removed unused `resolveUserPlan` import.
+2. rate-limit.ts:81-88 - `/api/quota` and `/api/usage` paths were not covered by the rate limiter.
+   These endpoints query the DB per call and were unprotected from abuse.
+   Fix: Added `/api/quota` and `/api/usage` to the categorize function under 'crud' (100 req/min).
+3. quota/service.ts:135-152 - `unitToColumn` and `mapUnitToFields` switch statements lacked
+   exhaustive `default: never` checks. If `QuotaUnit` is extended in the future, these would
+   silently return `undefined` at runtime without a compile-time error.
+   Fix: Added `default: { const _exhaustive: never = unit; throw new Error(...); }` to both.
+
+Issues noted (no fix needed):
+4. Quota check-then-increment TOCTOU: `checkQuota` is a soft pre-check; `increment` happens
+   after processing completes (recording actual usage). This is a deliberate "soft quota" pattern —
+   slight over-quota on concurrent requests is an acceptable tradeoff vs. pre-reservation complexity.
+   The advisory lock in `increment` ensures atomic counter updates.
+5. usage/service.ts:30,49 - `DAILY_WORD_BUDGET` fallback in `getRemainingWords`/`reserveWords`.
+   All current callers pass the plan-derived budget via `resolveWordBudget`. The fallback exists
+   per the saas-plan design doc as the free-tier default. Acceptable.
+6. usage/service.ts:113-120 - `releaseWords` uses raw SQL instead of Drizzle ORM builder.
+   This is intentional — `GREATEST()` and multi-column SET in a single update are cleaner
+   as raw SQL. Parameterized via `sql` template tag, so no injection risk.
+
+Checklist verification:
+- Advisory locks: Properly acquired via `pg_advisory_xact_lock` with `hashtext()` keys.
+  Lock is scoped to the transaction (`_xact_lock`), so auto-released on commit/rollback. No leak.
+- Counter increments: Atomic — advisory lock serializes; `sql` expression for increment ensures
+  no stale reads. Insert-or-update pattern handles first-use case.
+- Quota checks: Soft check-then-act pattern (see #4). Acceptable by design.
+- Plan resolution queries: Single query with `.limit(1)` against billing_subscriptions.
+  No N+1. Redundant call in handler now eliminated (see #1).
+- No unbounded queries: `getAggregateStats` uses `sum`/`count` aggregation, not full row scan.
+  `getMonthlyUsage` returns one row (unique constraint on userId+periodStart).
+- Admin bypass: Admin check via `isAdminEmail` (server-derived session email, not spoofable).
+  Admin stats endpoint gated with 403. Ingest/comments admin bypass in their respective handlers.
+- HTTP status codes: 402 (quota exceeded in callers), 403 (admin-only), 429 (rate limit).
+- Error payloads: Quota check callers return `message` and upgrade prompt text for client-side use.
+- Rate limiting: Fixed — quota and usage endpoints now rate-limited.
+
+pnpm check-types: PASS (all 7 packages)
+
+## Task 5 - Backend: Comments Module [DONE]
+
+Files reviewed:
+- packages/api/src/modules/comments/generate.ts
+- packages/api/src/modules/comments/service.ts
+- packages/api/src/modules/comments/model.ts
+- packages/api/src/modules/comments/index.ts
+
+Issues found and fixed:
+1. generate.ts:220 - Missing timeout on `generateText` LLM call. Comment generation could hang
+   indefinitely if the AI provider is unresponsive (same class of issue fixed in Task 2).
+   Fix: Added `timeout: { totalMs: 300_000 }` (5 min) matching video-context.ts pattern.
+2. rate-limit.ts:77 - `/api/comments` paths were not covered by the rate limiter. The generate
+   endpoint triggers expensive LLM calls and was unprotected from abuse.
+   Fix: Added `/api/comments` to the categorize function under 'ingest' category (10 req/min burst),
+   matching the rate limit tier for other AI-generation endpoints.
+3. generate.ts:273-274 - `console.warn` logged full error object `err` in quota increment catch.
+   Could expose internal DB details (connection strings, query state).
+   Fix: Changed to log only `err.message` (with instanceof Error guard), consistent with Task 3 fix.
+4. index.ts:44 - No error handling around `generateComments` call. LLM API failures (timeouts,
+   parsing errors, provider errors) would propagate as raw 500 with potentially sensitive error
+   text (API URLs, model names, stack traces).
+   Fix: Wrapped in try/catch; returns safe 500 message. Logs only error message, not full object.
+
+Issues noted (no fix needed):
+5. index.ts:15+44 - `AssetService.getById` called in handler (line 15) and again inside
+   `generateComments` → `AssetService.getWithTranscript` (which calls getById internally).
+   Redundant query, but acceptable: handler validates ownership/status, generator is self-contained
+   and always validates. One extra SELECT is cheap vs. tight coupling.
+6. generate.ts:197 - `entities as string[] | null` type assertion on jsonb column. The schema
+   defines entities as jsonb without $type. Acceptable since the ingest pipeline always writes
+   string arrays, and the assertion matches the DB contract.
+7. service.ts - `list()` returns all non-dismissed comments without pagination. Comments are
+   capped at MAX_COMMENTS (20) by the generation pipeline, so the result set is bounded.
+
+Checklist verification:
+- AI generation timeout: Fixed — 5 min timeout on generateText. Error handling: Fixed — try/catch
+  in handler returns safe error message.
+- Structured output validation: AI SDK v6 `Output.array({ element: commentSchema })` validates
+  LLM output against Zod schema. Invalid output → `result.output` is null, handled by `?? []`
+  fallback. Additional filter on line 236 rejects invalid times and empty bodies.
+- Max comments cap: Enforced via `MAX_COMMENTS = 20` constant. Applied at two levels:
+  `maxComments` in prompt instructions and `.slice(0, MAX_COMMENTS)` post-filter (line 237).
+  `MAX_WINDOWS = 30` bounds the input. No unbounded arrays.
+- Auth: All three endpoints use `{ auth: true }`. Asset ownership verified via
+  `AssetService.getById(id, user.id)` in generate and list. Comment ownership verified via
+  `CommentService.getById(id, user.id)` in feedback. Admin bypass properly gated via
+  `isAdminEmail(user.email)` (server-derived, not spoofable).
+- Regenerate cleanup: `deleteByAsset(assetId, userId)` deletes all user comments for the asset
+  before regeneration. Scoped to user — won't affect other users' comments.
+- Evidence references: `evidenceRefs` jsonb column stores transcript segment IDs (from
+  transcriptSegments table) and visual segment IDs (from videoContextSegments table). These are
+  FK-equivalent references set during generation from actual DB rows. Not enforced as DB-level FKs
+  (jsonb limitation), but integrity maintained by construction — IDs come from the same query that
+  loads the segments.
+- N+1 queries: No N+1. Generate pipeline: 1 call for asset+transcript (2-3 queries via
+  getWithTranscript), 1 query for visual segments, 1 batch insert. List: 1 ownership check +
+  1 filtered select. Feedback: 1 lookup + 1 update. All O(1) queries per request.
+- Rate limiting: Fixed — comments endpoints now rate-limited under 'ingest' tier (10 req/min).
+- Input validation: Elysia body/query validation via CommentModel schemas (t.Object with typed
+  fields). assetId validated as string; regenerate as optional boolean; action as literal union.
+- HTTP status codes: 404 (not found), 422 (not ready), 402 (quota exceeded), 500 (generation
+  failed), 429 (rate limit). Correct.
+
+pnpm check-types: PASS (all 7 packages)
+
+## Task 6 - Backend: Retention & Visual Parity [DONE]
+
+Files reviewed:
+- packages/api/src/modules/retention/service.ts
+- packages/api/src/modules/retention/index.ts
+- packages/api/src/modules/visual-parity/service.ts
+- packages/api/src/modules/visual-parity/index.ts
+
+Issues found and fixed:
+1. rate-limit.ts:76-93 - `/api/admin/*` paths (retention, visual-parity, quota) were not covered
+   by the rate limiter. Admin endpoints trigger expensive operations (S3 deletions, Gemini LLM
+   calls) and were unprotected from abuse even with auth+admin gating.
+   Fix: Added `/api/admin/` to the categorize function under 'ingest' category (10 req/min burst),
+   matching the rate limit tier for other expensive operation endpoints.
+2. retention/index.ts:6-10 & visual-parity/index.ts:6-10 - Identical `requireAdmin` helper
+   function duplicated in both files. Same logic also inlined in quota/index.ts:31-33.
+   Fix: Extracted `requireAdmin` to `packages/api/src/utils.ts` as a shared utility. Updated all
+   three files to import from `../../utils`. Removed unused `status` and `isAdminEmail` imports.
+3. visual-parity/service.ts:49-58 - `findRequeueCandidates` query did not exclude upload assets
+   whose raw media has been purged (rawMediaDeletedAt IS NOT NULL). For purged uploads, the signed
+   URL would point to a deleted S3 object, causing guaranteed visual extraction failures.
+   Fix: Added `isNull(mediaAssets.rawMediaDeletedAt)` to the WHERE clause. YouTube assets are
+   unaffected (they never have rawMediaDeletedAt set).
+
+Issues noted (no fix needed):
+4. retention/service.ts:57-60 - `purge()` marks asset as purged even when `sourceUrl` is null
+   (skipping S3 delete). Correct behavior: nothing to delete, so mark as handled. Prevents
+   re-selecting these assets on subsequent purge runs.
+5. retention/service.ts:96-112 - `getStats()` scans entire mediaAssets table with `count(*) filter`.
+   Single-pass aggregate via FILTER clauses. No full row loading. Efficient for admin-only
+   observability endpoint on a bounded table.
+6. visual-parity/service.ts:100-111 - `extractVideoContext` is fire-and-forget with `.catch()`
+   handler. Status tracking happens internally via `updateVisualStatus`. Acceptable for async
+   batch operations — the requeue response returns immediately with queued count.
+7. retention/index.ts:40 & visual-parity/index.ts - `setRetentionHold` updates any asset by ID
+   without user-scoping. Correct: this is admin-only, hold should work across all users' assets.
+8. S3 DeleteObjectCommand is idempotent by design (returns 204 even for non-existent objects).
+   The try/catch in purge handles other S3 errors (permissions, network) gracefully.
+
+Checklist verification:
+- Purge operations idempotent: Yes. Query filters `rawMediaDeletedAt IS NULL`, so re-runs skip
+  already-purged assets. S3 DeleteObject is inherently idempotent.
+- S3 delete errors handled: Yes. Try/catch per asset with error accumulation in result.errors.
+  Non-S3 URLs silently skipped by deleteStoredUpload. Failed assets don't block others.
+- Admin-only access: Yes. All routes use `{ auth: true }` + `requireAdmin(user)` guard.
+  isAdminEmail checks server-derived session email (not spoofable via headers).
+- Batch operations bounded: Yes. Retention: max 500 (default 100). Visual parity: max 200
+  (default 50). Input validation: `Math.min(Math.max(...), maxLimit)`.
+- Signed URL refresh: Yes. Visual parity requeue refreshes upload URLs with 1-hour TTL.
+  YouTube uses public sourceUrl directly. createUploadDownloadUrl passes through HTTP URLs.
+- Stats queries efficient: Yes. Both getStats() and getParityStats() use `count(*) filter()`
+  — single-pass aggregate, no row materialization. groupBy for parity is 2 groups max.
+- Legal hold respected: Yes. findExpiredUploads includes `eq(retentionHold, false)`.
+  setRetentionHold properly toggles the flag. Held assets excluded from purge.
+- Rate limiting: Fixed — admin endpoints now rate-limited under 'ingest' tier (10 req/min).
+- Input validation: Elysia t.Object for body/query types. Limit parameter bounded.
+  assetId from URL params (string). hold as t.Boolean().
+- Auth checks: All endpoints use auth macro. Admin gate on every handler via requireAdmin.
+- HTTP status codes: 403 (not admin), 404 (asset not found), 429 (rate limit). Correct.
+- Error handling: Per-asset try/catch in batch ops. Error messages sanitized via instanceof check.
+  Results returned with attempted/succeeded/failed/errors breakdown.
+
+pnpm check-types: PASS (all 7 packages)
+
+## Task 7 - Backend: Chat, Shares & Collections Enforcement [DONE]
+
+Files reviewed:
+- packages/api/src/modules/chat/index.ts
+- packages/api/src/modules/chat/service.ts
+- packages/api/src/modules/shares/index.ts
+- packages/api/src/modules/shares/service.ts
+- packages/api/src/modules/collections/index.ts
+- packages/api/src/modules/collections/service.ts
+
+Issues found and fixed:
+1. chat/index.ts:111,131,140 - `console.error(..., err)` logged full error objects in three catch
+   blocks (title generation, saveMessages, releaseWords). Could expose DB internals (connection
+   strings, query state) in logs. Same class of issue fixed in Tasks 3 and 5.
+   Fix: Changed all three to `err instanceof Error ? err.message : String(err)`.
+2. shares/index.ts:169 - `console.error(..., err)` logged full error object in releaseWords catch.
+   Fix: Changed to `err instanceof Error ? err.message : String(err)`.
+3. shares/index.ts:129,134 - Hardcoded `500` word limit for share-link Q&A appeared twice
+   (in both the admin and non-admin branches). Magic number, easy to get out of sync.
+   Fix: Extracted `SHARE_CHAT_WORD_LIMIT = 500` constant at module level.
+4. rate-limit.ts:83 - `/api/shares/chat/:token` was categorized as 'crud' (100 req/min) because
+   it matched the generic `/api/shares` prefix. This public endpoint triggers LLM streaming and
+   should be rate-limited more aggressively.
+   Fix: Added `if (path.startsWith('/api/shares/chat/')) return 'chat'` before the generic
+   `/api/shares` match. Now uses 'chat' tier (30 req/min).
+
+Issues noted (no fix needed):
+5. Share link count TOCTOU: Between `countActive` and `create`, concurrent requests could both
+   pass the count check. This is a soft limit (same pattern as quota checks in Task 4). The
+   limit is a business rule (1 for free, unlimited for pro/team). Acceptable trade-off vs.
+   advisory lock complexity.
+6. Collection count TOCTOU: Same soft-limit pattern in collections create handler. Acceptable.
+7. Word budget leak on stream setup failure: If `createChatStream` throws before the stream
+   starts, reserved words are never released (in both chat and shares). In practice,
+   `createChatStream` returns a Response wrapping a ReadableStream — it only throws on
+   programming errors, not runtime failures. `onFinish` is reliably called when the stream
+   completes. Same pattern in the main chat endpoint. Not a regression.
+8. shares/service.ts:getSharedResource - Sequential queries (validateToken -> asset -> transcript
+   -> segments) for shared assets. Not N+1 (no loop), but could use joins. Pre-existing code
+   not changed in this diff.
+9. chat/service.ts - extractVisualEvidenceRows near-duplicate of extractEvidenceRows. The field
+   names differ (segments vs visualSegments, segmentId vs videoContextSegmentId). Shared
+   abstraction would add complexity for minimal gain. Both are in-memory operations with no
+   DB calls.
+
+Checklist verification:
+- Entitlement checks on every relevant endpoint: Yes. Chat POST gates model access and word budget
+  via plan entitlements. Share POST create enforces link limit. Share chat enforces public share QA
+  entitlement. Collection POST create enforces collection limit. Admin bypass properly gated via
+  isAdminEmail (server-derived session email, not spoofable).
+- Model gating cannot be bypassed by client: Correct. ChatModel.send validates modelId against
+  VALID_MODEL_IDS (Elysia schema). Handler further checks against entitlements.allowedModelIds.
+  Admin bypass is server-side only.
+- Word budget reservation/release is atomic and leak-free: Correct. reserveWords uses advisory
+  lock within transaction. releaseWords uses same lock. Admin bypass skips reservation entirely.
+  Unused words released in onFinish callback. See note #7 for edge case.
+- Share link counting query is efficient: Yes. `count(*)` with WHERE on userId + revokedAt IS NULL.
+  Single aggregate, no row materialization.
+- Collection counting doesn't have race conditions: Soft-limit TOCTOU (see #6). Acceptable.
+- Shared chat properly attributes usage to owner: Yes. resolveUserPlan(ownerId),
+  UsageService.reserveWords(ownerId, ...), UsageService.releaseWords(ownerId, ...). Owner's email
+  looked up via getOwnerEmail for admin check. Anonymous requester never charged.
+- No N+1 queries in message saving or evidence extraction: Correct. saveMessages uses batch
+  inserts within a transaction. extractEvidenceRows and extractVisualEvidenceRows iterate
+  in-memory over the input messages array. getMessages uses parallel queries via Promise.all
+  with a subquery (optimization from pre-existing sequential pattern).
+- Auth checks: All authenticated endpoints use `{ auth: true }`. Public endpoints (validate/:token,
+  chat/:token) are intentionally unauthenticated. Ownership verified via user-scoped queries
+  throughout (thread, asset, collection).
+- Rate limiting: Chat endpoints use 'chat' tier (30 req/min). Share CRUD uses 'crud' tier.
+  Share chat now correctly uses 'chat' tier (was 'crud'). Per-link rate limit (10/hour) as
+  additional defense on public share chat.
+- Input validation: Elysia body schemas on all POST handlers. ChatModel.send validates messages,
+  modelId (union of valid IDs), wordLimit. ShareModel.create validates assetId, collectionId,
+  canQuery, expiresAt (date-time format). CollectionModel validates name, description, assetId.
+- HTTP status codes: 402 (plan limit), 403 (access denied), 404 (not found), 429 (rate limit/
+  budget exhausted). Correct throughout.
+- No sensitive data in logs: Fixed — all catch blocks now log error message only.
+
+pnpm check-types: PASS (all 7 packages)
+
+## Task 8 - Backend: Search & Assets [DONE]
+
+Files reviewed:
+- packages/api/src/modules/assets/search-service.ts
+- packages/api/src/modules/assets/service.ts
+- packages/api/src/modules/assets/index.ts
+
+Issues found and fixed:
+1. index.ts:148 - New upload pipeline retry catch logged full error object `err`. Could expose
+   S3 URLs, internal error details in production logs. Same class of issue fixed in Tasks 3, 5, 7.
+   Fix: Changed to `err instanceof Error ? err.message : String(err)`.
+2. index.ts:153-154 - Pre-existing YouTube pipeline retry catch also logged full error object.
+   Since the retry handler was modified in this diff (upload branch added), fixing for consistency.
+   Fix: Changed to `err instanceof Error ? err.message : String(err)`.
+3. index.ts:127 - Delete handler catch used `err` directly in non-Error branch instead of
+   `String(err)`, inconsistent with the safe logging pattern established in prior tasks.
+   Fix: Changed to `String(err)`.
+
+Issues noted (no fix needed):
+4. service.ts:26-31,34-77 - `AssetService.list()` and `AssetService.search()` return unbounded
+   result sets (no `.limit()`). Pre-existing code not changed in this diff. In practice bounded by
+   per-user asset count (low hundreds typical). Enhancement for scale, not a regression.
+5. service.ts:63 - `ilike` search with `%${query.q}%` allows LIKE wildcards (`%`, `_`) from user
+   input. No SQL injection (parameterized via Drizzle ORM). Users search only their own assets,
+   so wildcard abuse has no security impact. Standard search behavior.
+6. search-service.ts:86-87 - `Math.max(...ftsResults.map(r => r.rank), 0.001)` — when arrays are
+   empty, spread produces no args but the `0.001` floor prevents `-Infinity` or division by zero.
+   When one side is empty, the other side's normalization is correct because the loop never
+   accesses the empty side's max. Safe by construction.
+7. service.ts:107-114 - `getTranscriptLanguage` is used in chat/index.ts and shares/index.ts for
+   language-aware retrieval. Clean single-row query with `.limit(1)`. Correct.
+
+Checklist verification:
+- Search queries use proper indexes: GIN index `transcript_segment_search_idx` on
+  `to_tsvector('english', text)` (migration 0008). HNSW index on embeddings.embedding
+  (migration 0009). Both confirmed in schema definitions. Correct.
+- Score normalization correct: hybridSearch normalizes by max value with 0.001 floor. No
+  NaN/Infinity possible. Blending weights (0.65 + 0.35 = 1.0) sum correctly. Empty array
+  edge cases handled by floor values. Correct.
+- Language detection edge cases: Empty query → letterCount=0 → latinRatio=0 → semantic-first.
+  Numbers-only query → letterCount=0 (digits are \p{N}, not \p{L}) → semantic-first.
+  Mixed scripts (e.g. "こんにちは hello") → latinRatio < 0.6 → semantic-first. All correct.
+- Pagination on search results: Search endpoint limit is clamped to [1, 100] with default 50.
+  Both ftsSearch and semanticSearch pass limit through to .limit(). hybridSearch slices to
+  limit. semanticFirstSearch caps at limit. Correct.
+- No SQL injection: buildTsQuery strips all non-letter, non-digit chars via tokenizeQuery.
+  Result is passed as parameterized value via Drizzle sql`to_tsquery('english', ${tsquery})`.
+  ilike in AssetService.search uses parameterized ORM method. Correct.
+- Auth scoping: Search endpoint requires `{ auth: true }` and verifies ownership via
+  `AssetService.getById(params.id, user.id)` before calling search. All list/CRUD endpoints
+  are user-scoped via `eq(mediaAssets.userId, userId)`. SSE events filtered by userId.
+  Delete and retry both user-scoped. Correct.
+- Rate limiting: `/api/assets` covered under 'crud' category (100 req/min). Correct.
+- Input validation: Search query validated via `t.String({ minLength: 1 })`. Limit as optional
+  string, parsed and clamped in handler. Asset CRUD validated via AssetModel schemas. Correct.
+- HTTP status codes: 404 (not found), 409 (not failed for retry), 422 (no source URL). Correct.
+- Error handling: Fixed — all catch blocks now log error message only, not full objects.
+
+pnpm check-types: PASS (all 7 packages)
+
+## Task 9 - AI Package [DONE]
+
+Files reviewed:
+- packages/ai/src/retrieval.ts
+- packages/ai/src/tools.ts
+- packages/ai/src/system-prompt.ts
+- packages/ai/src/stream.ts
+- packages/ai/src/provider.ts
+- packages/ai/src/types.ts
+- packages/ai/src/index.ts (barrel)
+
+Issues found and fixed:
+1. index.ts:15-16 - Barrel export missing new visual retrieval exports. `RelevantVisualSegment` is
+   a property type of `RetrieveSegmentsOutput` (which IS exported), so consumers need it importable
+   by name. `findRelevantVisualSegments` mirrors the already-exported `findRelevantSegments`.
+   Fix: Added `findRelevantVisualSegments` and `RelevantVisualSegment` to barrel exports.
+
+Issues noted (no fix needed):
+2. stream.ts:113,146 - Pre-existing `console.error` logging full error objects. Same class of issue
+   fixed in Tasks 3, 5, 7, 8. Not changed in this diff — lines 113 (validateUIMessages catch) and
+   146 (streamText onError) are pre-existing. The validateUIMessages error is a Zod validation error
+   (no sensitive data). The onError error could contain provider details but is pre-existing code.
+3. retrieval.ts:103-115 - Pre-existing model mismatch check runs an extra DB query on every
+   successful retrieval call. Performance concern for production. Not in diff scope.
+4. `findRelevantVisualSegments` has no embedding model mismatch check (unlike `findRelevantSegments`).
+   Acceptable: all visual embeddings are generated by the same pipeline in this feature branch, so
+   model mismatch is impossible. The check in `findRelevantSegments` protects against legacy data.
+5. `visualModel` not exported from barrel. Consistent with `fastModel` (also not in barrel). Both
+   are internal provider exports consumed via subpath imports (`@milkpod/ai/provider`).
+
+Checklist verification:
+- No barrel import issues: Fixed — new exports added. Frontend uses subpath imports only
+  (`@milkpod/ai/types` for `isToolOutput`). All `import type` in types.ts are erased at compile
+  time, so importing `isToolOutput` from `@milkpod/ai/types` doesn't pull in server deps. Safe.
+- Embedding generation is batched/shared: Yes. tools.ts pre-generates embedding via
+  `generateEmbedding(query)` and passes it to both `findRelevantSegments` and
+  `findRelevantVisualSegments` via `queryEmbedding` option. Single API call, not two. Good.
+- Tool definitions match AI SDK v6 API: Yes. Uses `inputSchema` (not `parameters`). Uses
+  `AsyncGenerator<T>` yield pattern for streaming tool results. Correct.
+- System prompt is clean and not overly long: Yes. Adds rule 6 for visual context citations and
+  language guidance section for non-English transcripts. Both concise and well-structured.
+  Language detection uses `.toLowerCase().startsWith('en')` — handles "English", "en-US", etc.
+- Type exports correct and don't pull in server deps: Yes. types.ts uses `import type` for all
+  cross-module imports (retrieval.ts, tools.ts). These are erased at compile time. The `isToolOutput`
+  runtime function has no imports. Safe for frontend tree-shaking.
+- Retrieval query is parameterized: Yes. Both findRelevantSegments and findRelevantVisualSegments
+  use Drizzle ORM's `eq()`, `gt()`, `and()` helpers. The cosine distance is computed via
+  `cosineDistance()` with parameterized embedding array. No raw SQL string concatenation.
+  The `sql` template tag in getTranscriptOverview (`segmentIndex % ${step}`) is parameterized.
+- Cosine similarity threshold is reasonable: Yes. Default 0.3 for both transcript and visual
+  retrieval. Standard threshold for embedding similarity — filters noise while keeping relevant
+  results. Configurable via `minSimilarity` option.
+- Cross-tenant retrieval prevented: Both functions require at least one scope (assetId or
+  collectionId), returning [] if neither is provided. Tools pass context scope from the user's
+  session. Correct.
+- Bounded result sets: Both functions use `.limit(limit)` with configurable defaults (10 for
+  transcript, 5 for visual). Tool calls set explicit limits (8 and 5). No unbounded queries.
+- DB indexes utilized: transcript embeddings use HNSW index (migration 0009), visual context
+  embeddings use HNSW index (video_context_embedding_hnsw_idx). Both with vector_cosine_ops.
+  FK indexes present on segmentId and assetId columns.
+
+pnpm check-types: PASS (all 7 packages)
+
+## Task 10 - Frontend: Billing UI [DONE]
+
+Files reviewed:
+- apps/web/src/components/billing/pricing-grid.tsx
+- apps/web/src/components/billing/billing-dashboard.tsx
+- apps/web/src/lib/upgrade-prompt.ts
+- apps/web/src/app/pricing/page.tsx
+- apps/web/src/app/dashboard/billing/page.tsx
+
+Issues found and fixed:
+1. pricing-grid.tsx — `currentPlan` prop always passed as `null` from PricingPage, making the
+   "Current plan" indicator permanently broken. Users could never see which plan they're on.
+   Fix: Removed `currentPlan` prop. PricingGrid now fetches the user's plan on mount via
+   `api.api.billing.summary.get()` and manages `currentPlan` as internal state. Updated
+   PricingPage to render `<PricingGrid />` without the prop.
+2. pricing-grid.tsx:118-145 — Interval toggle (Monthly/Yearly) lacked ARIA attributes. Toggle
+   buttons functioned as a radio group but had no semantic role for screen readers.
+   Fix: Added `role="radiogroup"` with `aria-label="Billing interval"` on container. Added
+   `role="radio"` and `aria-checked` on each toggle button.
+3. pricing-grid.tsx:105-107 — Silent failure when checkout API responds without `checkoutUrl`.
+   If `data` was truthy but lacked `checkoutUrl`, nothing happened — no redirect, no error.
+   Fix: Added `else` branch with `toast.error('Failed to start checkout. Please try again.')`.
+4. billing-dashboard.tsx:66-75 — `useEffect` fetch had no `.catch()` handler. Network errors
+   would leave the loading spinner forever (promise rejection never handled). Also,
+   `setLoading(false)` was called outside the `cancelled` guard, causing state updates on
+   potentially unmounted components.
+   Fix: Added `.catch()` that sets `setLoading(false)` (so error state is shown). Moved
+   `setLoading(false)` inside the `if (!cancelled)` guard.
+5. billing-dashboard.tsx:188 — Past due payment warning lacked `role="alert"` for screen reader
+   announcement. Added `role="alert"` and `aria-hidden="true"` on the decorative icon.
+6. billing-dashboard.tsx:289 — Usage progress bars lacked ARIA progressbar semantics. Screen
+   readers couldn't convey usage percentages.
+   Fix: Added `role="progressbar"`, `aria-valuenow`, `aria-valuemin`, `aria-valuemax`, and
+   `aria-label` to each progress bar container.
+
+Issues noted (no fix needed):
+7. pricing-grid.tsx:26-77 — Plan prices ($19/$190, $49/$490) and feature strings are hardcoded
+   in the frontend. Backend `plans.ts` defines quotas/entitlements but not prices (those live
+   in Polar). Feature strings match backend quotas exactly (120min free, 1200min pro, etc.).
+   Common pattern for static pricing pages. Would need a pricing API for full dynamism.
+8. billing-dashboard.tsx:70,118 — `data as BillingSummary` type assertion on Eden treaty
+   response. Eden treaty's type inference is complex; casting to the known shape is pragmatic.
+   The BillingSummary type mirrors the backend's BillingService.getSummary return type exactly.
+9. billing-dashboard.tsx:107-124 — `handleCancel` has no confirmation dialog before canceling
+   subscription. Enhancement for UX, not a code quality issue. The action is soft-cancel
+   (at period end), so it's reversible via the billing portal.
+10. upgrade-prompt.ts — Uses `window.location.href` without SSR guard. However, the function is
+    only called from toast action click handlers (client-side events). The module imports `sonner`
+    (client-only), so accidental server import would fail at the sonner import. Self-protecting.
+
+Checklist verification:
+- No browser APIs used without SSR guards: Correct. `window.location.href` only in event
+  handlers (handleCheckout, handlePortal) and toast actions. No SSR execution path.
+- No `any` types: Correct. One `as BillingSummary` assertion (pragmatic for Eden treaty).
+  `UpgradeErrorPayload` uses index signature with `unknown` (not `any`).
+- Loading, error, and empty states: All handled. PricingGrid: loading state for checkout
+  button. BillingDashboard: loading spinner, error fallback ("Failed to load"), empty/null
+  data handled. Past due warning shown conditionally.
+- No redundant state: Correct. `isPaid`, `isPastDue`, `isCanceling`, `periodEnd` are derived
+  values computed from `summary` (not stored as separate state). `price` derived from
+  `interval` + plan. `pct` computed inline.
+- Proper cleanup in useEffects: Fixed — both PricingGrid and BillingDashboard useEffects now
+  have `cancelled` flag checked before state updates, with proper `.catch()` handlers.
+- No hardcoded prices that should come from API: Prices are inherently static (set in Polar
+  dashboard). Backend doesn't serve prices. Feature strings verified against backend quotas.
+- Accessible: Fixed — ARIA radiogroup on interval toggle, role="alert" on past due warning,
+  role="progressbar" on usage bars. Semantic HTML throughout (h1/h2/h3, ul/li, p tags).
+  Buttons have proper type="button".
+- Tailwind v4: Uses theme tokens throughout (bg-card, text-foreground, border-border,
+  bg-muted, text-muted-foreground, bg-primary, text-primary-foreground, bg-destructive,
+  text-destructive). `size-*` used for icons. Minimal arbitrary values (`text-[10px]` for
+  badges — no theme token for 10px text). No issues.
+- No console.log in production: Correct. No console.log/warn/error in any frontend file.
+  Error handling uses `toast.error()` throughout.
+- Error handling beyond console.log: Correct. All API errors show user-facing toasts.
+  Checkout, portal, and cancel all have try/catch with toast feedback.
+- Checkout flow handles failures: Yes. Specific error codes handled (billing_disabled,
+  no_customer). Generic fallback toasts for unknown errors. Network errors caught.
+  Missing checkoutUrl now shows error toast (fixed).
+
+pnpm check-types: PASS (all 7 packages)
+
+## Task 11 - Frontend: Comments UI [DONE]
+
+Files reviewed:
+- apps/web/src/components/comments/comment-card.tsx
+- apps/web/src/components/comments/comments-tab.tsx
+- apps/web/src/app/asset/[id]/comments/page.tsx
+
+Issues found and fixed:
+1. comments-tab.tsx:3 - Unused `useCallback` import. Never used in the component.
+   Fix: Removed `useCallback` from the import statement.
+2. comments-tab.tsx:33-34 - Silent error swallowing in `handleGenerate`. The catch block had only
+   a comment "Error handled by global handler" but no global error handler exists. Generate failures
+   (network errors, server errors) gave the user zero feedback — loading spinner stopped but nothing
+   else happened.
+   Fix: Added `toast.error('Failed to generate comments. Please try again.')` in the catch block.
+   Added `import { toast } from 'sonner'`.
+3. comments-tab.tsx:40-47 - `handleDismiss` silently ignored API errors. When the dismiss endpoint
+   failed (network error, auth issue, 404), the comment stayed in the list with no feedback.
+   Fix: Added early return with `toast.error('Failed to dismiss comment.')` when error is truthy.
+4. comment-card.tsx:77 - Dismiss button container used `opacity-0 group-hover:opacity-100` but had
+   no `focus-within` variant. Keyboard users tabbing to the dismiss button couldn't see it — the
+   button was functionally accessible but visually hidden without hover.
+   Fix: Added `group-focus-within:opacity-100` to make the actions row visible when any child
+   receives keyboard focus.
+
+Issues noted (no fix needed):
+5. comments-tab.tsx:33 - `data as Comment[]` type assertion on Eden treaty response. Same pragmatic
+   pattern as `as BillingSummary` in billing-dashboard.tsx (noted in Task 10 #8). Eden treaty's
+   inference is complex; the Comment type matches the backend's return type exactly. Acceptable.
+6. comment-card.tsx:65 - `text-[10px]` arbitrary value on source badge. No theme token exists for
+   10px text size. Same pattern noted in Task 10 (pricing grid). Acceptable.
+7. comment-card.tsx:22-26 - Source badges use color for differentiation (blue=Audio, purple=Visual,
+   amber=Hybrid). However, each badge also has a text label (Audio/Visual/Hybrid), so the color is
+   supplementary, not the sole indicator. Accessible by design — no fix needed.
+8. page.tsx - Clean server component. Auth check via `assertAuthenticated`, proper Next.js 16 async
+   params handling, data fetched server-side and passed as props. No issues.
+
+Checklist verification:
+- Stable, unique keys for comment list: Yes. `comment.id` used as key in CommentCard map. IDs are
+  DB-generated with `createId('cmt')` prefix — unique and stable. Not array indices. Correct.
+- Proper loading/empty/error states: Yes. Three states handled: `generating` (spinner + message),
+  `isEmpty` (icon + explanation + generate button), populated (comment list + regenerate button).
+  Error states now show toasts (fixed). Correct.
+- Dismiss action loading state: Yes. CommentCard tracks `dismissing` state locally — disables the
+  button during the API call, re-enables on completion (try/finally pattern). Now also shows error
+  toast on failure (fixed). Correct.
+- Timestamp click navigation works correctly: Yes. Uses `useTimestampAction` hook which reads asset
+  source from context. `isClickable` checks sourceType !== 'upload' && sourceUrl exists. handleClick
+  generates embed URL or external link. Non-clickable timestamps render as plain text. Correct.
+- Source badges are accessible (not color-only): Yes. Each badge has a text label (Audio/Visual/
+  Hybrid) via `sourceLabels` record. Colors are supplementary. Correct.
+- No redundant re-renders: No React.memo on CommentCard, but component is simple (no expensive
+  renders). `handleDismiss` and `handleGenerate` are regular functions (not useCallback-wrapped),
+  but since CommentCard is not memoized, wrapping wouldn't help. Unused `useCallback` import
+  removed. No unnecessary re-render concerns for a list capped at 20 items.
+- No `any` types: Correct. One `as Comment[]` assertion (pragmatic for Eden treaty).
+- No console.log in production: Correct. Error handling uses `toast.error()` throughout (fixed).
+- No dangerouslySetInnerHTML: Correct. Comment body rendered as text content in `<p>` tag.
+- Tailwind v4: Uses theme tokens (border-border, text-foreground, text-muted-foreground, bg-muted).
+  `size-*` for icons. One `text-[10px]` arbitrary value (no theme equivalent). Correct.
+- Accessibility: Dismiss button now visible on keyboard focus (fixed). Buttons have `type="button"`.
+  Semantic HTML (`<p>`, `<div>`, `<button>`). Badge uses semantic `<Badge>` component. Correct.
+- No SSR issues: Both components are `'use client'`. No direct browser API usage in render path.
+  `useTimestampAction` accesses `window.open` only inside event handler. Correct.
+
+pnpm check-types: PASS (all 7 packages)
+
+## Task 12 - Frontend: Chat UI [DONE]
+
+Files reviewed:
+- apps/web/src/components/chat/chat-panel.tsx
+- apps/web/src/components/chat/chat-shell.tsx
+- apps/web/src/components/chat/message.tsx
+- apps/web/src/components/chat/tool-result.tsx
+- apps/web/src/components/chat/ai-avatar.tsx
+- apps/web/src/components/chat/shimmer-text.tsx
+- apps/web/src/components/chat/thinking-indicator.tsx
+- apps/web/src/components/chat/tool-meta.ts
+- apps/web/src/components/chat/model-picker.tsx
+- apps/web/src/components/chat/word-limit-picker.tsx
+- apps/web/src/components/chat/thread-sidebar.tsx
+
+Issues found and fixed:
+1. chat-panel.tsx:120 - Bug: `.finally(onLoaded)` in `useRestoredThread` prematurely set `isLoading=false`
+   when a thread was found but its messages weren't cached. `resolveThreadMessages` starts an async
+   fetch, but `.finally()` fires synchronously after the `.then()` callback returns void. This caused
+   `ChatPanelContent` to mount with `initialMessages=undefined` before messages arrived, and since
+   `useMilkpodChat` captures `initialMessages` on mount, the later state update was never reflected.
+   Fix: Replaced `.finally(onLoaded)` with explicit `onLoaded()` calls in each exit path: when no
+   thread is found (`.then` early return), on error (`.catch`). When a thread IS found,
+   `resolveThreadMessages` calls `onLoaded` internally after fetch completes.
+2. thinking-indicator.tsx - Dead code. New file created in this diff but never imported or used anywhere.
+   The inline thinking indicators in chat-panel.tsx and message.tsx use different layouts. Removed file.
+3. thread-sidebar.tsx:216-219 - DropdownMenu trigger button on non-active thread items used
+   `opacity-0 group-hover:opacity-100` but lacked `group-focus-within:opacity-100`. Keyboard users
+   tabbing to the menu trigger couldn't see it. Same class of issue fixed in Task 11 (comment-card.tsx).
+   Fix: Added `group-focus-within:opacity-100` to the opacity classes.
+4. chat-panel.tsx:384 - Icon-only submit button (`SendHorizonal` icon) had no accessible label.
+   Screen readers would announce it as an unlabeled button.
+   Fix: Added `aria-label="Send message"` to the Button.
+
+Issues noted (no fix needed):
+5. chat-panel.tsx & message.tsx - Duplicate "Thinking" indicator UI (BrainCircuit + ShimmerText +
+   animated dots) inlined in both files. Different layout contexts (chat-panel wraps with AiAvatar,
+   message.tsx is within an existing avatar-wrapped assistant message). Extracting would require
+   parameterizing layout differences for minimal deduplication gain.
+6. model-picker.tsx:87 - `MODEL_REGISTRY[0]!` non-null assertion. MODEL_REGISTRY is a constant
+   array defined in @milkpod/ai/models, always populated with at least one model. Safe.
+7. model-picker.tsx:114 - `onChange(id as ModelId)` type assertion. The `id` comes from
+   `CommandItem value={model.id}` where model is from MODEL_REGISTRY. Always a valid ModelId.
+8. message.tsx:140 - User message parts use index keys (`key={i}`). User messages only contain
+   text parts that don't reorder or change. Array index keys are acceptable here.
+9. shimmer-text.tsx:22 - `animate-[shimmer_2.1s_linear_infinite]` arbitrary animation. The
+   `@keyframes shimmer` is properly defined in globals.css:272. Verified.
+10. chat-shell.tsx:82 - `window.setTimeout` usage. Inside a `useEffect` (client-only execution),
+    with proper cleanup via `window.clearTimeout` in the effect destructor. SSR-safe.
+11. chat-shell.tsx:104-121 - `handleNewThread` has try/finally but no catch. `createThread` uses
+    Eden treaty internally, catches errors, and returns null on failure. The `if (!created)` guard
+    handles errors. `try/finally` is solely for the `isCreatingThreadRef` guard. No unhandled throw.
+
+Checklist verification:
+- No unnecessary re-renders in message list: ChatMessage is not wrapped in React.memo, but each
+  message is a lightweight render (text + tools). `useAutoAnimate` adds a ref but no re-render
+  overhead. `useMilkpodChat` provides `messages` as a stable reference from AI SDK. The
+  `handleSubmit` and `handleKeyDown` are properly memoized with useCallback. `useChatSettings`
+  returns stable setters. No unnecessary re-render concerns.
+- Streaming state handled without flicker: `isStreaming` prop computed per-message based on status
+  and position. Thinking indicator shown only when loading and last message isn't assistant. Text
+  parts use `isAnimating` prop for character-by-character animation. ShimmerText deactivates when
+  `active` is false. Tool results distinguish pending (loading/streaming) from complete. No flicker.
+- Proper cleanup on unmount: useRestoredThread effect has `cancelled` flag checked before all state
+  updates, with cleanup function. Chat-shell's prefetch warmup effect clears timeout. No abort
+  controllers needed — Eden treaty handles cleanup internally, and useMilkpodChat (from AI SDK)
+  manages its own stream lifecycle.
+- Tool result rendering handles all tool types: `getFallbackToolOutput` covers 'context', 'read',
+  'retrieve', and a default case. `normalizeToolName` maps AI SDK tool names to these kinds.
+  `getLabel` and `getProgressMessage` cover all three ToolOutput discriminants. TOOL_META has
+  entries for all kinds plus a generic 'tool' fallback. Correct.
+- No `any` types: No `any` found. Two `as` assertions noted (ModelId, non-null MODEL_REGISTRY[0])
+  — both justified and safe (see #6, #7). `isToolOutput` is a proper type guard.
+- Keys are stable and unique: message.id for message list, segment.id for tool result pills,
+  thread.id for thread list, model.id for model picker, String(option.value) for word limit.
+  Index keys only for user message text parts (see #8). Correct.
+- Accessibility: Fixed — submit button now has aria-label. Thread menu trigger now visible on
+  keyboard focus. ThinkingIndicator had role="status" and aria-live="polite" but was unused/removed.
+  Animated dots have aria-hidden. Delete confirmation uses AlertDialog with proper title/description.
+  Thread items have role="button", tabIndex=0, keyboard handlers. Textarea has placeholder.
+  Form has onSubmit. Buttons have type="button" or type="submit".
+- No dangerouslySetInnerHTML: Correct. All AI text rendered via Streamdown component (safe markdown
+  renderer). User text rendered as plain Streamdown. No raw HTML injection.
+- Tailwind v4 best practices: Uses theme tokens throughout (bg-muted, text-foreground, border-border,
+  bg-primary, text-primary-foreground, bg-accent, text-accent-foreground, text-muted-foreground).
+  size-* used for icons. Minimal arbitrary values: text-[13px] for tool labels (no 13px theme token),
+  text-[15px] for textarea, text-[10px] for thread dates, bg-[length:240%_100%] for shimmer gradient.
+  All justified — no equivalent theme tokens exist. No `w-* h-*` where `size-*` could be used.
+- No console.log in production: Correct. No console.log/warn/error in any file. Error handling
+  uses toast.error() throughout.
+- No SSR issues: All components are 'use client'. Browser APIs (window.setTimeout, window.history,
+  localStorage) accessed only inside useEffect or event handlers. getCachedChatMessages in useState
+  initializer is an in-memory cache (returns undefined on server, consistent with client first render
+  on fresh page load). No hydration mismatch.
+
+pnpm check-types: PASS (all 7 packages)
 

@@ -1,18 +1,14 @@
 'use client';
 
-import { ChevronRight } from 'lucide-react';
 import NumberFlow from '@number-flow/react';
 import type { ToolOutput } from '@milkpod/ai/types';
 import { Spinner } from '~/components/ui/spinner';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '~/components/ui/collapsible';
 import { cn } from '~/lib/utils';
 import { formatTime } from '~/lib/format';
 import { useTimestampAction } from './use-timestamp-action';
 import { VideoMomentDialog } from './video-moment-dialog';
+import { ShimmerText } from './shimmer-text';
+import { TOOL_META } from './tool-meta';
 
 interface ToolResultProps {
   toolName: string;
@@ -22,91 +18,150 @@ interface ToolResultProps {
 
 function getLabel(output: ToolOutput) {
   switch (output.tool) {
-    case 'retrieve':
+    case 'retrieve': {
+      const total = output.segments.length + (output.visualSegments?.length ?? 0);
       return output.status === 'searching'
         ? { prefix: 'Searching', count: 0, suffix: '' }
-        : { prefix: 'Found', count: output.segments.length, suffix: 'relevant segments' };
+        : {
+            prefix: 'Found',
+            count: total,
+            suffix: 'relevant segments',
+          };
+    }
     case 'context':
       return output.status === 'loading'
         ? { prefix: 'Loading context', count: 0, suffix: '' }
-        : { prefix: 'Loaded', count: output.segments.length, suffix: 'context segments' };
+        : {
+            prefix: 'Loaded',
+            count: output.segments.length,
+            suffix: 'context segments',
+          };
     case 'read':
       return output.status === 'loading'
         ? { prefix: 'Reading transcript', count: 0, suffix: '' }
-        : { prefix: 'Loaded', count: output.segments.length, suffix: `of ${output.totalSegments} segments` };
+        : {
+            prefix: 'Loaded',
+            count: output.segments.length,
+            suffix: `of ${output.totalSegments} segments`,
+          };
   }
 }
+
+function getProgressMessage(output: ToolOutput): string {
+  if (output.message?.trim()) return output.message;
+
+  switch (output.tool) {
+    case 'retrieve':
+      return 'Searching transcript...';
+    case 'context':
+      return 'Loading transcript context...';
+    case 'read':
+      return 'Reading transcript...';
+  }
+}
+
+function normalizeSegments(output: ToolOutput) {
+  if (output.tool === 'retrieve') {
+    return output.segments.map((segment) => ({
+      id: segment.segmentId,
+      text: segment.text,
+      startTime: segment.startTime,
+      endTime: segment.endTime,
+      speaker: segment.speaker,
+    }));
+  }
+
+  return output.segments.map((segment) => ({
+    id: segment.id,
+    text: segment.text,
+    startTime: segment.startTime,
+    endTime: segment.endTime,
+    speaker: segment.speaker,
+  }));
+}
+
+function getToolIcon(output: ToolOutput) {
+  return TOOL_META[output.tool]?.icon ?? TOOL_META.tool.icon;
+}
+
+/** Maximum number of timestamp pills to show before "+N more" */
+const MAX_PILLS = 8;
 
 export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
   const isLoading =
     output.status === 'searching' || output.status === 'loading';
+  const pending = isLoading || isStreaming;
   const { isClickable, handleClick, momentDialog, clearDialog } =
     useTimestampAction();
   const label = getLabel(output);
-
-  const segments = output.tool === 'retrieve'
-    ? output.segments.map((s) => ({ id: s.segmentId, text: s.text, startTime: s.startTime, endTime: s.endTime, speaker: s.speaker }))
-    : output.segments;
-
-  const canExpand = segments.length > 0;
+  const ToolIcon = getToolIcon(output);
+  const segments = normalizeSegments(output);
 
   return (
-    <Collapsible className="my-1">
-      <CollapsibleTrigger
-        disabled={!canExpand}
-        className={cn(
-          'group flex items-center gap-1.5 text-xs text-muted-foreground transition-colors',
-          canExpand && 'cursor-pointer hover:text-foreground'
-        )}
-      >
-        {isLoading || isStreaming ? (
-          <Spinner className="size-3" />
+    <div
+      className="space-y-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300"
+      data-tool={toolName}
+    >
+      {/* Step indicator */}
+      <div className="flex items-start gap-2">
+        {pending ? (
+          <Spinner className="mt-px size-4 shrink-0" />
         ) : (
-          <ChevronRight
-            className="size-3 transition-transform duration-200 group-data-[state=open]:rotate-90"
-          />
+          <ToolIcon className="mt-px size-4 shrink-0 text-muted-foreground/45" />
         )}
-        <span>
-          {label.prefix}
-          {label.count > 0 && (
+        <span
+          className={cn(
+            'min-w-0 text-[13px] leading-relaxed',
+            pending
+              ? 'text-muted-foreground/75'
+              : 'text-muted-foreground/65',
+          )}
+        >
+          {pending ? (
+            <ShimmerText active className="text-muted-foreground/75">
+              {getProgressMessage(output)}
+            </ShimmerText>
+          ) : (
             <>
-              {' '}
-              <NumberFlow value={label.count} trend={1} />
-              {' '}
+              {label.prefix}{' '}
+              {label.count > 0 && (
+                <NumberFlow value={label.count} trend={1} />
+              )}
+              {label.count > 0 && ' '}
+              {label.suffix}
             </>
           )}
-          {label.suffix}
         </span>
-      </CollapsibleTrigger>
+      </div>
 
-      {canExpand && (
-        <CollapsibleContent>
-          <div className="mt-1.5 overflow-hidden rounded-lg border border-border/50 bg-muted/30">
-            <div className="max-h-48 space-y-0.5 overflow-y-auto p-2.5 text-xs text-muted-foreground">
-              {segments.map((segment) => (
-                <div
-                  key={segment.id}
-                  className="flex gap-2 py-0.5"
-                >
-                  {isClickable ? (
-                    <button
-                      type="button"
-                      onClick={() => handleClick(segment.startTime)}
-                      className="shrink-0 cursor-pointer font-mono font-medium tracking-tight tabular-nums text-purple-600 dark:text-purple-400"
-                    >
-                      {formatTime(segment.startTime)}
-                    </button>
-                  ) : (
-                    <span className="shrink-0 font-mono tabular-nums">
-                      {formatTime(segment.startTime)}
-                    </span>
-                  )}
-                  <span className="line-clamp-1">{segment.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </CollapsibleContent>
+      {/* Source pills — timestamp badges */}
+      {!pending && segments.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pl-6 animate-in fade-in-0 duration-300">
+          {segments.slice(0, MAX_PILLS).map((segment) =>
+            isClickable ? (
+              <button
+                key={segment.id}
+                type="button"
+                onClick={() => handleClick(segment.startTime)}
+                className="rounded-full border border-border/40 bg-muted/40 px-2.5 py-0.5 font-mono text-xs tabular-nums text-muted-foreground/80 transition-all hover:border-border/60 hover:bg-muted/70 hover:text-foreground"
+              >
+                {formatTime(segment.startTime)}
+              </button>
+            ) : (
+              <span
+                key={segment.id}
+                className="rounded-full border border-border/40 bg-muted/40 px-2.5 py-0.5 font-mono text-xs tabular-nums text-muted-foreground/70"
+              >
+                {formatTime(segment.startTime)}
+              </span>
+            ),
+          )}
+          {segments.length > MAX_PILLS && (
+            <span className="self-center text-xs text-muted-foreground/50">
+              +{segments.length - MAX_PILLS} more
+            </span>
+          )}
+        </div>
       )}
 
       {momentDialog && (
@@ -117,6 +172,6 @@ export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
           timestamp={momentDialog.timestamp}
         />
       )}
-    </Collapsible>
+    </div>
   );
 }

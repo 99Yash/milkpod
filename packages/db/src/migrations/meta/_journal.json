@@ -127,6 +127,55 @@
       "when": 1772955459908,
       "tag": "0017_chemical_shocker",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1773062051487,
+      "tag": "0018_nostalgic_mikhail_rasputin",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1773066095535,
+      "tag": "0019_stale_winter_soldier",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1773066465910,
+      "tag": "0020_petite_salo",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1773117999530,
+      "tag": "0021_simple_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1773118500502,
+      "tag": "0022_pink_captain_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1773119172749,
+      "tag": "0023_pale_texas_twister",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1773119654065,
+      "tag": "0024_flaky_nomad",
+      "breakpoints": true
     }
   ]
 }

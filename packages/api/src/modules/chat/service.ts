@@ -1,6 +1,6 @@
 import { db } from '@milkpod/db';
 import { createId } from '@milkpod/db/helpers';
-import { qaMessages, qaMessageParts, qaEvidence } from '@milkpod/db/schemas';
+import { qaMessages, qaMessageParts, qaEvidence, qaVisualEvidence } from '@milkpod/db/schemas';
 import { eq, asc, inArray } from 'drizzle-orm';
 import { isStaticToolUIPart } from 'ai';
 import type { MilkpodMessage } from '@milkpod/ai';
@@ -137,6 +137,48 @@ function extractEvidenceRows(messages: MilkpodMessage[]): EvidenceRow[] {
   return rows;
 }
 
+type VisualEvidenceRow = typeof qaVisualEvidence.$inferInsert;
+
+/** Extract visual segment references from retrieve_segments tool outputs into qa_visual_evidence rows. */
+function extractVisualEvidenceRows(messages: MilkpodMessage[]): VisualEvidenceRow[] {
+  const rows: VisualEvidenceRow[] = [];
+  const seen = new Set<string>();
+
+  for (const msg of messages) {
+    for (const part of msg.parts) {
+      const toolName =
+        part.type === 'dynamic-tool'
+          ? part.toolName
+          : part.type.startsWith('tool-')
+            ? part.type.slice('tool-'.length)
+            : null;
+
+      if (toolName !== 'retrieve_segments') continue;
+      if (!('output' in part) || !part.output) continue;
+
+      const output = part.output as {
+        visualSegments?: Array<{ segmentId?: string; similarity?: number }>;
+      };
+      if (!Array.isArray(output.visualSegments)) continue;
+
+      for (const seg of output.visualSegments) {
+        if (!seg.segmentId) continue;
+        const key = `${msg.id}:${seg.segmentId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        rows.push({
+          messageId: msg.id,
+          videoContextSegmentId: seg.segmentId,
+          relevanceScore: typeof seg.similarity === 'number' ? seg.similarity : null,
+        });
+      }
+    }
+  }
+
+  return rows;
+}
+
 export abstract class ChatService {
   static async saveMessages(threadId: string, messages: MilkpodMessage[]) {
     if (messages.length === 0) return;
@@ -167,25 +209,35 @@ export abstract class ChatService {
       if (evidenceRows.length > 0) {
         await tx.insert(qaEvidence).values(evidenceRows).onConflictDoNothing();
       }
+
+      // Extract visual segment references → qa_visual_evidence
+      const visualEvidenceRows = extractVisualEvidenceRows(messages);
+      if (visualEvidenceRows.length > 0) {
+        await tx.insert(qaVisualEvidence).values(visualEvidenceRows).onConflictDoNothing();
+      }
     });
   }
 
   static async getMessages(threadId: string): Promise<MilkpodMessage[]> {
-    const messageRows = await db()
-      .select()
+    const messagesSq = db()
+      .select({ id: qaMessages.id })
       .from(qaMessages)
-      .where(eq(qaMessages.threadId, threadId))
-      .orderBy(asc(qaMessages.createdAt));
+      .where(eq(qaMessages.threadId, threadId));
+
+    const [messageRows, partRows] = await Promise.all([
+      db()
+        .select()
+        .from(qaMessages)
+        .where(eq(qaMessages.threadId, threadId))
+        .orderBy(asc(qaMessages.createdAt)),
+      db()
+        .select()
+        .from(qaMessageParts)
+        .where(inArray(qaMessageParts.messageId, messagesSq))
+        .orderBy(asc(qaMessageParts.sortOrder)),
+    ]);
 
     if (messageRows.length === 0) return [];
-
-    const messageIds = messageRows.map((r) => r.id);
-
-    const partRows = await db()
-      .select()
-      .from(qaMessageParts)
-      .where(inArray(qaMessageParts.messageId, messageIds))
-      .orderBy(asc(qaMessageParts.sortOrder));
 
     const partsByMessage = Map.groupBy(partRows, (r) => r.messageId);
 

@@ -2,22 +2,27 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FileText, MessageSquareText, Sparkles } from 'lucide-react';
-import { cn } from '~/lib/utils';
+import {
+  NavTabs,
+  NavTabIndicator,
+  navTabVariants,
+} from '~/components/ui/tabs';
 
 interface AssetTabBarProps {
   assetId: string;
 }
 
 const tabs = [
-  { id: 'transcript', label: 'Transcript', icon: FileText, suffix: '' },
-  { id: 'ask-ai', label: 'Ask AI', icon: MessageSquareText, suffix: '/chat' },
-  { id: 'moments', label: 'Moments', icon: Sparkles, suffix: '/moments' },
+  { id: 'transcript', label: 'Transcript', suffix: '' },
+  { id: 'ask-ai', label: 'Ask AI', suffix: '/chat' },
+  { id: 'moments', label: 'Moments', suffix: '/moments' },
+  { id: 'comments', label: 'Comments', suffix: '/comments' },
 ] as const;
 
 function getActiveTab(pathname: string) {
   if (pathname.includes('/chat')) return 'ask-ai';
   if (pathname.includes('/moments')) return 'moments';
+  if (pathname.includes('/comments')) return 'comments';
   return 'transcript';
 }
 
@@ -26,28 +31,20 @@ export function AssetTabBar({ assetId }: AssetTabBarProps) {
   const activeTab = getActiveTab(pathname);
 
   return (
-    <div className="flex shrink-0 gap-1 border-b border-border/40">
-      {tabs.map(({ id, label, icon: Icon, suffix }) => {
+    <NavTabs>
+      {tabs.map(({ id, label, suffix }) => {
         const isActive = id === activeTab;
         return (
           <Link
             key={id}
             href={`/asset/${assetId}${suffix}`}
-            className={cn(
-              'relative flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors',
-              isActive
-                ? 'text-foreground'
-                : 'text-muted-foreground hover:text-foreground/80',
-            )}
+            className={navTabVariants({ active: isActive })}
           >
-            <Icon className="size-4" />
             {label}
-            {isActive && (
-              <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-foreground" />
-            )}
+            {isActive && <NavTabIndicator />}
           </Link>
         );
       })}
-    </div>
+    </NavTabs>
   );
 }

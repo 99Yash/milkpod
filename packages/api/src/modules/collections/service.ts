@@ -1,6 +1,6 @@
 import { db } from '@milkpod/db';
 import { collections, collectionItems, mediaAssets } from '@milkpod/db/schemas';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, count } from 'drizzle-orm';
 import type { Collection, CollectionItem, CollectionWithItems } from '../../types';
 import type { CollectionModel } from './model';
 
@@ -12,6 +12,14 @@ export abstract class CollectionService {
       .returning();
     if (!collection) throw new Error('Failed to insert collection');
     return collection;
+  }
+
+  static async countForUser(userId: string): Promise<number> {
+    const [result] = await db()
+      .select({ total: count() })
+      .from(collections)
+      .where(eq(collections.userId, userId));
+    return result?.total ?? 0;
   }
 
   static async list(userId: string): Promise<Collection[]> {

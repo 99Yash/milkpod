@@ -11,9 +11,30 @@ const serverEnvSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().min(1, 'GOOGLE_CLIENT_ID is required'),
   GOOGLE_CLIENT_SECRET: z.string().min(1, 'GOOGLE_CLIENT_SECRET is required'),
   ELEVENLABS_API_KEY: z.string().optional(),
+  UPLOAD_STORAGE_BUCKET: z.string().optional(),
+  UPLOAD_STORAGE_REGION: z.string().default('auto'),
+  UPLOAD_STORAGE_ENDPOINT: z.url().optional(),
+  UPLOAD_STORAGE_ACCESS_KEY_ID: z.string().optional(),
+  UPLOAD_STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
+  UPLOAD_STORAGE_FORCE_PATH_STYLE: z.enum(['true', 'false']).default('false'),
+  UPLOAD_STORAGE_SIGNED_URL_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(86_400)
+    .default(900),
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
   ADMIN_EMAILS: z.string().optional().default(''),
   COOKIE_DOMAIN: z.string().optional(),
+  RAW_MEDIA_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),
+  // Billing provider — set to 'polar' to enable billing routes
+  BILLING_PROVIDER: z.enum(['polar', 'razorpay']).optional(),
+  // Polar provider credentials (required when BILLING_PROVIDER=polar)
+  POLAR_ACCESS_TOKEN: z.string().optional(),
+  POLAR_WEBHOOK_SECRET: z.string().optional(),
+  // Comma-separated Polar product UUIDs (monthly,yearly) per plan
+  POLAR_PRODUCT_PRO: z.string().optional(),
+  POLAR_PRODUCT_TEAM: z.string().optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

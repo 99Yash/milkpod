@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { cors } from '@elysiajs/cors';
 import { node } from '@elysiajs/node';
 import { app, closeConnections } from '@milkpod/api';
@@ -17,7 +16,10 @@ const server = new Elysia({ adapter: node() })
   )
   .use(app)
   .listen(
-    { port: 3001, maxRequestBodySize: 2 * 1024 * 1024 /* 2MB */ },
+    {
+      port: 3001,
+      maxRequestBodySize: 1024 * 1024 * 150 /* 150 MB — slightly above 100 MB app upload limit */,
+    },
     () => {
       console.log('Server is running on http://localhost:3001');
     },

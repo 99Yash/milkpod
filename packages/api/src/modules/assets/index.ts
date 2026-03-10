@@ -4,8 +4,9 @@ import { AssetModel } from './model';
 import { AssetService } from './service';
 import { TranscriptSearchService } from './search-service';
 import { IngestService } from '../ingest/service';
-import { orchestratePipeline } from '../ingest/pipeline';
+import { orchestratePipeline, orchestrateUploadPipeline } from '../ingest/pipeline';
 import { assetEvents, type AssetStatusEvent } from '../../events/asset-events';
+import { deleteStoredUpload } from '../ingest/upload-storage';
 
 export const assets = new Elysia({ prefix: '/api/assets' })
   .use(authMacro)
@@ -118,6 +119,16 @@ export const assets = new Elysia({ prefix: '/api/assets' })
   .delete('/:id', async ({ params, user }) => {
     const deleted = await AssetService.remove(params.id, user.id);
     if (!deleted) return status(404, { message: 'Asset not found' });
+
+    if (deleted.sourceType === 'upload' && deleted.sourceUrl) {
+      deleteStoredUpload(deleted.sourceUrl).catch((err) => {
+        console.warn(
+          `[assets] Failed to delete stored upload for ${deleted.id}:`,
+          err instanceof Error ? err.message : String(err)
+        );
+      });
+    }
+
     return deleted;
   }, { auth: true })
   .post('/:id/retry', async ({ params, user }) => {
@@ -132,9 +143,15 @@ export const assets = new Elysia({ prefix: '/api/assets' })
 
     await IngestService.resetForRetry(asset.id);
 
-    // Fire-and-forget pipeline retry
+    if (asset.sourceType === 'upload') {
+      orchestrateUploadPipeline(asset.id, asset.sourceUrl, user.id, asset.mediaType).catch((err) => {
+        console.error(`Upload pipeline failed for asset ${asset.id}:`, err instanceof Error ? err.message : String(err));
+      });
+      return { message: 'Retry started' };
+    }
+
     orchestratePipeline(asset.id, asset.sourceUrl, user.id).catch((err) => {
-      console.error(`Pipeline failed for asset ${asset.id}:`, err);
+      console.error(`Pipeline failed for asset ${asset.id}:`, err instanceof Error ? err.message : String(err));
     });
 
     return { message: 'Retry started' };

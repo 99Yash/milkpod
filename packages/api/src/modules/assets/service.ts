@@ -104,6 +104,15 @@ export abstract class AssetService {
     return { ...asset, transcript, segments };
   }
 
+  static async getTranscriptLanguage(assetId: string): Promise<string | null> {
+    const [row] = await db()
+      .select({ language: transcripts.language })
+      .from(transcripts)
+      .where(eq(transcripts.assetId, assetId))
+      .limit(1);
+    return row?.language ?? null;
+  }
+
   static async update(id: string, userId: string, data: AssetModel.Update): Promise<Asset | null> {
     const [updated] = await db()
       .update(mediaAssets)

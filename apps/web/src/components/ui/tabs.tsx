@@ -1,6 +1,7 @@
 'use client';
 
 import * as TabsPrimitive from '@radix-ui/react-tabs';
+import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
 
 import { cn } from '~/lib/utils';
@@ -63,4 +64,63 @@ function TabsContent({
   );
 }
 
-export { Tabs, TabsContent, TabsList, TabsTrigger };
+// ---------------------------------------------------------------------------
+// NavTabs — link-friendly navigation tabs (no Radix, works with <Link> etc.)
+// ---------------------------------------------------------------------------
+
+const navTabVariants = cva(
+  'relative rounded-lg px-3.5 py-1.5 text-sm transition-colors outline-none',
+  {
+    variants: {
+      active: {
+        true: 'font-medium text-foreground border border-border',
+        false: 'text-muted-foreground hover:text-foreground/80',
+      },
+    },
+    defaultVariants: {
+      active: false,
+    },
+  },
+);
+
+function NavTabs({
+  className,
+  ...props
+}: React.ComponentProps<'nav'>) {
+  return (
+    <nav
+      data-slot="nav-tabs"
+      className={cn(
+        'relative flex shrink-0 items-end gap-2 border-b border-border/40 px-1 pt-1 pb-2',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/**
+ * Active indicator bar for NavTabs. Place inside the active tab element.
+ * Renders the thick underline that sits on the container's border-b.
+ */
+function NavTabIndicator({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'absolute -bottom-[calc(0.5rem+1px)] left-1/2 h-0.5 w-3/4 -translate-x-1/2 rounded-full bg-foreground',
+        className,
+      )}
+    />
+  );
+}
+
+export {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  NavTabs,
+  NavTabIndicator,
+  navTabVariants,
+};

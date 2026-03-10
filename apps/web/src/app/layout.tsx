@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono, Inter } from 'next/font/google';
+import localFont from 'next/font/local';
 import { MainLayout } from '~/components/layouts/main';
 import { Providers } from '~/components/layouts/providers';
 import { siteConfig } from '~/lib/site';
@@ -19,6 +20,23 @@ const geistMono = Geist_Mono({
 const inter = Inter({
   variable: '--font-inter',
   subsets: ['latin'],
+});
+
+const openRunde = localFont({
+  src: [
+    {
+      path: '../fonts/OpenRunde-Medium.woff2',
+      weight: '500',
+      style: 'normal',
+    },
+    {
+      path: '../fonts/OpenRunde-Semibold.woff2',
+      weight: '600',
+      style: 'normal',
+    },
+  ],
+  variable: '--font-open-runde',
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
@@ -53,7 +71,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${openRunde.variable} antialiased`}
       >
         <Providers>
           <MainLayout>{children}</MainLayout>

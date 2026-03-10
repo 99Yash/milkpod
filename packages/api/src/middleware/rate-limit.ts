@@ -32,7 +32,7 @@ setInterval(() => {
 
 function consume(
   key: string,
-  config: BucketConfig
+  config: BucketConfig,
 ): { allowed: boolean; retryAfterSecs: number } {
   const now = Date.now();
   let bucket = buckets.get(key);
@@ -46,7 +46,7 @@ function consume(
   const elapsed = (now - bucket.lastRefill) / 1000;
   bucket.tokens = Math.min(
     config.capacity,
-    bucket.tokens + elapsed * config.refillRate
+    bucket.tokens + elapsed * config.refillRate,
   );
   bucket.lastRefill = now;
 
@@ -63,24 +63,31 @@ function consume(
 
 // --- Route categorization ---
 
-type RateCategory = 'ingest' | 'chat' | 'crud' | 'auth';
+type RateCategory = 'ingest' | 'chat' | 'crud' | 'auth' | 'billing';
 
 const LIMITS = {
-  ingest: { capacity: 10, refillRate: 10 / 60 }, // 10 per minute
-  chat: { capacity: 30, refillRate: 30 / 60 }, // 30 per minute
-  crud: { capacity: 100, refillRate: 100 / 60 }, // 100 per minute
-  auth: { capacity: 10, refillRate: 10 / 60 }, // 10 per minute
+  ingest: { capacity: 10, refillRate: 10 / 60 },
+  chat: { capacity: 30, refillRate: 30 / 60 },
+  crud: { capacity: 100, refillRate: 100 / 60 },
+  auth: { capacity: 10, refillRate: 10 / 60 },
+  billing: { capacity: 10, refillRate: 10 / 60 },
 } satisfies Record<RateCategory, BucketConfig>;
 
 function categorize(path: string): RateCategory | null {
   if (path.startsWith('/api/ingest')) return 'ingest';
   if (path.startsWith('/api/chat')) return 'chat';
   if (path.startsWith('/api/auth/')) return 'auth';
+  if (path.startsWith('/api/billing')) return 'billing';
+  if (path.startsWith('/api/comments')) return 'ingest';
+  if (path.startsWith('/api/admin/')) return 'ingest';
+  if (path.startsWith('/api/shares/chat/')) return 'chat';
   if (
     path.startsWith('/api/assets') ||
     path.startsWith('/api/collections') ||
     path.startsWith('/api/threads') ||
-    path.startsWith('/api/shares')
+    path.startsWith('/api/shares') ||
+    path.startsWith('/api/quota') ||
+    path.startsWith('/api/usage')
   ) {
     return 'crud';
   }
@@ -132,5 +139,5 @@ export const rateLimiter = new Elysia({ name: 'rate-limiter' }).onBeforeHandle(
       set.headers['Retry-After'] = String(retryAfterSecs);
       return { message: 'Too many requests. Please try again later.' };
     }
-  }
+  },
 );

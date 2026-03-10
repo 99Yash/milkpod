@@ -11,10 +11,11 @@ import {
   qaMessages,
   qaMessageParts,
   assetMoments,
+  assetComments,
   momentPresetEnum,
 } from '@milkpod/db/schemas';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
-import type { Asset, AssetWithTranscript, Collection, Moment } from '@milkpod/api/types';
+import type { Asset, AssetWithTranscript, Collection, Comment, Moment } from '@milkpod/api/types';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 
 export async function getAssets(userId: string): Promise<Asset[]> {
@@ -86,6 +87,23 @@ export async function getMoments(
       ),
     )
     .orderBy(desc(assetMoments.score));
+}
+
+export async function getComments(
+  assetId: string,
+  userId: string,
+): Promise<Comment[]> {
+  return db()
+    .select()
+    .from(assetComments)
+    .where(
+      and(
+        eq(assetComments.assetId, assetId),
+        eq(assetComments.userId, userId),
+        isNull(assetComments.dismissedAt),
+      ),
+    )
+    .orderBy(asc(assetComments.startTime));
 }
 
 // Wrapped in React.cache() — the chat layout and chat page both call this
