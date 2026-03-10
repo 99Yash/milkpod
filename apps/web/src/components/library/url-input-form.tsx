@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { api } from '~/lib/api';
 import { Loader2, Plus, Upload, Link, X } from 'lucide-react';
 import { cn } from '~/lib/utils';
+import { handleUpgradeError } from '~/lib/upgrade-prompt';
 
 interface UrlInputFormProps {
   onSuccess: () => void;
@@ -70,6 +71,7 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
     try {
       const { data, error } = await api.api.ingest.post({ url: trimmed });
       if (error) {
+        if (handleUpgradeError(error)) return;
         const errVal = error.value;
         toast.error(
           typeof errVal === 'object' && errVal && 'message' in errVal
@@ -96,6 +98,7 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
     try {
       const { data, error } = await api.api.ingest.upload.post({ file });
       if (error) {
+        if (handleUpgradeError(error)) return;
         const errVal = error.value;
         toast.error(
           typeof errVal === 'object' && errVal && 'message' in errVal

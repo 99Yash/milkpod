@@ -7,6 +7,7 @@ import { clientEnv } from '@milkpod/env/client';
 import { chatMetadataSchema } from '@milkpod/ai/schemas';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 import type { ModelId } from '@milkpod/ai/models';
+import { handleUpgradeError } from '~/lib/upgrade-prompt';
 
 const SERVER_URL = clientEnv().NEXT_PUBLIC_SERVER_URL;
 
@@ -38,6 +39,17 @@ export function useMilkpodChat({
   const customFetch: typeof globalThis.fetch = useCallback(
     async (input, init) => {
       const response = await globalThis.fetch(input, init);
+
+      // Intercept 402 upgrade-required errors before useChat processes them
+      if (response.status === 402) {
+        try {
+          const body = await response.clone().json();
+          handleUpgradeError({ status: 402, value: body });
+        } catch {
+          handleUpgradeError({ status: 402, value: undefined });
+        }
+      }
+
       const id = response.headers.get('X-Thread-Id');
       if (id) {
         threadIdRef.current = id;

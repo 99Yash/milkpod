@@ -159,9 +159,10 @@ export async function createShareLink(body: {
   collectionId?: string;
   canQuery: boolean;
   expiresAt?: string;
-}): Promise<ShareLink | null> {
+}): Promise<ShareLink | { error: { status?: number; value?: unknown } }> {
   const { data, error } = await api.api.shares.post(body);
-  if (error || !data) return null;
+  if (error) return { error };
+  if (!data) return { error: { value: undefined } };
   return data as ShareLink;
 }
 

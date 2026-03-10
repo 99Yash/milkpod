@@ -292,18 +292,31 @@ function SidebarSections({
   );
 }
 
+const PLAN_LABELS: Record<string, string> = {
+  free: 'Free',
+  pro: 'Pro',
+  team: 'Team',
+};
+
 function SidebarPlanUsage() {
+  const router = useRouter();
   const [usage, setUsage] = useState<{
     remaining: number;
     budget: number;
     isAdmin: boolean;
   } | null>(null);
+  const [plan, setPlan] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     api.api.usage.remaining.get().then(({ data }) => {
       if (!cancelled && data) {
         setUsage(data);
+      }
+    });
+    api.api.billing.summary.get().then(({ data }) => {
+      if (!cancelled && data && 'plan' in data) {
+        setPlan((data as { plan: string }).plan);
       }
     });
     return () => {
@@ -347,13 +360,16 @@ function SidebarPlanUsage() {
   const used = usage.budget - usage.remaining;
   const pct = Math.min(100, (used / usage.budget) * 100);
   const isHigh = pct > 80;
+  const isPaid = plan === 'pro' || plan === 'team';
 
   return (
     <DashboardPanel className="gap-3 py-4">
       <DashboardPanelContent className="space-y-2 px-4 py-0">
-        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Gauge className="size-3.5" />
-          Plan usage
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <Gauge className="size-3.5" />
+            {plan ? `${PLAN_LABELS[plan] ?? plan} plan` : 'Plan usage'}
+          </div>
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -372,9 +388,25 @@ function SidebarPlanUsage() {
             />
           </div>
         </div>
-        <Button variant="outline" size="sm" className="w-full">
-          Upgrade
-        </Button>
+        {isPaid ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => router.push(route('/dashboard/billing'))}
+          >
+            Manage plan
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => router.push(route('/pricing'))}
+          >
+            Upgrade
+          </Button>
+        )}
       </DashboardPanelContent>
     </DashboardPanel>
   );
@@ -385,6 +417,7 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const { data: session } = authClient.useSession();
   const user = session?.user;
+  const [planLabel, setPlanLabel] = useState('Free');
 
   const [userStats, setUserStats] = useState<UserStat[]>([
     { id: 'videos', label: 'Videos', value: '–', icon: Video },
@@ -399,6 +432,12 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
           { id: 'videos', label: 'Videos', value: String(data.videoCount), icon: Video },
           { id: 'minutes', label: 'Minutes', value: String(data.totalMinutes), icon: Sparkles },
         ]);
+      }
+    });
+    api.api.billing.summary.get().then(({ data }) => {
+      if (!cancelled && data && 'plan' in data) {
+        const p = (data as { plan: string }).plan;
+        setPlanLabel(PLAN_LABELS[p] ?? 'Free');
       }
     });
     return () => {
@@ -484,7 +523,7 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
                   variant="outline"
                   className="border-border/60 text-[10px] uppercase tracking-wide text-muted-foreground"
                 >
-                  Starter
+                  {planLabel}
                 </Badge>
               </div>
               <p className="truncate text-xs text-muted-foreground">
@@ -522,7 +561,7 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
             <Settings className="size-4" />
             Settings
           </DropdownMenuItem>
-          <DropdownMenuItem disabled>
+          <DropdownMenuItem onSelect={() => router.push(route('/dashboard/billing'))}>
             <CreditCard className="size-4" />
             Billing
           </DropdownMenuItem>

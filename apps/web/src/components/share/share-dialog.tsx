@@ -5,6 +5,7 @@ import { Check, Copy, Link2, Share2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchShareLinks, createShareLink } from '~/lib/api-fetchers';
+import { handleUpgradeError } from '~/lib/upgrade-prompt';
 import { queryKeys } from '~/lib/query-keys';
 import { api } from '~/lib/api';
 import { Button } from '~/components/ui/button';
@@ -102,20 +103,21 @@ export function ShareDialog({
   const handleCreate = async () => {
     setCreating(true);
     try {
-      const link = await createShareLink({
+      const result = await createShareLink({
         assetId: assetId ?? undefined,
         collectionId: collectionId ?? undefined,
         canQuery,
         expiresAt: getExpiryDate(expiry),
       });
-      if (!link) {
+      if ('error' in result) {
+        if (handleUpgradeError(result.error)) return;
         toast.error('Failed to create share link');
         return;
       }
       // Optimistically add to cache
-      queryClient.setQueryData<ShareLink[]>(queryKey, (prev) => [...(prev ?? []), link]);
+      queryClient.setQueryData<ShareLink[]>(queryKey, (prev) => [...(prev ?? []), result]);
       // Auto-copy to clipboard
-      await copyToClipboard(link.token);
+      await copyToClipboard(result.token);
       toast.success('Share link created and copied to clipboard');
       setCanQuery(false);
       setExpiry('none');
