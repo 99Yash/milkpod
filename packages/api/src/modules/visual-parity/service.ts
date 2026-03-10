@@ -50,6 +50,7 @@ export abstract class VisualParityService {
         and(
           eq(mediaAssets.status, 'ready'),
           eq(mediaAssets.mediaType, 'video'),
+          isNull(mediaAssets.rawMediaDeletedAt),
           or(
             eq(mediaAssets.visualStatus, 'failed'),
             // Null = never attempted for older assets
