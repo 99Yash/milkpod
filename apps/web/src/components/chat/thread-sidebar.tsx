@@ -55,6 +55,7 @@ interface ThreadSidebarProps {
   onDeleteThread: (threadId: string) => void;
   onRenameThread: (threadId: string, title: string) => void;
   onRegenerateTitle: (threadId: string) => void;
+  onPrefetchThread?: (threadId: string) => void;
 }
 
 type ThreadListProps = Pick<
@@ -65,6 +66,7 @@ type ThreadListProps = Pick<
   | 'onDeleteThread'
   | 'onRenameThread'
   | 'onRegenerateTitle'
+  | 'onPrefetchThread'
 >;
 
 function ThreadList({
@@ -74,6 +76,7 @@ function ThreadList({
   onDeleteThread,
   onRenameThread,
   onRegenerateTitle,
+  onPrefetchThread,
 }: ThreadListProps) {
   if (threads.length === 0) {
     return (
@@ -95,6 +98,7 @@ function ThreadList({
           onDelete={() => onDeleteThread(thread.id)}
           onRename={(title) => onRenameThread(thread.id, title)}
           onRegenerateTitle={() => onRegenerateTitle(thread.id)}
+          onPrefetch={() => onPrefetchThread?.(thread.id)}
         />
       ))}
     </div>
@@ -108,6 +112,7 @@ function ThreadItem({
   onDelete,
   onRename,
   onRegenerateTitle,
+  onPrefetch,
 }: {
   thread: ThreadListItem;
   isActive: boolean;
@@ -115,6 +120,7 @@ function ThreadItem({
   onDelete: () => void;
   onRename: (title: string) => void;
   onRegenerateTitle: () => void;
+  onPrefetch?: () => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -181,6 +187,8 @@ function ThreadItem({
         role="button"
         tabIndex={0}
         onClick={onSelect}
+        onMouseEnter={onPrefetch}
+        onFocus={onPrefetch}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -188,9 +196,9 @@ function ThreadItem({
           }
         }}
         className={cn(
-          'group relative flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
+          'group relative flex w-full min-w-0 flex-col gap-0.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors focus-visible:z-10 hover:z-10',
           isActive
-            ? 'bg-accent text-accent-foreground'
+            ? 'z-10 bg-accent text-accent-foreground'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         )}
       >
@@ -208,7 +216,7 @@ function ThreadItem({
                   'ml-1 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground',
                   isActive
                     ? 'opacity-100'
-                    : 'opacity-0 group-hover:opacity-100',
+                    : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
                 )}
               >
                 <Ellipsis className="size-3.5" />
@@ -247,7 +255,7 @@ function ThreadItem({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-[10px] text-muted-foreground" suppressHydrationWarning>
           {formatRelativeDate(thread.createdAt)}
         </span>
       </div>
@@ -281,6 +289,7 @@ export function ThreadSidebar({
   onDeleteThread,
   onRenameThread,
   onRegenerateTitle,
+  onPrefetchThread,
 }: ThreadSidebarProps) {
   return (
     <>
@@ -319,6 +328,7 @@ export function ThreadSidebar({
                 onDeleteThread={onDeleteThread}
                 onRenameThread={onRenameThread}
                 onRegenerateTitle={onRegenerateTitle}
+                onPrefetchThread={onPrefetchThread}
               />
             </div>
           </div>
@@ -353,6 +363,7 @@ export function ThreadSidebar({
         onDeleteThread={onDeleteThread}
         onRenameThread={onRenameThread}
         onRegenerateTitle={onRegenerateTitle}
+        onPrefetchThread={onPrefetchThread}
       />
     </>
   );
@@ -366,6 +377,7 @@ function MobileThreadSheet({
   onDeleteThread,
   onRenameThread,
   onRegenerateTitle,
+  onPrefetchThread,
 }: Omit<ThreadSidebarProps, 'isOpen' | 'onToggle'>) {
   const [open, setOpen] = useState(false);
 
@@ -416,6 +428,7 @@ function MobileThreadSheet({
             onDeleteThread={onDeleteThread}
             onRenameThread={onRenameThread}
             onRegenerateTitle={onRegenerateTitle}
+            onPrefetchThread={onPrefetchThread}
           />
         </div>
       </SheetContent>

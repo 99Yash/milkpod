@@ -7,14 +7,12 @@ import { AgentTab } from '~/components/agent/agent-tab';
 import type { Asset, Collection } from '@milkpod/api/types';
 
 interface DashboardContentProps {
-  initialTab: 'home' | 'library' | 'agent';
   initialAssets?: Asset[];
   initialCollections?: Collection[];
   home: ReactNode;
 }
 
 export function DashboardContent({
-  initialTab,
   initialAssets,
   initialCollections,
   home,
@@ -23,7 +21,6 @@ export function DashboardContent({
 
   return (
     <DashboardTabsClient
-      initialTab={initialTab}
       home={home}
       library={
         <LibraryTab

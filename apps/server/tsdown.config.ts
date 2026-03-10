@@ -6,4 +6,5 @@ export default defineConfig({
 	outDir: "./dist",
 	clean: true,
 	noExternal: [/@milkpod\/.*/],
+	external: [/@aws-sdk\/.*/],
 });

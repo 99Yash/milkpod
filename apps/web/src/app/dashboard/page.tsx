@@ -137,11 +137,6 @@ export default async function DashboardPage({
 
   assertAuthenticated(session);
 
-  const [assets, collections] = await Promise.all([
-    getAssets(session.user.id),
-    getCollections(session.user.id),
-  ]);
-
   const tabParam = resolvedSearchParams?.tab;
   const initialTab =
     tabParam === 'library'
@@ -149,9 +144,19 @@ export default async function DashboardPage({
       : tabParam === 'agent' || resolvedSearchParams?.session
         ? 'agent'
         : 'home';
+
+  let assets: Awaited<ReturnType<typeof getAssets>> | undefined;
+  let collections: Awaited<ReturnType<typeof getCollections>> | undefined;
+
+  if (initialTab !== 'home') {
+    [assets, collections] = await Promise.all([
+      getAssets(session.user.id),
+      getCollections(session.user.id),
+    ]);
+  }
+
   return (
     <DashboardContent
-      initialTab={initialTab}
       initialAssets={assets}
       initialCollections={collections}
       home={<DashboardHome />}

@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { Clock, Link2Off, Mic, User } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { fetchSharedResource } from '~/lib/api-fetchers';
 import type { SharedData } from '~/lib/api-fetchers';
+import { queryKeys } from '~/lib/query-keys';
 import { Badge } from '~/components/ui/badge';
 import { Spinner } from '~/components/ui/spinner';
 import {
@@ -31,36 +32,11 @@ function formatDuration(seconds: number): string {
 }
 
 export function SharedView({ token }: SharedViewProps) {
-  const [data, setData] = useState<SharedData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadSharedResource() {
-      setIsLoading(true);
-      try {
-        const result = await fetchSharedResource(token);
-        if (cancelled) return;
-
-        if (!result) {
-          setNotFound(true);
-          return;
-        }
-        setData(result);
-      } catch {
-        if (!cancelled) setNotFound(true);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
-
-    loadSharedResource();
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
+  const { data, isLoading } = useQuery({
+    queryKey: queryKeys.sharedResource(token),
+    queryFn: () => fetchSharedResource(token),
+    retry: false,
+  });
 
   if (isLoading) {
     return (
@@ -70,7 +46,7 @@ export function SharedView({ token }: SharedViewProps) {
     );
   }
 
-  if (notFound || !data) {
+  if (!data) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-center">

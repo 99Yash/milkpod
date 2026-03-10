@@ -1,13 +1,15 @@
 'use client';
 
 import { useRef, useEffect, useState } from 'react';
+import { BrainCircuit } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
 import { ScrollArea } from '~/components/ui/scroll-area';
-import { Spinner } from '~/components/ui/spinner';
 import { toast } from 'sonner';
 import { useSharedChat } from '~/hooks/use-shared-chat';
+import { AiAvatar } from '~/components/chat/ai-avatar';
 import { ChatMessage } from '~/components/chat/message';
+import { ShimmerText } from '~/components/chat/shimmer-text';
 
 interface SharedChatPanelProps {
   token: string;
@@ -15,7 +17,7 @@ interface SharedChatPanelProps {
 
 export function SharedChatPanel({ token }: SharedChatPanelProps) {
   const [input, setInput] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   const { messages, sendMessage, status, error, rateLimitRemaining } =
     useSharedChat({ token });
@@ -33,10 +35,8 @@ export function SharedChatPanel({ token }: SharedChatPanelProps) {
   }, [error]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+    bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, [messages, status]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +55,7 @@ export function SharedChatPanel({ token }: SharedChatPanelProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <ScrollArea ref={scrollRef} className="flex-1 px-4">
+      <ScrollArea className="flex-1 px-4">
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center py-12 text-center text-sm text-muted-foreground">
             Ask a question about this content.
@@ -66,11 +66,32 @@ export function SharedChatPanel({ token }: SharedChatPanelProps) {
               <ChatMessage key={message.id} message={message} />
             ))}
             {isLoading && messages.at(-1)?.role !== 'assistant' && (
-              <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-                <Spinner className="size-4" />
-                <span>Thinking...</span>
+              <div className="flex gap-3 py-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
+                <AiAvatar />
+                <div className="flex items-center gap-2 pt-1">
+                  <BrainCircuit className="size-4 shrink-0 text-muted-foreground/45 animate-pulse" />
+                  <ShimmerText
+                    active
+                    className="text-[13px] font-medium text-muted-foreground/65"
+                  >
+                    Thinking
+                  </ShimmerText>
+                  <span className="inline-flex items-center gap-1" aria-hidden>
+                    {[0, 1, 2].map((idx) => (
+                      <span
+                        key={idx}
+                        className="size-1 rounded-full bg-muted-foreground/40 animate-pulse motion-reduce:animate-none"
+                        style={{
+                          animationDelay: `${idx * 160}ms`,
+                          animationDuration: '1s',
+                        }}
+                      />
+                    ))}
+                  </span>
+                </div>
               </div>
             )}
+            <div ref={bottomRef} />
           </div>
         )}
       </ScrollArea>

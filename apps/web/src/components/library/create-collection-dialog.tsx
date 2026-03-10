@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from '~/components/ui/dialog';
 import { api } from '~/lib/api';
+import { handleUpgradeError } from '~/lib/upgrade-prompt';
 import { Plus } from 'lucide-react';
 
 interface CreateCollectionDialogProps {
@@ -34,10 +35,14 @@ export function CreateCollectionDialog({
     if (!trimmed) return;
     setSaving(true);
     try {
-      await api.api.collections.post({
+      const { error } = await api.api.collections.post({
         name: trimmed,
         description: description.trim() || undefined,
       });
+      if (error) {
+        if (handleUpgradeError(error)) return;
+        return;
+      }
       setName('');
       setDescription('');
       setOpen(false);

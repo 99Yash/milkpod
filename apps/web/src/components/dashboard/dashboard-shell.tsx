@@ -16,8 +16,6 @@ import {
   User,
   Video,
 } from 'lucide-react';
-import type { Route } from 'next';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   createContext,
@@ -61,23 +59,18 @@ import { siteConfig } from '~/lib/site';
 import { api } from '~/lib/api';
 import { cn, getErrorMessage } from '~/lib/utils';
 
+export type DashboardTab = 'home' | 'library' | 'agent';
+
 type NavItem = {
-  id: string;
+  id: DashboardTab;
   label: string;
   icon: LucideIcon;
-  href?: Route;
-  disabled?: boolean;
 };
 
 const navItems: NavItem[] = [
-  { id: 'home', label: 'Home', icon: Home, href: route('/dashboard') },
-  { id: 'library', label: 'Library', icon: Library, disabled: true },
-  {
-    id: 'agent',
-    label: 'Agent',
-    icon: Sparkles,
-    disabled: true,
-  },
+  { id: 'home', label: 'Home', icon: Home },
+  { id: 'library', label: 'Library', icon: Library },
+  { id: 'agent', label: 'Agent', icon: Sparkles },
 ];
 
 type UserStat = {
@@ -87,19 +80,16 @@ type UserStat = {
   icon: LucideIcon;
 };
 
-const userStats: UserStat[] = [
-  { id: 'videos', label: 'Videos', value: '0', icon: Video },
-  { id: 'minutes', label: 'Minutes', value: '0', icon: Sparkles },
-];
-
 type DashboardShellProps = {
-  activeNav?: string;
+  initialTab?: DashboardTab;
   children: ReactNode;
 };
 
 type DashboardShellContextValue = {
   collapsed: boolean;
   toggleCollapsed: () => void;
+  activeTab: DashboardTab;
+  handleTabChange: (tab: DashboardTab) => void;
 };
 
 const DashboardShellContext = createContext<DashboardShellContextValue | null>(
@@ -115,31 +105,62 @@ export function useDashboardShell() {
 }
 
 export function DashboardShell({
-  activeNav = 'home',
+  initialTab: initialTabProp,
   children,
 }: DashboardShellProps) {
   const searchParams = useSearchParams();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
   const tabParam = searchParams.get('tab');
   const sessionParam = searchParams.get('session');
-  const resolvedActiveNav =
-    tabParam === 'agent' || sessionParam ? 'agent' : activeNav;
+  const derivedTab: DashboardTab =
+    initialTabProp ??
+    (tabParam === 'library'
+      ? 'library'
+      : tabParam === 'agent' || sessionParam
+        ? 'agent'
+        : 'home');
+
+  const [activeTab, setActiveTab] = useState<DashboardTab>(derivedTab);
+
   const toggleCollapsed = useCallback(() => {
     setCollapsed((prev) => !prev);
   }, []);
+
+  const handleTabChange = useCallback((nextTab: DashboardTab) => {
+    setActiveTab(nextTab);
+    setMobileOpen(false);
+
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (nextTab === 'library') {
+      url.searchParams.set('tab', 'library');
+      url.searchParams.delete('session');
+    } else if (nextTab === 'agent') {
+      url.searchParams.set('tab', 'agent');
+    } else {
+      url.searchParams.delete('tab');
+      url.searchParams.delete('session');
+    }
+    url.hash = '';
+    window.history.replaceState(null, '', url.toString());
+  }, []);
+
   const contextValue = useMemo(
     () => ({
       collapsed,
       toggleCollapsed,
+      activeTab,
+      handleTabChange,
     }),
-    [collapsed, toggleCollapsed],
+    [collapsed, toggleCollapsed, activeTab, handleTabChange],
   );
 
   return (
     <DashboardShellContext.Provider value={contextValue}>
       <div
-        className="h-svh bg-background overflow-hidden sm:overflow-x-hidden sm:overflow-y-auto"
+        className="h-full bg-background overflow-hidden sm:overflow-x-hidden sm:overflow-y-auto sm:[scrollbar-gutter:stable]"
         data-dashboard-root
       >
         <div className="mx-auto box-border flex h-full w-full max-w-7xl gap-8 px-0 py-0 sm:px-4 lg:px-6 lg:py-6 sm:h-auto sm:min-h-full">
@@ -151,7 +172,7 @@ export function DashboardShell({
           >
             <SidebarBrand collapsed={collapsed} />
 
-            <SidebarSections collapsed={collapsed} activeNav={resolvedActiveNav} />
+            <SidebarSections collapsed={collapsed} activeNav={activeTab} />
           </aside>
 
           <main className="flex-1 min-w-0 min-h-0">
@@ -193,7 +214,7 @@ export function DashboardShell({
               <SidebarUserMenu collapsed={false} />
             </div>
             <div className="mt-6 flex h-full flex-col">
-              <SidebarSections collapsed={false} activeNav={resolvedActiveNav} />
+              <SidebarSections collapsed={false} activeNav={activeTab} />
             </div>
           </SheetContent>
         </Sheet>
@@ -271,18 +292,31 @@ function SidebarSections({
   );
 }
 
+const PLAN_LABELS: Record<string, string> = {
+  free: 'Free',
+  pro: 'Pro',
+  team: 'Team',
+};
+
 function SidebarPlanUsage() {
+  const router = useRouter();
   const [usage, setUsage] = useState<{
     remaining: number;
     budget: number;
     isAdmin: boolean;
   } | null>(null);
+  const [plan, setPlan] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     api.api.usage.remaining.get().then(({ data }) => {
       if (!cancelled && data) {
         setUsage(data);
+      }
+    });
+    api.api.billing.summary.get().then(({ data }) => {
+      if (!cancelled && data && 'plan' in data) {
+        setPlan((data as { plan: string }).plan);
       }
     });
     return () => {
@@ -314,12 +348,9 @@ function SidebarPlanUsage() {
           </div>
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Words today</span>
-            <Badge
-              variant="outline"
-              className="border-border/60 text-[10px] uppercase tracking-wide text-muted-foreground"
-            >
-              Unlimited
-            </Badge>
+            <span className="text-2xl font-semibold leading-none text-muted-foreground">
+              ∞
+            </span>
           </div>
         </DashboardPanelContent>
       </DashboardPanel>
@@ -329,13 +360,16 @@ function SidebarPlanUsage() {
   const used = usage.budget - usage.remaining;
   const pct = Math.min(100, (used / usage.budget) * 100);
   const isHigh = pct > 80;
+  const isPaid = plan === 'pro' || plan === 'team';
 
   return (
     <DashboardPanel className="gap-3 py-4">
       <DashboardPanelContent className="space-y-2 px-4 py-0">
-        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Gauge className="size-3.5" />
-          Plan usage
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <Gauge className="size-3.5" />
+            {plan ? `${PLAN_LABELS[plan] ?? plan} plan` : 'Plan usage'}
+          </div>
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -354,9 +388,25 @@ function SidebarPlanUsage() {
             />
           </div>
         </div>
-        <Button variant="outline" size="sm" className="w-full">
-          Upgrade
-        </Button>
+        {isPaid ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => router.push(route('/dashboard/billing'))}
+          >
+            Manage plan
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => router.push(route('/pricing'))}
+          >
+            Upgrade
+          </Button>
+        )}
       </DashboardPanelContent>
     </DashboardPanel>
   );
@@ -367,6 +417,33 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const { data: session } = authClient.useSession();
   const user = session?.user;
+  const [planLabel, setPlanLabel] = useState('Free');
+
+  const [userStats, setUserStats] = useState<UserStat[]>([
+    { id: 'videos', label: 'Videos', value: '–', icon: Video },
+    { id: 'minutes', label: 'Minutes', value: '–', icon: Sparkles },
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.api.usage.stats.get().then(({ data }) => {
+      if (!cancelled && data) {
+        setUserStats([
+          { id: 'videos', label: 'Videos', value: String(data.videoCount), icon: Video },
+          { id: 'minutes', label: 'Minutes', value: String(data.totalMinutes), icon: Sparkles },
+        ]);
+      }
+    });
+    api.api.billing.summary.get().then(({ data }) => {
+      if (!cancelled && data && 'plan' in data) {
+        const p = (data as { plan: string }).plan;
+        setPlanLabel(PLAN_LABELS[p] ?? 'Free');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const displayName =
     user?.name?.trim() || user?.email?.split('@')[0] || 'New member';
   const emailLabel = user?.email ?? 'Connect your email';
@@ -446,7 +523,7 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
                   variant="outline"
                   className="border-border/60 text-[10px] uppercase tracking-wide text-muted-foreground"
                 >
-                  Starter
+                  {planLabel}
                 </Badge>
               </div>
               <p className="truncate text-xs text-muted-foreground">
@@ -484,7 +561,7 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
             <Settings className="size-4" />
             Settings
           </DropdownMenuItem>
-          <DropdownMenuItem disabled>
+          <DropdownMenuItem onSelect={() => router.push(route('/dashboard/billing'))}>
             <CreditCard className="size-4" />
             Billing
           </DropdownMenuItem>
@@ -562,42 +639,23 @@ function NavItemLink({
   isActive: boolean;
   collapsed: boolean;
 }) {
-  const baseClassName = cn(
-    'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-    collapsed && 'justify-center px-2',
-    isActive
-      ? 'bg-muted text-foreground'
-      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-    item.disabled &&
-      'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground',
-  );
-
-  const content = (
-    <>
-      <item.icon className="size-4" />
-      <span className={cn(collapsed && 'sr-only')}>{item.label}</span>
-    </>
-  );
-
-  if (!item.href || item.disabled) {
-    return (
-      <div
-        className={baseClassName}
-        aria-disabled="true"
-        title={collapsed ? item.label : undefined}
-      >
-        {content}
-      </div>
-    );
-  }
+  const { handleTabChange } = useDashboardShell();
 
   return (
-    <Link
-      className={baseClassName}
-      href={item.href}
+    <button
+      type="button"
+      onClick={() => handleTabChange(item.id)}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+        collapsed && 'justify-center px-2',
+        isActive
+          ? 'bg-muted text-foreground'
+          : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+      )}
       title={collapsed ? item.label : undefined}
     >
-      {content}
-    </Link>
+      <item.icon className="size-4" />
+      <span className={cn(collapsed && 'sr-only')}>{item.label}</span>
+    </button>
   );
 }

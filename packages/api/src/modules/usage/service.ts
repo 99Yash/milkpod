@@ -1,8 +1,9 @@
 import { db } from '@milkpod/db';
-import { dailyUsage } from '@milkpod/db/schemas';
-import { and, eq, sql } from 'drizzle-orm';
+import { dailyUsage, mediaAssets } from '@milkpod/db/schemas';
+import { and, eq, sql, count, sum } from 'drizzle-orm';
 import { DAILY_WORD_BUDGET } from '@milkpod/ai';
 import { serverEnv } from '@milkpod/env/server';
+import { resolveUserPlan, getEntitlementsForPlan } from '../quota/plans';
 
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
@@ -15,16 +16,25 @@ export function isAdminEmail(email: string): boolean {
   return list.includes(email.toLowerCase());
 }
 
+/**
+ * Resolve the daily word budget for a user based on their billing plan.
+ */
+export async function resolveWordBudget(userId: string): Promise<number> {
+  const plan = await resolveUserPlan(userId);
+  return getEntitlementsForPlan(plan).aiWordsDaily;
+}
+
 export abstract class UsageService {
-  static async getRemainingWords(userId: string): Promise<number> {
+  static async getRemainingWords(userId: string, dailyBudget?: number): Promise<number> {
     const today = todayUTC();
+    const budget = dailyBudget ?? DAILY_WORD_BUDGET;
     const [row] = await db()
       .select({ wordsUsed: dailyUsage.wordsUsed })
       .from(dailyUsage)
       .where(and(eq(dailyUsage.userId, userId), eq(dailyUsage.usageDate, today)));
 
     const used = row?.wordsUsed ?? 0;
-    return Math.max(0, DAILY_WORD_BUDGET - used);
+    return Math.max(0, budget - used);
   }
 
   /**
@@ -34,8 +44,9 @@ export abstract class UsageService {
    * Returns the number of words actually reserved (may be less than requested
    * if near the cap). Returns 0 when the budget is exhausted.
    */
-  static async reserveWords(userId: string, wordCount: number): Promise<number> {
+  static async reserveWords(userId: string, wordCount: number, dailyBudget?: number): Promise<number> {
     const today = todayUTC();
+    const budget = dailyBudget ?? DAILY_WORD_BUDGET;
     const toReserve = Math.max(0, wordCount);
     if (toReserve === 0) return 0;
 
@@ -50,7 +61,7 @@ export abstract class UsageService {
         .where(and(eq(dailyUsage.userId, userId), eq(dailyUsage.usageDate, today)));
 
       const currentUsed = row?.wordsUsed ?? 0;
-      const available = Math.max(0, DAILY_WORD_BUDGET - currentUsed);
+      const available = Math.max(0, budget - currentUsed);
       const toAdd = Math.min(toReserve, available);
 
       if (toAdd <= 0) return 0;
@@ -70,6 +81,21 @@ export abstract class UsageService {
 
       return toAdd;
     });
+  }
+
+  static async getUserStats(userId: string): Promise<{ videoCount: number; totalMinutes: number }> {
+    const [row] = await db()
+      .select({
+        videoCount: count(mediaAssets.id),
+        totalSeconds: sum(mediaAssets.duration),
+      })
+      .from(mediaAssets)
+      .where(eq(mediaAssets.userId, userId));
+
+    return {
+      videoCount: row?.videoCount ?? 0,
+      totalMinutes: Math.round((Number(row?.totalSeconds) || 0) / 60),
+    };
   }
 
   /**

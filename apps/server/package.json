@@ -6,14 +6,14 @@
     "build": "tsdown",
     "check-types": "tsc -b",
     "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js"
+    "dev": "tsx watch --env-file=.env src/index.ts",
+    "start": "node --env-file=.env dist/index.js",
+    "deploy": "pnpm --filter @milkpod/db db:migrate"
   },
   "dependencies": {
     "elysia": "catalog:",
     "@elysiajs/cors": "catalog:",
     "@elysiajs/node": "catalog:",
-    "dotenv": "catalog:",
     "@milkpod/api": "workspace:*",
     "@milkpod/env": "workspace:*"
   },

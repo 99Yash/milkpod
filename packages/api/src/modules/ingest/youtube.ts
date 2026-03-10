@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export type YouTubeMetadata = {
   id: string;
   title: string;
@@ -17,6 +19,42 @@ type CaptionTrack = {
   languageCode: string;
   kind?: string;
 };
+
+const oembedResponseSchema = z.object({
+  title: z.string().optional(),
+  author_name: z.string().optional(),
+  thumbnail_url: z.string().optional(),
+});
+
+const captionTrackSchema = z.object({
+  baseUrl: z.string(),
+  languageCode: z.string(),
+  kind: z.string().optional(),
+});
+
+const adaptiveFormatSchema = z.object({
+  itag: z.number(),
+  url: z.string().optional(),
+  mimeType: z.string(),
+  bitrate: z.number().optional(),
+});
+
+const innertubePlayerResponseSchema = z.object({
+  captions: z
+    .object({
+      playerCaptionsTracklistRenderer: z
+        .object({
+          captionTracks: z.array(captionTrackSchema).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  streamingData: z
+    .object({
+      adaptiveFormats: z.array(adaptiveFormatSchema).optional(),
+    })
+    .optional(),
+});
 
 const VIDEO_ID_RE =
   /(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/;
@@ -48,11 +86,16 @@ export async function resolveYouTubeMetadata(
     throw new Error(`YouTube oEmbed failed (${response.status})`);
   }
 
-  const data = (await response.json()) as {
-    title?: string;
-    author_name?: string;
-    thumbnail_url?: string;
-  };
+  const payload = await response.json().catch(() => {
+    throw new Error('YouTube oEmbed returned a non-JSON response');
+  });
+  const parsed = oembedResponseSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new Error(
+      `YouTube oEmbed returned an invalid payload: ${parsed.error.message}`
+    );
+  }
+  const data = parsed.data;
 
   return {
     id,
@@ -64,11 +107,15 @@ export async function resolveYouTubeMetadata(
   };
 }
 
+type InnertubePlayerResponse = z.infer<typeof innertubePlayerResponseSchema>;
+
 /**
- * Fetches caption tracks for a YouTube video via the Innertube player API
- * using the Android client (avoids bot detection that blocks the WEB client).
+ * Fetches the Innertube player response for a YouTube video using the
+ * Android client (avoids bot detection that blocks the WEB client).
  */
-async function fetchCaptionTracks(videoId: string): Promise<CaptionTrack[]> {
+async function fetchInnertubePlayer(
+  videoId: string
+): Promise<InnertubePlayerResponse> {
   const res = await fetch(
     `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}`,
     {
@@ -96,11 +143,21 @@ async function fetchCaptionTracks(videoId: string): Promise<CaptionTrack[]> {
     throw new Error(`Innertube player API failed (${res.status})`);
   }
 
-  const data = (await res.json()) as {
-    captions?: {
-      playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[] };
-    };
-  };
+  const payload = await res.json().catch(() => {
+    throw new Error('Innertube player API returned a non-JSON response');
+  });
+  const parsed = innertubePlayerResponseSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new Error(
+      `Innertube player API returned an invalid payload: ${parsed.error.message}`
+    );
+  }
+
+  return parsed.data;
+}
+
+async function fetchCaptionTracks(videoId: string): Promise<CaptionTrack[]> {
+  const data = await fetchInnertubePlayer(videoId);
 
   const tracks =
     data.captions?.playerCaptionsTracklistRenderer?.captionTracks;
@@ -109,6 +166,30 @@ async function fetchCaptionTracks(videoId: string): Promise<CaptionTrack[]> {
   }
 
   return tracks;
+}
+
+/**
+ * Resolves a direct audio stream URL for a YouTube video from the
+ * Innertube player response's streamingData.adaptiveFormats.
+ */
+export async function resolveYouTubeAudioUrl(url: string): Promise<string> {
+  const videoId = extractVideoId(url);
+  const data = await fetchInnertubePlayer(videoId);
+
+  const formats = data.streamingData?.adaptiveFormats;
+  if (!formats || formats.length === 0) {
+    throw new Error('No streaming formats available for this video');
+  }
+
+  const audioFormats = formats
+    .filter((f) => f.mimeType.startsWith('audio/') && f.url)
+    .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0));
+
+  if (audioFormats.length === 0) {
+    throw new Error('No audio stream available for this video');
+  }
+
+  return audioFormats[0]!.url!;
 }
 
 /**

@@ -1,14 +1,19 @@
 import type { ReactNode } from 'react';
-import { DashboardShell } from '~/components/dashboard/dashboard-shell';
+import {
+  DashboardShell,
+  type DashboardTab,
+} from '~/components/dashboard/dashboard-shell';
 
 type DashboardLayoutProps = {
+  initialTab?: DashboardTab;
   children: ReactNode;
-  activeNav?: string;
 };
 
 export function DashboardLayout({
+  initialTab,
   children,
-  activeNav = 'home',
 }: DashboardLayoutProps) {
-  return <DashboardShell activeNav={activeNav}>{children}</DashboardShell>;
+  return (
+    <DashboardShell initialTab={initialTab}>{children}</DashboardShell>
+  );
 }

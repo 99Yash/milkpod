@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchCollections } from '~/lib/api-fetchers';
+import { queryKeys } from '~/lib/query-keys';
 import { CollectionCard } from './collection-card';
 import { CreateCollectionDialog } from './create-collection-dialog';
 import { Spinner } from '~/components/ui/spinner';
@@ -13,22 +15,27 @@ interface CollectionListProps {
 }
 
 export function CollectionList({ refreshKey, initialCollections }: CollectionListProps) {
-  const [collections, setCollections] = useState<Collection[]>(initialCollections ?? []);
-  const [isLoading, setIsLoading] = useState(!initialCollections);
+  const queryClient = useQueryClient();
 
-  const loadCollections = useCallback(async () => {
-    try {
-      setCollections(await fetchCollections());
-    } catch {
-      // silent
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const { data: collections = [], isLoading, refetch } = useQuery({
+    queryKey: queryKeys.collections.list(),
+    queryFn: fetchCollections,
+    initialData: initialCollections,
+  });
 
+  const mountedRef = useRef(false);
   useEffect(() => {
-    loadCollections();
-  }, [loadCollections, refreshKey]);
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    refetch();
+  }, [refreshKey, refetch]);
+
+  const invalidate = useCallback(
+    () => { queryClient.invalidateQueries({ queryKey: queryKeys.collections.all }); },
+    [queryClient]
+  );
 
   if (isLoading) {
     return (
@@ -44,7 +51,7 @@ export function CollectionList({ refreshKey, initialCollections }: CollectionLis
         <p className="text-xs text-muted-foreground">
           {collections.length} {collections.length === 1 ? 'collection' : 'collections'}
         </p>
-        <CreateCollectionDialog onCreated={loadCollections} />
+        <CreateCollectionDialog onCreated={invalidate} />
       </div>
 
       {collections.length === 0 ? (
@@ -57,8 +64,8 @@ export function CollectionList({ refreshKey, initialCollections }: CollectionLis
             <CollectionCard
               key={collection.id}
               collection={collection}
-              onDeleted={loadCollections}
-              onUpdated={loadCollections}
+              onDeleted={invalidate}
+              onUpdated={invalidate}
             />
           ))}
         </div>

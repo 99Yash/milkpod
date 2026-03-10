@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { MessageSquareText, SendHorizonal, Sparkles } from 'lucide-react';
+import { BrainCircuit, MessageSquareText, SendHorizonal, Sparkles } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
 import { ScrollArea } from '~/components/ui/scroll-area';
@@ -9,14 +9,18 @@ import { Spinner } from '~/components/ui/spinner';
 import { toast } from 'sonner';
 import { useMilkpodChat } from '~/hooks/use-milkpod-chat';
 import { useChatSettings } from '~/hooks/use-chat-settings';
+import { AiAvatar } from './ai-avatar';
 import { ChatMessage } from './message';
 import { ModelPicker } from './model-picker';
+import { ShimmerText } from './shimmer-text';
 import { WordLimitPicker } from './word-limit-picker';
 import { DailyQuota } from './daily-quota';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 import {
   fetchChatMessages,
   fetchLatestThreadForAsset,
+  getCachedChatMessages,
+  primeChatMessagesCache,
 } from '~/lib/api-fetchers';
 
 // ---------------------------------------------------------------------------
@@ -25,39 +29,77 @@ import {
 // passing `initialMessages` directly.
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve messages for a thread with stale-while-revalidate semantics:
+ * show cached data immediately, then refresh from the server in the background.
+ */
+function resolveThreadMessages(
+  threadId: string,
+  cancelled: () => boolean,
+  onMessages: (msgs: MilkpodMessage[]) => void,
+  onLoaded: () => void,
+): void {
+  const cached = getCachedChatMessages(threadId);
+
+  if (cached) {
+    onMessages(cached.messages);
+    onLoaded();
+    // Revalidate in background
+    fetchChatMessages(threadId)
+      .then((result) => {
+        if (!cancelled() && result) onMessages(result.messages);
+      })
+      .catch(() => {});
+    return;
+  }
+
+  fetchChatMessages(threadId, { preferCache: true })
+    .then((result) => {
+      if (cancelled()) return;
+      if (result) {
+        onMessages(result.messages);
+      } else {
+        toast.error('Failed to load chat history');
+        onMessages([]);
+      }
+    })
+    .catch(() => {
+      if (!cancelled()) {
+        toast.error('Failed to load chat history');
+        onMessages([]);
+      }
+    })
+    .finally(() => {
+      if (!cancelled()) onLoaded();
+    });
+}
+
 function useRestoredThread(
   assetId?: string,
   explicitThreadId?: string,
 ) {
+  const explicitCached = explicitThreadId
+    ? getCachedChatMessages(explicitThreadId)
+    : undefined;
   const [threadId, setThreadId] = useState<string | undefined>(explicitThreadId);
-  const [messages, setMessages] = useState<MilkpodMessage[] | undefined>();
-  const [isLoading, setIsLoading] = useState(() => !!explicitThreadId || !!assetId);
+  const [messages, setMessages] = useState<MilkpodMessage[] | undefined>(
+    explicitCached?.messages,
+  );
+  const [isLoading, setIsLoading] = useState(
+    () => (explicitThreadId ? !explicitCached : !!assetId),
+  );
 
   useEffect(() => {
     let cancelled = false;
+    const isCancelled = () => cancelled;
+    const onLoaded = () => { if (!cancelled) setIsLoading(false); };
 
     if (explicitThreadId) {
       setThreadId(explicitThreadId);
       setIsLoading(true);
-      fetchChatMessages(explicitThreadId)
-        .then((result) => {
-          if (cancelled) return;
-          if (result) {
-            setMessages(result.messages);
-          } else {
-            toast.error('Failed to load chat history');
-            setMessages([]);
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            toast.error('Failed to load chat history');
-            setMessages([]);
-          }
-        })
-        .finally(() => {
-          if (!cancelled) setIsLoading(false);
-        });
+      resolveThreadMessages(explicitThreadId, isCancelled, (msgs) => {
+        if (!cancelled) setMessages(msgs);
+      }, onLoaded);
       return () => { cancelled = true; };
     }
 
@@ -65,23 +107,20 @@ function useRestoredThread(
 
     setIsLoading(true);
     fetchLatestThreadForAsset(assetId)
-      .then(async (thread) => {
-        if (cancelled || !thread) return;
-        const result = await fetchChatMessages(thread.id);
+      .then((thread) => {
         if (cancelled) return;
-        if (result) {
-          setMessages(result.messages);
-        } else {
-          toast.error('Failed to load chat history');
-          setMessages([]);
+        if (!thread) {
+          onLoaded();
+          return;
         }
         setThreadId(thread.id);
+        resolveThreadMessages(thread.id, isCancelled, (msgs) => {
+          if (!cancelled) setMessages(msgs);
+        }, onLoaded);
       })
       .catch(() => {
         if (!cancelled) toast.error('Failed to restore chat history');
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        onLoaded();
       });
     return () => { cancelled = true; };
   }, [assetId, explicitThreadId]);
@@ -188,7 +227,7 @@ function ChatPanelContent({
   onThreadCreated?: (threadId: string) => void;
 }) {
   const [input, setInput] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const { modelId, setModelId, wordLimit, setWordLimit } = useChatSettings();
 
   const { messages, sendMessage, status, error, threadId: chatThreadId, wordsRemaining } = useMilkpodChat({
@@ -218,10 +257,13 @@ function ChatPanelContent({
   }, [error]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+    if (!chatThreadId) return;
+    primeChatMessagesCache(chatThreadId, messages);
+  }, [chatThreadId, messages]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, [messages, status]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -246,18 +288,18 @@ function ChatPanelContent({
 
   return (
     <div className="flex h-full flex-col">
-      <ScrollArea ref={scrollRef} className="min-h-0 flex-1 px-4">
+      <ScrollArea className="min-h-0 flex-1 px-4">
         <div className="mx-auto max-w-3xl">
           {messages.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-4 py-12 text-center">
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-muted">
+            <div className="flex h-full flex-col items-center justify-center gap-5 py-12 text-center">
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-b from-muted to-muted/50 shadow-sm ring-1 ring-border/40">
                 <MessageSquareText className="size-6 text-muted-foreground" />
               </div>
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground">
+              <div className="space-y-1.5">
+                <p className="text-base font-semibold text-foreground">
                   Ask about this video
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Get answers with timestamps from the transcript.
                 </p>
               </div>
@@ -267,7 +309,7 @@ function ChatPanelContent({
                     key={suggestion}
                     type="button"
                     onClick={() => sendMessage({ text: suggestion })}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-background px-3.5 py-2 text-xs font-medium text-muted-foreground shadow-sm transition-all hover:border-border hover:bg-muted hover:text-foreground hover:shadow-md"
                   >
                     <Sparkles className="size-3" />
                     {suggestion}
@@ -276,7 +318,7 @@ function ChatPanelContent({
               </div>
             </div>
           ) : (
-            <div className="space-y-1 py-4">
+            <div className="space-y-2 py-4">
               {messages.map((message, i) => (
                 <ChatMessage
                   key={message.id}
@@ -289,47 +331,70 @@ function ChatPanelContent({
                 />
               ))}
               {isLoading && messages.at(-1)?.role !== 'assistant' && (
-                <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-                  <Spinner className="size-4" />
-                  <span>Thinking...</span>
+                <div className="flex gap-3 py-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
+                  <AiAvatar />
+                  <div className="flex items-center gap-2 pt-1">
+                    <BrainCircuit className="size-4 shrink-0 text-muted-foreground/45 animate-pulse" />
+                    <ShimmerText
+                      active
+                      className="text-[13px] font-medium text-muted-foreground/65"
+                    >
+                      Thinking
+                    </ShimmerText>
+                    <span className="inline-flex items-center gap-1" aria-hidden>
+                      {[0, 1, 2].map((idx) => (
+                        <span
+                          key={idx}
+                          className="size-1 rounded-full bg-muted-foreground/40 animate-pulse motion-reduce:animate-none"
+                          style={{
+                            animationDelay: `${idx * 160}ms`,
+                            animationDuration: '1s',
+                          }}
+                        />
+                      ))}
+                    </span>
+                  </div>
                 </div>
               )}
+              <div ref={bottomRef} />
             </div>
           )}
         </div>
       </ScrollArea>
 
-      <form
-        onSubmit={handleSubmit}
-        className="shrink-0 border-t border-border/40 bg-background/70 p-3"
-      >
-        <div className="relative mx-auto max-w-3xl">
+      <div className="shrink-0 px-3 pb-3 pt-2">
+        <form
+          onSubmit={handleSubmit}
+          className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-border/60 bg-muted/30 shadow-sm transition-shadow focus-within:border-border focus-within:shadow-md"
+        >
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about the video..."
-            className="min-h-[48px] max-h-[140px] resize-none border-border/40 bg-background/70 pr-12"
+            className="min-h-[44px] max-h-[140px] resize-none border-0 bg-transparent px-4 pt-3.5 pb-2 text-[15px] shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 md:text-[15px]"
             rows={1}
             disabled={isLoading}
           />
-          <Button
-            type="submit"
-            size="icon-sm"
-            className="absolute bottom-1.5 right-1.5 z-10 rounded-full"
-            disabled={isLoading || !input.trim()}
-          >
-            <SendHorizonal className="size-4" />
-          </Button>
-        </div>
-        <div className="mx-auto mt-1.5 flex max-w-3xl items-center gap-1">
-          <ModelPicker value={modelId} onChange={setModelId} />
-          <WordLimitPicker value={wordLimit} onChange={setWordLimit} />
-          <div className="ml-auto">
-            <DailyQuota remaining={wordsRemaining} />
+          <div className="flex items-center gap-1.5 px-2.5 pb-2.5">
+            <ModelPicker value={modelId} onChange={setModelId} />
+            <WordLimitPicker value={wordLimit} onChange={setWordLimit} />
+            <div className="ml-auto flex items-center gap-2">
+              <DailyQuota remaining={wordsRemaining} />
+              <Button
+                type="submit"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Send message"
+                className="rounded-xl bg-muted-foreground/15 text-muted-foreground hover:bg-muted-foreground/25 hover:text-foreground disabled:bg-muted-foreground/8"
+                disabled={isLoading || !input.trim()}
+              >
+                <SendHorizonal className="size-4" />
+              </Button>
+            </div>
           </div>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }

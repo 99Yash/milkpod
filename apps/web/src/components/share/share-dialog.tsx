@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Check, Copy, Link2, Share2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchShareLinks, createShareLink } from '~/lib/api-fetchers';
+import { handleUpgradeError } from '~/lib/upgrade-prompt';
+import { queryKeys } from '~/lib/query-keys';
 import { api } from '~/lib/api';
 import { Button } from '~/components/ui/button';
 import { Label } from '~/components/ui/label';
@@ -76,59 +79,45 @@ export function ShareDialog({
   collectionId,
   resourceName,
 }: ShareDialogProps) {
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [canQuery, setCanQuery] = useState(false);
   const [expiry, setExpiry] = useState('none');
   const [creating, setCreating] = useState(false);
-  const [existingLinks, setExistingLinks] = useState<ShareLink[]>([]);
-  const [loadingLinks, setLoadingLinks] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
-  // Load existing share links when dialog opens
-  useEffect(() => {
-    if (!open) return;
+  const queryKey = queryKeys.shareLinks({ assetId, collectionId });
 
-    let cancelled = false;
-    async function loadLinks() {
-      setLoadingLinks(true);
-      try {
-        const links = await fetchShareLinks();
-        if (cancelled) return;
-        // Filter to only this resource's links
-        const filtered = links.filter((link) =>
-          assetId ? link.assetId === assetId : link.collectionId === collectionId
-        );
-        setExistingLinks(filtered);
-      } catch {
-        // Silently fail — non-critical
-      } finally {
-        if (!cancelled) setLoadingLinks(false);
-      }
-    }
-
-    loadLinks();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, assetId, collectionId]);
+  const { data: existingLinks = [], isLoading: loadingLinks } = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const links = await fetchShareLinks();
+      return links.filter((link) =>
+        assetId ? link.assetId === assetId : link.collectionId === collectionId
+      );
+    },
+    enabled: open,
+  });
 
   const handleCreate = async () => {
     setCreating(true);
     try {
-      const link = await createShareLink({
+      const result = await createShareLink({
         assetId: assetId ?? undefined,
         collectionId: collectionId ?? undefined,
         canQuery,
         expiresAt: getExpiryDate(expiry),
       });
-      if (!link) {
+      if ('error' in result) {
+        if (handleUpgradeError(result.error)) return;
         toast.error('Failed to create share link');
         return;
       }
-      setExistingLinks((prev) => [...prev, link]);
+      // Optimistically add to cache
+      queryClient.setQueryData<ShareLink[]>(queryKey, (prev) => [...(prev ?? []), result]);
       // Auto-copy to clipboard
-      await copyToClipboard(link.token);
+      await copyToClipboard(result.token);
       toast.success('Share link created and copied to clipboard');
       setCanQuery(false);
       setExpiry('none');
@@ -143,7 +132,10 @@ export function ShareDialog({
     setRevokingId(linkId);
     try {
       await api.api.shares({ id: linkId }).delete();
-      setExistingLinks((prev) => prev.filter((l) => l.id !== linkId));
+      // Optimistically remove from cache
+      queryClient.setQueryData<ShareLink[]>(queryKey, (prev) =>
+        prev?.filter((l) => l.id !== linkId) ?? []
+      );
       toast.success('Share link revoked');
     } catch {
       toast.error('Failed to revoke share link');
