@@ -46,7 +46,7 @@ Milkpod transcription and Q&A workspace.
 No link-based media is stored long-term. We only keep derived artifacts.
 
 ### Explicit uploads
-- Uploaded files may be stored in object storage for reprocessing, but remain
+- Uploaded files are stored in user-scoped object storage for reprocessing, but remain
   user-scoped and are never publicly exposed.
 - Videos are converted to audio for transcription; the derived transcript and
   embeddings are the primary artifacts.

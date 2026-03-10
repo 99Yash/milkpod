@@ -25,6 +25,8 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1004.0",
+    "@aws-sdk/s3-request-presigner": "^3.1004.0",
     "@milkpod/ai": "workspace:*",
     "@milkpod/auth": "workspace:*",
     "@milkpod/db": "workspace:*",
