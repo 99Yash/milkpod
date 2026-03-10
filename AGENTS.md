@@ -84,6 +84,17 @@ packages/
 | `pnpm db:migrate`  | Run migrations                             |
 | `pnpm db:studio`   | Open Drizzle Studio                        |
 
+## Code Review Standards
+
+`review-prompt.md` contains the comprehensive code review checklist for this project. When reviewing or writing code, follow its standards:
+
+- **Backend**: No N+1 queries, input validation on every route, auth/authz checks, rate limiting coverage for all endpoints, timeouts on all external calls (`AbortSignal.timeout` for fetch, `timeout: { totalMs }` for AI SDK), safe error logging (`err.message` not full `err` object), proper HTTP status codes, transactions for atomic ops, exhaustive switch statements with `never` checks.
+- **Frontend**: No redundant state for derivable values, `useEffect` cleanup for timers/subscriptions/async, stable unique keys (not array indices), SSR guards on browser APIs, no `any` types, ARIA attributes and keyboard accessibility (`group-focus-within:opacity-100`), `toast.error()` for user feedback (never silent catches), Tailwind v4 theme tokens over arbitrary values.
+- **Library leverage**: Before writing manual logic, verify the library doesn't already provide it. Read `.d.ts` files in `node_modules/.pnpm/` for actual signatures — do not guess. Search library GitHub repos via `mcp__grep__searchGitHub` (elysiajs/elysia, drizzle-team/drizzle-orm, vercel/ai) for API usage. Prefer Drizzle relational queries (`with:`) over manual joins, Elysia `.guard()` / `.onError()` over per-route boilerplate, AI SDK `Output` over manual JSON parsing, Eden type inference over `as` casts.
+- **Composability**: Extract shared patterns (admin checks, ownership resolution, quota enforcement, error logging) into typed utilities when 3+ modules duplicate the same logic. Keep module interfaces narrow. Functions should be generic over their dependencies.
+
+See `review-prompt.md` for the full checklist, library-specific guidance, and high-signal nudges from prior reviews.
+
 ## Conventions and boundaries
 
 ### Path aliases
