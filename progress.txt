@@ -340,3 +340,84 @@ Checklist verification:
 
 pnpm check-types: PASS (all 7 packages)
 
+## Task 7 - Backend: Chat, Shares & Collections Enforcement [DONE]
+
+Files reviewed:
+- packages/api/src/modules/chat/index.ts
+- packages/api/src/modules/chat/service.ts
+- packages/api/src/modules/shares/index.ts
+- packages/api/src/modules/shares/service.ts
+- packages/api/src/modules/collections/index.ts
+- packages/api/src/modules/collections/service.ts
+
+Issues found and fixed:
+1. chat/index.ts:111,131,140 - `console.error(..., err)` logged full error objects in three catch
+   blocks (title generation, saveMessages, releaseWords). Could expose DB internals (connection
+   strings, query state) in logs. Same class of issue fixed in Tasks 3 and 5.
+   Fix: Changed all three to `err instanceof Error ? err.message : String(err)`.
+2. shares/index.ts:169 - `console.error(..., err)` logged full error object in releaseWords catch.
+   Fix: Changed to `err instanceof Error ? err.message : String(err)`.
+3. shares/index.ts:129,134 - Hardcoded `500` word limit for share-link Q&A appeared twice
+   (in both the admin and non-admin branches). Magic number, easy to get out of sync.
+   Fix: Extracted `SHARE_CHAT_WORD_LIMIT = 500` constant at module level.
+4. rate-limit.ts:83 - `/api/shares/chat/:token` was categorized as 'crud' (100 req/min) because
+   it matched the generic `/api/shares` prefix. This public endpoint triggers LLM streaming and
+   should be rate-limited more aggressively.
+   Fix: Added `if (path.startsWith('/api/shares/chat/')) return 'chat'` before the generic
+   `/api/shares` match. Now uses 'chat' tier (30 req/min).
+
+Issues noted (no fix needed):
+5. Share link count TOCTOU: Between `countActive` and `create`, concurrent requests could both
+   pass the count check. This is a soft limit (same pattern as quota checks in Task 4). The
+   limit is a business rule (1 for free, unlimited for pro/team). Acceptable trade-off vs.
+   advisory lock complexity.
+6. Collection count TOCTOU: Same soft-limit pattern in collections create handler. Acceptable.
+7. Word budget leak on stream setup failure: If `createChatStream` throws before the stream
+   starts, reserved words are never released (in both chat and shares). In practice,
+   `createChatStream` returns a Response wrapping a ReadableStream — it only throws on
+   programming errors, not runtime failures. `onFinish` is reliably called when the stream
+   completes. Same pattern in the main chat endpoint. Not a regression.
+8. shares/service.ts:getSharedResource - Sequential queries (validateToken -> asset -> transcript
+   -> segments) for shared assets. Not N+1 (no loop), but could use joins. Pre-existing code
+   not changed in this diff.
+9. chat/service.ts - extractVisualEvidenceRows near-duplicate of extractEvidenceRows. The field
+   names differ (segments vs visualSegments, segmentId vs videoContextSegmentId). Shared
+   abstraction would add complexity for minimal gain. Both are in-memory operations with no
+   DB calls.
+
+Checklist verification:
+- Entitlement checks on every relevant endpoint: Yes. Chat POST gates model access and word budget
+  via plan entitlements. Share POST create enforces link limit. Share chat enforces public share QA
+  entitlement. Collection POST create enforces collection limit. Admin bypass properly gated via
+  isAdminEmail (server-derived session email, not spoofable).
+- Model gating cannot be bypassed by client: Correct. ChatModel.send validates modelId against
+  VALID_MODEL_IDS (Elysia schema). Handler further checks against entitlements.allowedModelIds.
+  Admin bypass is server-side only.
+- Word budget reservation/release is atomic and leak-free: Correct. reserveWords uses advisory
+  lock within transaction. releaseWords uses same lock. Admin bypass skips reservation entirely.
+  Unused words released in onFinish callback. See note #7 for edge case.
+- Share link counting query is efficient: Yes. `count(*)` with WHERE on userId + revokedAt IS NULL.
+  Single aggregate, no row materialization.
+- Collection counting doesn't have race conditions: Soft-limit TOCTOU (see #6). Acceptable.
+- Shared chat properly attributes usage to owner: Yes. resolveUserPlan(ownerId),
+  UsageService.reserveWords(ownerId, ...), UsageService.releaseWords(ownerId, ...). Owner's email
+  looked up via getOwnerEmail for admin check. Anonymous requester never charged.
+- No N+1 queries in message saving or evidence extraction: Correct. saveMessages uses batch
+  inserts within a transaction. extractEvidenceRows and extractVisualEvidenceRows iterate
+  in-memory over the input messages array. getMessages uses parallel queries via Promise.all
+  with a subquery (optimization from pre-existing sequential pattern).
+- Auth checks: All authenticated endpoints use `{ auth: true }`. Public endpoints (validate/:token,
+  chat/:token) are intentionally unauthenticated. Ownership verified via user-scoped queries
+  throughout (thread, asset, collection).
+- Rate limiting: Chat endpoints use 'chat' tier (30 req/min). Share CRUD uses 'crud' tier.
+  Share chat now correctly uses 'chat' tier (was 'crud'). Per-link rate limit (10/hour) as
+  additional defense on public share chat.
+- Input validation: Elysia body schemas on all POST handlers. ChatModel.send validates messages,
+  modelId (union of valid IDs), wordLimit. ShareModel.create validates assetId, collectionId,
+  canQuery, expiresAt (date-time format). CollectionModel validates name, description, assetId.
+- HTTP status codes: 402 (plan limit), 403 (access denied), 404 (not found), 429 (rate limit/
+  budget exhausted). Correct throughout.
+- No sensitive data in logs: Fixed — all catch blocks now log error message only.
+
+pnpm check-types: PASS (all 7 packages)
+

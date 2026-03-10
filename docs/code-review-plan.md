@@ -135,7 +135,7 @@ Checklist:
 - Stats queries use efficient aggregation (not loading all rows)
 - Legal hold is respected in all purge paths
 
-## Task 7 - Backend: Chat, Shares & Collections Enforcement
+## ~~Task 7 - Backend: Chat, Shares & Collections Enforcement~~ ✅
 
 Files:
 - packages/api/src/modules/chat/index.ts
