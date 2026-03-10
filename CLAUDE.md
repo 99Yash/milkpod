@@ -117,3 +117,8 @@ Key differences from older versions:
 - `GOOGLE_GENERATIVE_AI_API_KEY` - Used by `@ai-sdk/google` in `@milkpod/ai` (provider reads from process env)
 - `RESEND_API_KEY` - Required for sending email OTP codes via Resend
 - `ADMIN_EMAILS` - Comma-separated list of admin email addresses; these users bypass daily word quota limits
+- `BILLING_PROVIDER` - Optional, set to `polar` (or `razorpay`) to enable billing routes; omit to disable billing
+- `POLAR_ACCESS_TOKEN` - Polar organization access token (required when `BILLING_PROVIDER=polar`)
+- `POLAR_WEBHOOK_SECRET` - Polar webhook signing secret, prefixed with `whsec_` (required when `BILLING_PROVIDER=polar`)
+- `POLAR_PRODUCT_PRO` - Comma-separated Polar product UUIDs for Pro plan (monthly,yearly)
+- `POLAR_PRODUCT_TEAM` - Comma-separated Polar product UUIDs for Team plan (monthly,yearly)

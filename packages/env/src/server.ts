@@ -27,6 +27,14 @@ const serverEnvSchema = z.object({
   ADMIN_EMAILS: z.string().optional().default(''),
   COOKIE_DOMAIN: z.string().optional(),
   RAW_MEDIA_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),
+  // Billing provider — set to 'polar' to enable billing routes
+  BILLING_PROVIDER: z.enum(['polar', 'razorpay']).optional(),
+  // Polar provider credentials (required when BILLING_PROVIDER=polar)
+  POLAR_ACCESS_TOKEN: z.string().optional(),
+  POLAR_WEBHOOK_SECRET: z.string().optional(),
+  // Comma-separated Polar product UUIDs (monthly,yearly) per plan
+  POLAR_PRODUCT_PRO: z.string().optional(),
+  POLAR_PRODUCT_TEAM: z.string().optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
