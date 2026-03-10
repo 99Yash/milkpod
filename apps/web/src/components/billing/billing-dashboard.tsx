@@ -66,10 +66,11 @@ export function BillingDashboard() {
   useEffect(() => {
     let cancelled = false;
     api.api.billing.summary.get().then(({ data }) => {
-      if (!cancelled && data) {
-        setSummary(data as BillingSummary);
-      }
+      if (cancelled) return;
+      if (data) setSummary(data as BillingSummary);
       setLoading(false);
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
   }, []);
@@ -185,8 +186,8 @@ export function BillingDashboard() {
     <div className="space-y-8">
       {/* Past due warning */}
       {isPastDue && (
-        <div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/5 px-4 py-3">
-          <AlertTriangle className="size-5 text-destructive" />
+        <div role="alert" className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/5 px-4 py-3">
+          <AlertTriangle className="size-5 text-destructive" aria-hidden="true" />
           <div className="flex-1">
             <p className="text-sm font-medium text-destructive">Payment failed</p>
             <p className="text-xs text-muted-foreground">
@@ -286,7 +287,14 @@ export function BillingDashboard() {
                       of {bar.limit.toLocaleString()} {bar.unit}
                     </span>
                   </div>
-                  <div className="h-1.5 w-full rounded-full bg-muted">
+                  <div
+                    role="progressbar"
+                    aria-valuenow={bar.used}
+                    aria-valuemin={0}
+                    aria-valuemax={bar.limit}
+                    aria-label={bar.label}
+                    className="h-1.5 w-full rounded-full bg-muted"
+                  >
                     <div
                       className={cn(
                         'h-full rounded-full transition-all',

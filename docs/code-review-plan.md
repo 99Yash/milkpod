@@ -188,7 +188,7 @@ Checklist:
 - Retrieval query is parameterized (no SQL injection via user query)
 - Cosine similarity threshold is reasonable
 
-## Task 10 - Frontend: Billing UI
+## ~~Task 10 - Frontend: Billing UI~~ ✅
 
 Files:
 - apps/web/src/components/billing/pricing-grid.tsx

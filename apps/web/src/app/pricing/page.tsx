@@ -7,7 +7,6 @@ export const dynamic = 'force-dynamic';
 export default async function PricingPage() {
   const session = await getServerSession();
 
-  // Redirect unauthenticated users to sign in
   if (!session?.user) {
     redirect('/signin');
   }
@@ -21,7 +20,7 @@ export default async function PricingPage() {
         </p>
       </div>
       <div className="mt-10">
-        <PricingGrid currentPlan={null} />
+        <PricingGrid />
       </div>
     </div>
   );
