@@ -1,7 +1,7 @@
 import { db } from '@milkpod/db';
 import { monthlyUsage } from '@milkpod/db/schemas';
 import { and, eq, sql, sum } from 'drizzle-orm';
-import { resolveUserPlan, getQuotaForPlan, type QuotaUnit, type MultimodalQuota } from './plans';
+import { resolveUserPlan, getQuotaForPlan, type PlanId, type QuotaUnit, type MultimodalQuota } from './plans';
 
 function currentPeriod(): string {
   const now = new Date();
@@ -17,6 +17,7 @@ export type QuotaCheck = {
 };
 
 export type MonthlyUsageSnapshot = {
+  planId: PlanId;
   videoMinutesUsed: number;
   visualSegmentsUsed: number;
   commentsGenerated: number;
@@ -43,6 +44,7 @@ export abstract class QuotaService {
       .where(and(eq(monthlyUsage.userId, userId), eq(monthlyUsage.periodStart, period)));
 
     return {
+      planId: plan,
       videoMinutesUsed: row?.videoMinutesUsed ?? 0,
       visualSegmentsUsed: row?.visualSegmentsUsed ?? 0,
       commentsGenerated: row?.commentsGenerated ?? 0,
@@ -137,6 +139,7 @@ function unitToColumn(unit: QuotaUnit) {
     case 'video_minutes': return 'videoMinutesUsed' as const;
     case 'visual_segments': return 'visualSegmentsUsed' as const;
     case 'comments': return 'commentsGenerated' as const;
+    default: { const _exhaustive: never = unit; throw new Error(`Unknown quota unit: ${_exhaustive}`); }
   }
 }
 
@@ -148,5 +151,6 @@ function mapUnitToFields(usage: MonthlyUsageSnapshot, unit: QuotaUnit) {
       return { used: usage.visualSegmentsUsed, limit: usage.limits.visualSegmentsMonthly };
     case 'comments':
       return { used: usage.commentsGenerated, limit: usage.limits.commentsMonthly };
+    default: { const _exhaustive: never = unit; throw new Error(`Unknown quota unit: ${_exhaustive}`); }
   }
 }

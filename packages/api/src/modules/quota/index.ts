@@ -2,7 +2,6 @@ import { Elysia, status } from 'elysia';
 import { authMacro } from '../../middleware/auth';
 import { isAdminEmail } from '../usage/service';
 import { QuotaService } from './service';
-import { resolveUserPlan } from './plans';
 
 export const quota = new Elysia({ prefix: '/api/quota' })
   .use(authMacro)
@@ -10,10 +9,9 @@ export const quota = new Elysia({ prefix: '/api/quota' })
     '/',
     async ({ user }) => {
       const usage = await QuotaService.getMonthlyUsage(user.id);
-      const plan = await resolveUserPlan(user.id);
 
       return {
-        plan,
+        plan: usage.planId,
         periodStart: usage.periodStart,
         usage: {
           videoMinutes: { used: usage.videoMinutesUsed, limit: usage.limits.videoMinutesMonthly },

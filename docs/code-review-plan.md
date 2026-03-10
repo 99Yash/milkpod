@@ -82,7 +82,7 @@ Checklist:
 - Provider abstraction is clean and extensible
 - Check for proper fetch timeout/error handling on Polar API calls
 
-## Task 4 - Backend: Quota, Usage & Plans
+## ~~Task 4 - Backend: Quota, Usage & Plans~~ ✅
 
 Files:
 - packages/api/src/modules/quota/plans.ts
