@@ -33,7 +33,7 @@ Checklist:
 - Migrations are safe for zero-downtime deploys (no locks on large tables)
 - Column defaults make sense
 
-## Task 2 - Backend: Ingest Module
+## ~~Task 2 - Backend: Ingest Module~~ ✅
 
 Files:
 - packages/api/src/modules/ingest/pipeline.ts

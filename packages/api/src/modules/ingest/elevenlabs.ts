@@ -50,6 +50,7 @@ async function callTranscriptionApi(formData: FormData): Promise<TranscriptionRe
       method: 'POST',
       headers: { 'xi-api-key': getApiKey() },
       body: formData,
+      signal: AbortSignal.timeout(300_000),
     }
   );
 

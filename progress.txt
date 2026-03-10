@@ -38,3 +38,55 @@ Checklist verification:
 
 pnpm check-types: PASS (all 7 packages)
 
+## Task 2 - Backend: Ingest Module [DONE]
+
+Files reviewed:
+- packages/api/src/modules/ingest/pipeline.ts
+- packages/api/src/modules/ingest/youtube.ts
+- packages/api/src/modules/ingest/video-context.ts
+- packages/api/src/modules/ingest/upload-storage.ts
+- packages/api/src/modules/ingest/elevenlabs.ts
+- packages/api/src/modules/ingest/service.ts
+- packages/api/src/modules/ingest/model.ts
+- packages/api/src/modules/ingest/index.ts
+
+Issues found and fixed:
+1. elevenlabs.ts:47 - Missing timeout on ElevenLabs API fetch call. Transcription requests could
+   hang indefinitely. Fix: Added `signal: AbortSignal.timeout(300_000)` (5 min) to fetch options.
+2. video-context.ts:89 - Missing timeout on Gemini generateText call for visual extraction.
+   Fix: Added `timeout: { totalMs: 300_000 }` (AI SDK v6 timeout param).
+3. video-context.ts:86-193 - Inconsistent indentation: code inside try block was at same indent
+   level as the try keyword (2 spaces instead of 4). Fix: Re-indented entire try block body.
+4. index.ts:41-53 & 109-121 - Duplicated quota check block copy-pasted between YouTube ingest
+   and upload endpoints. Fix: Extracted `checkVideoQuota()` helper function; both handlers now
+   call it with `const quotaError = await checkVideoQuota(userId, user.email)`.
+
+Issues noted (no fix needed):
+5. service.ts:137 - Hardcoded model name 'gemini-2.5-flash' in providerMetadata for visual context
+   segments. Acceptable: this is historical metadata recording what model was used at extraction
+   time. Matches the actual visualModel definition in @milkpod/ai/provider.ts.
+6. upload-storage.ts:132 - `Buffer.from(await file.arrayBuffer())` loads full file into memory
+   (up to 100MB). Streaming to S3 would be more memory-efficient but the 100MB cap keeps this
+   manageable. Enhancement, not a bug.
+
+Checklist verification:
+- N+1 queries: None found. Batch inserts for segments, embeddings. Transactions used properly.
+- Input validation: Both routes validated — URL format (URI schema), file MIME/size (manual checks),
+  transcriptionStrategy (union type). External API responses validated with Zod schemas.
+- Auth checks: Both endpoints have `{ auth: true }`. Admin bypass gated via isAdminEmail().
+- Error handling: Meaningful messages; pipeline errors stored in DB lastError, not leaked to client.
+  Error responses from ElevenLabs include status code but no secrets.
+- Timeouts: YouTube oEmbed (15s), Innertube (30s), caption fetch (30s) all had timeouts. Fixed
+  ElevenLabs (now 5min) and Gemini generateText (now 5min).
+- Transactions: storeTranscript and resetForRetry both use transactions. Single-insert operations
+  are atomic by nature.
+- Idempotency: YouTube ingest checks findBySourceId before creating. Upload is inherently non-idempotent.
+- Hardcoded secrets: None. INNERTUBE_API_KEY is a public key. ElevenLabs key from serverEnv().
+  S3 credentials from env.
+- Rate limiting: Global rateLimiter middleware categorizes /api/ingest as 'ingest' (10 req/min burst).
+- HTTP status codes: 422 (bad input), 402 (quota exceeded), 503 (not configured), 500 (internal).
+- File upload validation: MIME prefix check (audio/video), size limit (100MB), Elysia t.File() type.
+- Connection management: S3 client is a reused singleton. No leaks.
+
+pnpm check-types: PASS (all 7 packages)
+
