@@ -64,8 +64,8 @@ Current state:
 Implementation path:
 1. ~~**Foundation**: plans catalog, billing schema, entitlement resolver, summary endpoint.~~ ✅
 2. ~~**Provider integration**: provider interface, first adapter, checkout/portal/cancel/webhook routes.~~ ✅
-3. **Enforcement**: plan-aware word budgets, model gating, ingest minute quotas,
-   share-link limits, and shared-chat budget accounting.
+3. ~~**Enforcement**: plan-aware word budgets, model gating, ingest minute quotas,
+   share-link limits, and shared-chat budget accounting.~~ ✅
 4. **Frontend UX**: pricing page, billing dashboard, upgrade prompts at all gates.
 5. **Verification**: entitlement unit tests + webhook/idempotency integration tests.
 

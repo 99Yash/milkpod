@@ -7,6 +7,7 @@ import { ThreadService } from '../threads/service';
 import { AssetService } from '../assets/service';
 import { CollectionService } from '../collections/service';
 import { isAdminEmail, UsageService } from '../usage/service';
+import { resolveUserPlan, getEntitlementsForPlan } from '../quota/plans';
 
 export const chat = new Elysia({ prefix: '/api/chat' })
   .use(authMacro)
@@ -15,17 +16,38 @@ export const chat = new Elysia({ prefix: '/api/chat' })
     async ({ body, user }) => {
       const userId = user.id;
       const admin = isAdminEmail(user.email);
+
+      // Resolve plan entitlements for model gating and word budget
+      const plan = await resolveUserPlan(userId);
+      const entitlements = getEntitlementsForPlan(plan);
+
+      // Model gating: reject requests for models not in the user's plan
+      if (body.modelId && !admin && !entitlements.allowedModelIds.includes(body.modelId)) {
+        return new Response(
+          JSON.stringify({
+            message: `Model ${body.modelId} is not available on the ${plan} plan. Upgrade for access.`,
+            code: 'MODEL_NOT_ALLOWED',
+            allowedModels: entitlements.allowedModelIds,
+          }),
+          { status: 402, headers: { 'content-type': 'application/json' } },
+        );
+      }
+
       const requestedLimit = Math.min(body.wordLimit ?? HARD_WORD_CAP, HARD_WORD_CAP);
 
-      // Atomically reserve words from the daily budget before streaming.
+      // Atomically reserve words from the plan-aware daily budget.
       // Admins bypass quota entirely.
       let reserved: number;
       if (admin) {
         reserved = requestedLimit;
       } else {
-        reserved = await UsageService.reserveWords(userId, requestedLimit);
+        reserved = await UsageService.reserveWords(userId, requestedLimit, entitlements.aiWordsDaily);
         if (reserved <= 0) {
-          return status(429, { message: 'Daily word limit reached. Resets at midnight UTC.' });
+          return status(429, {
+            message: 'Daily word limit reached. Resets at midnight UTC.',
+            code: 'WORD_BUDGET_EXHAUSTED',
+            limit: entitlements.aiWordsDaily,
+          });
         }
       }
 
@@ -125,7 +147,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       if (admin) {
         response.headers.set('X-Is-Admin', 'true');
       } else {
-        const remaining = await UsageService.getRemainingWords(userId);
+        const remaining = await UsageService.getRemainingWords(userId, entitlements.aiWordsDaily);
         response.headers.set('X-Words-Remaining', String(remaining));
       }
 
