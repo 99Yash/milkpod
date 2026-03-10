@@ -1,13 +1,7 @@
-import { Elysia, status, t } from 'elysia';
+import { Elysia, t } from 'elysia';
 import { authMacro } from '../../middleware/auth';
-import { isAdminEmail } from '../usage/service';
+import { requireAdmin } from '../../utils';
 import { VisualParityService } from './service';
-
-function requireAdmin(user: { email: string }) {
-  if (!isAdminEmail(user.email)) {
-    return status(403, { message: 'Admin access required' });
-  }
-}
 
 export const visualParity = new Elysia({ prefix: '/api/admin/visual' })
   .use(authMacro)

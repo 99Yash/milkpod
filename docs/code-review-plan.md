@@ -118,7 +118,7 @@ Checklist:
 - Evidence references are valid FK references
 - No N+1 when loading comments with evidence
 
-## Task 6 - Backend: Retention & Visual Parity
+## ~~Task 6 - Backend: Retention & Visual Parity~~ ✅
 
 Files:
 - packages/api/src/modules/retention/service.ts

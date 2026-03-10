@@ -1,13 +1,7 @@
 import { Elysia, status, t } from 'elysia';
 import { authMacro } from '../../middleware/auth';
-import { isAdminEmail } from '../usage/service';
+import { requireAdmin } from '../../utils';
 import { RetentionService } from './service';
-
-function requireAdmin(user: { email: string }) {
-  if (!isAdminEmail(user.email)) {
-    return status(403, { message: 'Admin access required' });
-  }
-}
 
 export const retention = new Elysia({ prefix: '/api/admin/retention' })
   .use(authMacro)

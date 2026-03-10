@@ -276,3 +276,67 @@ Checklist verification:
 
 pnpm check-types: PASS (all 7 packages)
 
+## Task 6 - Backend: Retention & Visual Parity [DONE]
+
+Files reviewed:
+- packages/api/src/modules/retention/service.ts
+- packages/api/src/modules/retention/index.ts
+- packages/api/src/modules/visual-parity/service.ts
+- packages/api/src/modules/visual-parity/index.ts
+
+Issues found and fixed:
+1. rate-limit.ts:76-93 - `/api/admin/*` paths (retention, visual-parity, quota) were not covered
+   by the rate limiter. Admin endpoints trigger expensive operations (S3 deletions, Gemini LLM
+   calls) and were unprotected from abuse even with auth+admin gating.
+   Fix: Added `/api/admin/` to the categorize function under 'ingest' category (10 req/min burst),
+   matching the rate limit tier for other expensive operation endpoints.
+2. retention/index.ts:6-10 & visual-parity/index.ts:6-10 - Identical `requireAdmin` helper
+   function duplicated in both files. Same logic also inlined in quota/index.ts:31-33.
+   Fix: Extracted `requireAdmin` to `packages/api/src/utils.ts` as a shared utility. Updated all
+   three files to import from `../../utils`. Removed unused `status` and `isAdminEmail` imports.
+3. visual-parity/service.ts:49-58 - `findRequeueCandidates` query did not exclude upload assets
+   whose raw media has been purged (rawMediaDeletedAt IS NOT NULL). For purged uploads, the signed
+   URL would point to a deleted S3 object, causing guaranteed visual extraction failures.
+   Fix: Added `isNull(mediaAssets.rawMediaDeletedAt)` to the WHERE clause. YouTube assets are
+   unaffected (they never have rawMediaDeletedAt set).
+
+Issues noted (no fix needed):
+4. retention/service.ts:57-60 - `purge()` marks asset as purged even when `sourceUrl` is null
+   (skipping S3 delete). Correct behavior: nothing to delete, so mark as handled. Prevents
+   re-selecting these assets on subsequent purge runs.
+5. retention/service.ts:96-112 - `getStats()` scans entire mediaAssets table with `count(*) filter`.
+   Single-pass aggregate via FILTER clauses. No full row loading. Efficient for admin-only
+   observability endpoint on a bounded table.
+6. visual-parity/service.ts:100-111 - `extractVideoContext` is fire-and-forget with `.catch()`
+   handler. Status tracking happens internally via `updateVisualStatus`. Acceptable for async
+   batch operations — the requeue response returns immediately with queued count.
+7. retention/index.ts:40 & visual-parity/index.ts - `setRetentionHold` updates any asset by ID
+   without user-scoping. Correct: this is admin-only, hold should work across all users' assets.
+8. S3 DeleteObjectCommand is idempotent by design (returns 204 even for non-existent objects).
+   The try/catch in purge handles other S3 errors (permissions, network) gracefully.
+
+Checklist verification:
+- Purge operations idempotent: Yes. Query filters `rawMediaDeletedAt IS NULL`, so re-runs skip
+  already-purged assets. S3 DeleteObject is inherently idempotent.
+- S3 delete errors handled: Yes. Try/catch per asset with error accumulation in result.errors.
+  Non-S3 URLs silently skipped by deleteStoredUpload. Failed assets don't block others.
+- Admin-only access: Yes. All routes use `{ auth: true }` + `requireAdmin(user)` guard.
+  isAdminEmail checks server-derived session email (not spoofable via headers).
+- Batch operations bounded: Yes. Retention: max 500 (default 100). Visual parity: max 200
+  (default 50). Input validation: `Math.min(Math.max(...), maxLimit)`.
+- Signed URL refresh: Yes. Visual parity requeue refreshes upload URLs with 1-hour TTL.
+  YouTube uses public sourceUrl directly. createUploadDownloadUrl passes through HTTP URLs.
+- Stats queries efficient: Yes. Both getStats() and getParityStats() use `count(*) filter()`
+  — single-pass aggregate, no row materialization. groupBy for parity is 2 groups max.
+- Legal hold respected: Yes. findExpiredUploads includes `eq(retentionHold, false)`.
+  setRetentionHold properly toggles the flag. Held assets excluded from purge.
+- Rate limiting: Fixed — admin endpoints now rate-limited under 'ingest' tier (10 req/min).
+- Input validation: Elysia t.Object for body/query types. Limit parameter bounded.
+  assetId from URL params (string). hold as t.Boolean().
+- Auth checks: All endpoints use auth macro. Admin gate on every handler via requireAdmin.
+- HTTP status codes: 403 (not admin), 404 (asset not found), 429 (rate limit). Correct.
+- Error handling: Per-asset try/catch in batch ops. Error messages sanitized via instanceof check.
+  Results returned with attempted/succeeded/failed/errors breakdown.
+
+pnpm check-types: PASS (all 7 packages)
+

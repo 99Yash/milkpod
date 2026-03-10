@@ -1,6 +1,6 @@
-import { Elysia, status } from 'elysia';
+import { Elysia } from 'elysia';
 import { authMacro } from '../../middleware/auth';
-import { isAdminEmail } from '../usage/service';
+import { requireAdmin } from '../../utils';
 import { QuotaService } from './service';
 
 export const quota = new Elysia({ prefix: '/api/quota' })
@@ -28,9 +28,8 @@ export const quotaAdmin = new Elysia({ prefix: '/api/admin/quota' })
   .get(
     '/stats',
     async ({ user }) => {
-      if (!isAdminEmail(user.email)) {
-        return status(403, { message: 'Admin access required' });
-      }
+      const denied = requireAdmin(user);
+      if (denied) return denied;
 
       return QuotaService.getAggregateStats();
     },
