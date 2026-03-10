@@ -99,7 +99,7 @@ export const qaVisualEvidence = pgTable(
   {
     id: text('id')
       .primaryKey()
-      .$defaultFn(() => createId('evd')),
+      .$defaultFn(() => createId('vevd')),
     messageId: text('message_id')
       .notNull()
       .references(() => qaMessages.id, { onDelete: 'cascade' }),
