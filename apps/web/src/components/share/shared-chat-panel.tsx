@@ -1,13 +1,15 @@
 'use client';
 
 import { useRef, useEffect, useState } from 'react';
+import { BrainCircuit } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
 import { ScrollArea } from '~/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { useSharedChat } from '~/hooks/use-shared-chat';
+import { AiAvatar } from '~/components/chat/ai-avatar';
 import { ChatMessage } from '~/components/chat/message';
-import { ThinkingIndicator } from '~/components/chat/thinking-indicator';
+import { ShimmerText } from '~/components/chat/shimmer-text';
 
 interface SharedChatPanelProps {
   token: string;
@@ -64,8 +66,29 @@ export function SharedChatPanel({ token }: SharedChatPanelProps) {
               <ChatMessage key={message.id} message={message} />
             ))}
             {isLoading && messages.at(-1)?.role !== 'assistant' && (
-              <div className="py-4">
-                <ThinkingIndicator />
+              <div className="flex gap-3 py-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
+                <AiAvatar />
+                <div className="flex items-center gap-2 pt-1">
+                  <BrainCircuit className="size-4 shrink-0 text-muted-foreground/45 animate-pulse" />
+                  <ShimmerText
+                    active
+                    className="text-[13px] font-medium text-muted-foreground/65"
+                  >
+                    Thinking
+                  </ShimmerText>
+                  <span className="inline-flex items-center gap-1" aria-hidden>
+                    {[0, 1, 2].map((idx) => (
+                      <span
+                        key={idx}
+                        className="size-1 rounded-full bg-muted-foreground/40 animate-pulse motion-reduce:animate-none"
+                        style={{
+                          animationDelay: `${idx * 160}ms`,
+                          animationDuration: '1s',
+                        }}
+                      />
+                    ))}
+                  </span>
+                </div>
               </div>
             )}
             <div ref={bottomRef} />

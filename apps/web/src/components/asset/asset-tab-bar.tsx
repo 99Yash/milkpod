@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FileText, MessageCircle, MessageSquareText, Sparkles } from 'lucide-react';
 import { cn } from '~/lib/utils';
 
 interface AssetTabBarProps {
@@ -10,10 +9,10 @@ interface AssetTabBarProps {
 }
 
 const tabs = [
-  { id: 'transcript', label: 'Transcript', icon: FileText, suffix: '' },
-  { id: 'ask-ai', label: 'Ask AI', icon: MessageSquareText, suffix: '/chat' },
-  { id: 'moments', label: 'Moments', icon: Sparkles, suffix: '/moments' },
-  { id: 'comments', label: 'Comments', icon: MessageCircle, suffix: '/comments' },
+  { id: 'transcript', label: 'Transcript', suffix: '' },
+  { id: 'ask-ai', label: 'Ask AI', suffix: '/chat' },
+  { id: 'moments', label: 'Moments', suffix: '/moments' },
+  { id: 'comments', label: 'Comments', suffix: '/comments' },
 ] as const;
 
 function getActiveTab(pathname: string) {
@@ -28,24 +27,24 @@ export function AssetTabBar({ assetId }: AssetTabBarProps) {
   const activeTab = getActiveTab(pathname);
 
   return (
-    <div className="flex shrink-0 gap-1 border-b border-border/40 px-1 pt-2">
-      {tabs.map(({ id, label, icon: Icon, suffix }) => {
+    <div className="relative flex shrink-0 items-end gap-2 border-b border-border/40 px-1 pt-1 pb-2">
+      {tabs.map(({ id, label, suffix }) => {
         const isActive = id === activeTab;
         return (
           <Link
             key={id}
             href={`/asset/${assetId}${suffix}`}
             className={cn(
-              'relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+              'relative rounded-lg px-3.5 py-1.5 text-sm transition-colors',
               isActive
-                ? 'bg-muted text-foreground'
-                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground/80',
+                ? 'font-medium text-foreground border border-border'
+                : 'text-muted-foreground hover:text-foreground/80',
             )}
           >
-            <Icon className="size-4" />
             {label}
+            {/* Active underline — sits on the border-b line */}
             {isActive && (
-              <span className="absolute inset-x-1 -bottom-[5px] h-0.5 rounded-full bg-foreground" />
+              <span className="absolute -bottom-[calc(0.5rem+1px)] left-1/2 h-0.5 w-3/4 -translate-x-1/2 rounded-full bg-foreground" />
             )}
           </Link>
         );
