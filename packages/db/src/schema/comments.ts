@@ -33,8 +33,10 @@ export const assetComments = pgTable(
     startTime: real('start_time').notNull(),
     endTime: real('end_time').notNull(),
     source: commentSourceEnum('source').notNull(),
-    /** JSON evidence references for explainability: transcript segment IDs, visual segment IDs */
-    evidenceRefs: jsonb('evidence_refs'),
+    evidenceRefs: jsonb('evidence_refs').$type<{
+      transcriptSegmentIds: string[];
+      visualSegmentIds: string[];
+    }>(),
     dismissedAt: timestamp('dismissed_at'),
     ...lifecycle_dates,
   },

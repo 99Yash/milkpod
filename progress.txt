@@ -1,156 +1,40 @@
-# Multimodal Video Progress
+# Code Review Progress
 
-## Phase 1 - Multilingual Transcript Reliability ✅ (2026-03-09)
-Files changed:
-- packages/api/src/modules/ingest/model.ts — Added TranscriptionStrategy type ('audio-first' | 'auto' | 'captions-first'), updated ingest body schema
-- packages/api/src/modules/ingest/youtube.ts — Added resolveYouTubeAudioUrl() using Innertube streamingData.adaptiveFormats, refactored player API into shared fetchInnertubePlayer()
-- packages/api/src/modules/ingest/pipeline.ts — Rewrote orchestratePipeline to support audio-first strategy with captions fallback, extracted transcribeViaAudio/transcribeViaCaptions helpers, passes providerMetadata (transcriptionMethod, fallbackReason)
-- packages/api/src/modules/ingest/service.ts — Added optional providerMetadata param to storeTranscript, stored in transcript.providerMetadata jsonb column
-- packages/api/src/modules/ingest/index.ts — Route now accepts optional transcriptionStrategy, defaults to 'audio-first'
-Outcome: YouTube ingest now defaults to audio-first transcription (ElevenLabs scribe_v2 via audio stream URL), falling back to captions. Transcript metadata records method used and fallback reason. No schema migration needed (providerMetadata jsonb column already existed).
+## Task 1 - Database Schema & Migrations [DONE]
 
-## Phase 2 - Language-Aware Retrieval Heuristic ✅ (2026-03-09)
-Files changed:
-- packages/api/src/modules/assets/search-service.ts — Replaced FTS-first-with-semantic-fallback with language-aware heuristic: English transcript + Latin query → hybrid ranked search (0.65 lexical + 0.35 semantic normalized scores); non-English → semantic-first with high-confidence lexical supplementation. Added countUnicodeLetters/countLatinLetters helpers.
-- packages/api/src/modules/assets/service.ts — Added getTranscriptLanguage(assetId) helper to fetch transcript language for an asset.
-- packages/ai/src/system-prompt.ts — Added transcriptLanguage to SystemPromptContext; non-English transcripts get language_guidance section instructing AI to match user's language.
-- packages/ai/src/stream.ts — Added transcriptLanguage to ChatRequest interface; threads it through to buildSystemPrompt.
-- packages/api/src/modules/chat/index.ts — Fetches transcript language when assetId is present; passes it to createChatStream.
-- packages/api/src/modules/shares/index.ts — Fetches transcript language for shared asset chat; passes it to createChatStream.
-Outcome: Retrieval now adapts to transcript/query language. English queries on English transcripts use blended lexical+semantic ranking. Non-English (e.g. Hindi) queries use semantic-first search, avoiding English FTS bias. System prompt instructs AI to respond in the transcript's language when non-English. No schema changes needed.
+Files reviewed:
+- packages/db/src/schema/billing.ts
+- packages/db/src/schema/comments.ts
+- packages/db/src/schema/media-assets.ts
+- packages/db/src/schema/monthly-usage.ts
+- packages/db/src/schema/qa.ts
+- packages/db/src/schema/video-context-embeddings.ts
+- packages/db/src/schema/video-context-segments.ts
+- packages/db/src/schemas.ts
+- Migrations 0018-0024
 
-## Phase 3 - Visual Context Extraction and Indexing ✅ (2026-03-09)
-Files changed:
-- packages/db/src/schema/video-context-segments.ts (new) — New video_context_segment table: id, assetId, startTime, endTime, summary, ocrText, entities (jsonb), confidence, providerMetadata. Indexes on assetId and (assetId, startTime). Cascade delete from media_asset.
-- packages/db/src/schema/video-context-embeddings.ts (new) — New video_context_embedding table: id, segmentId (FK to video_context_segment), content, embedding (vector 1536d), model, dimensions. HNSW cosine index for similarity search. Cascade delete from video_context_segment.
-- packages/db/src/schemas.ts — Added barrel exports for new video context schemas.
-- packages/ai/src/provider.ts — Added visualModel export (Gemini 2.5 Flash) for visual context extraction.
-- packages/api/src/modules/ingest/video-context.ts (new) — Visual context extraction module: calls Gemini 2.5 Flash with YouTube URL as file input, extracts timestamped visual segments (20-45 sec windows, max 50 per asset), validates/clamps segments, stores in DB, generates text embeddings from summary+OCR+entities. Uses independent retry with logging-only error handler (doesn't modify asset record). Runs non-blocking after transcript pipeline completes (FR9).
-- packages/api/src/modules/ingest/service.ts — Added storeVideoContextSegments() and storeVideoContextEmbeddings() methods to IngestService.
-- packages/api/src/modules/ingest/pipeline.ts — Added triggerVisualExtraction() helper that fires extractVideoContext() non-blocking after finalizePipeline completes. Called from all three YouTube transcription paths (captions-first, audio-first, captions fallback). Visual extraction failure does not block transcript readiness.
-- packages/db/src/migrations/0018_nostalgic_mikhail_rasputin.sql — Migration creating video_context_segment and video_context_embedding tables with indexes and foreign keys.
-Outcome: YouTube video ingest now triggers non-blocking visual context extraction after transcript is ready. Gemini 2.5 Flash analyzes the video via direct URL input, producing timestamped visual segments with summaries, OCR text, and entity lists. Segments are embedded using existing text embedding pipeline and stored with HNSW indexes for similarity search. Visual extraction failures are isolated and do not affect transcript readiness (FR9). Stage-level logging emitted.
+Issues found and fixed:
+1. qa.ts:102 - ID prefix collision: qaVisualEvidence used createId('evd'), same as qaEvidence.
+   Fix: Changed to createId('vevd') so visual evidence IDs are distinguishable in logs/debugging.
+2. comments.ts:37 - Missing $type<>() on evidenceRefs jsonb column. Other jsonb columns
+   in codebase use typed annotations. Fix: Added $type<{ transcriptSegmentIds: string[];
+   visualSegmentIds: string[] }>() matching usage in comments/service.ts.
 
-## Phase 4 - Ask AI Hybrid Retrieval ✅ (2026-03-09)
-Files changed:
-- packages/ai/src/retrieval.ts — Added RelevantVisualSegment interface, queryEmbedding option to RetrievalOptions, and findRelevantVisualSegments() function that searches video_context_embedding + video_context_segment tables with cosine similarity. Supports assetId and collectionId scoping. Modified findRelevantSegments() to accept optional pre-computed queryEmbedding to avoid duplicate embedding generation.
-- packages/ai/src/types.ts — Added optional visualSegments (RelevantVisualSegment[]) to RetrieveSegmentsOutput. Imported RelevantVisualSegment type.
-- packages/ai/src/tools.ts — Extended retrieve_segments tool to search both transcript and visual context embeddings in parallel using a shared pre-computed query embedding. Updated tool description to mention visual context. Tool output now includes visualSegments array and message shows counts for both transcript and visual results.
-- packages/ai/src/system-prompt.ts — Updated retrieve_segments tool description to mention visual context retrieval. Added rule 6 instructing AI to distinguish between transcript (what was said) and visual (what was shown) citations.
-- packages/db/src/schema/qa.ts — Added qaVisualEvidence table (qa_visual_evidence) with messageId FK to qa_message and videoContextSegmentId FK to video_context_segment. Includes relevance score, unique constraint on (messageId, videoContextSegmentId), and indexes.
-- packages/api/src/modules/chat/service.ts — Added extractVisualEvidenceRows() function that extracts visual segment references from retrieve_segments tool outputs. Extended ChatService.saveMessages() to insert visual evidence rows into qa_visual_evidence alongside existing transcript evidence.
-- packages/db/src/migrations/0019_stale_winter_soldier.sql — Migration creating qa_visual_evidence table with foreign keys, unique constraint, and indexes.
-Outcome: Ask AI retrieval now searches both transcript and visual context embeddings in parallel, returning combined results with separate arrays for transcript segments and visual segments. The AI model receives both modalities and cites visual context (what was shown on screen) alongside transcript content (what was said) in its responses. Visual evidence references are logged to qa_visual_evidence for auditability. Embedding generation is shared across both searches to avoid duplicate API calls. The visualSegments field is optional for backward compatibility with existing frontend code.
+Issues noted (no fix needed):
+3. billing.ts:72 - Webhook unique constraint on providerEventId alone (not compound with provider).
+   Acceptable: provider event IDs are UUIDs/unique strings; multi-provider collision risk negligible.
+   Service code (isEventProcessed) would also need updating. Defer to Task 3 billing review.
+4. media-assets.ts - No index on visualStatus. Admin-only visual-parity queries filter on this.
+   Table typically small enough; sequential scan acceptable for infrequent admin ops.
 
-## Phase 5 - Hybrid Comments + Comments UI ✅ (2026-03-09)
-Files changed:
-- packages/db/src/schema/comments.ts (new) — New asset_comment table: id, assetId, userId, body, startTime, endTime, source (comment_source enum: audio | visual | hybrid), evidenceRefs (jsonb for transcript/visual segment ID references), dismissedAt (soft delete). Indexes on (assetId, startTime) and (userId, assetId). Cascade delete from media_asset and user.
-- packages/db/src/schemas.ts — Added barrel export for comments schema.
-- packages/db/src/migrations/0020_petite_salo.sql — Migration creating comment_source enum and asset_comment table with indexes and foreign keys.
-- packages/api/src/types.ts — Added Comment type derived from assetComments schema.
-- packages/api/src/modules/comments/model.ts (new) — Elysia type schemas for generate (assetId, regenerate), listQuery (assetId), and feedback (dismiss action) endpoints.
-- packages/api/src/modules/comments/service.ts (new) — CommentService abstract static class with list, getById, deleteByAsset, insertMany, and dismissComment methods. Orders comments by startTime ascending.
-- packages/api/src/modules/comments/generate.ts (new) — Comment generation pipeline: loads transcript segments and visual context segments, builds 45-second fused evidence windows (transcript + overlapping visual context), sends to Gemini 2.5 Flash Lite for structured comment extraction with source labels, maps comments to DB rows with evidence references, persists via CommentService.insertMany. Max 20 comments per asset, max 30 windows.
-- packages/api/src/modules/comments/index.ts (new) — Elysia router at /api/comments with auth macro. POST /generate (creates or returns cached comments, supports regenerate), GET / (list by assetId), POST /:id/feedback (dismiss).
-- packages/api/src/index.ts — Mounted comments module.
-- apps/web/src/lib/data/queries.ts — Added getComments(assetId, userId) query returning non-dismissed comments ordered by startTime.
-- apps/web/src/components/asset/asset-tab-bar.tsx — Added Comments tab (MessageCircle icon, /comments suffix) and updated getActiveTab routing.
-- apps/web/src/components/comments/comment-card.tsx (new) — Client component rendering individual comment with timestamp range (clickable for video jump), source badge (Audio/Visual/Hybrid with color coding), comment body, and dismiss action. Uses existing useTimestampAction and VideoMomentDialog for video playback.
-- apps/web/src/components/comments/comments-tab.tsx (new) — Client component for comments tab: empty state with generate button, loading state, comment list with regenerate button. Uses Eden treaty client for API calls.
-- apps/web/src/app/asset/[id]/comments/page.tsx (new) — Server component page route: authenticates session, loads initial comments via getComments query, renders CommentsTab.
-Outcome: Full hybrid comments feature with dedicated data model, generation pipeline, API module, and UI surface. Comments are generated from fused transcript + visual context evidence using Gemini 2.5 Flash Lite. Each comment includes a timestamp range, source label (audio/visual/hybrid), and evidence references for explainability. The UI provides a dedicated Comments tab with timestamp-based video navigation and source-type badges. Comments can be dismissed (soft delete). The generation endpoint caches results and supports regeneration.
+Checklist verification:
+- Data types: All appropriate (real for times, integer for counters, date for periods, jsonb typed)
+- Indexes: Proper coverage on FKs, composite queries, HNSW for vector search
+- Cascade deletes: All FK references have onDelete cascade (or set null for optional refs)
+- Enum values: Exhaustive and match application usage
+- No redundant columns: Proper normalization across tables
+- Migrations 0018-0024: All additive (CREATE TABLE, ADD COLUMN, CREATE INDEX) - safe for zero-downtime
+- Column defaults: Sensible (0 for counters, false for booleans, now() for timestamps)
 
-## Task 1.1 - Retention Policy for Uploaded Raw Media ✅ (2026-03-10)
-Files changed:
-- packages/db/src/schema/media-assets.ts — Added `rawMediaRetentionUntil` (timestamp), `rawMediaDeletedAt` (timestamp), `retentionHold` (boolean, default false) columns to media_asset table.
-- packages/db/src/migrations/0021_simple_hulk.sql — Migration adding three retention columns to media_asset.
-- packages/env/src/server.ts — Added `RAW_MEDIA_RETENTION_DAYS` env var (integer, default 90 days).
-- packages/api/src/modules/ingest/service.ts — Added `setRetentionDeadline(assetId)` method to IngestService that computes deadline from `RAW_MEDIA_RETENTION_DAYS` and writes `rawMediaRetentionUntil`.
-- packages/api/src/modules/ingest/pipeline.ts — Called `IngestService.setRetentionDeadline()` in `orchestrateUploadPipeline` after successful finalization.
-- packages/api/src/modules/retention/service.ts (new) — RetentionService with `findExpiredUploads()`, `purge()` (deletes S3 objects + marks `rawMediaDeletedAt`), `setRetentionHold()`, and `getStats()` (counts for expired-pending, purged, held).
-- packages/api/src/modules/retention/index.ts (new) — Admin-only Elysia routes at `/api/admin/retention`: POST `/purge` (batch purge expired uploads), POST `/hold/:assetId` (toggle legal hold), GET `/stats` (retention metrics).
-- packages/api/src/index.ts — Mounted retention module.
-Outcome: Upload assets now receive a retention deadline (default 90 days) after successful processing. Admin endpoints allow triggering batch purge of expired raw media from object storage, toggling legal hold on individual assets, and querying retention metrics. Purge is idempotent: deletes S3 object then marks `rawMediaDeletedAt`. Assets under legal hold (`retentionHold=true`) are excluded from purge. Metrics return counts for expired-pending, purged-total, and held-total.
-
-## Task 1.2 - Full Upload Multimodal Parity Hardening ✅ (2026-03-10)
-Files changed:
-- packages/db/src/schema/media-assets.ts — Added `visualStatusEnum` ('pending' | 'processing' | 'completed' | 'failed'), `visualStatus`, `visualAttempts` (default 0), `visualLastError` columns to media_asset table.
-- packages/db/src/migrations/0022_pink_captain_marvel.sql — Migration creating visual_status enum and adding three visual tracking columns to media_asset.
-- packages/api/src/modules/ingest/service.ts — Added `updateVisualStatus(assetId, status, opts?)` and `incrementVisualAttempts(assetId, error)` methods to IngestService.
-- packages/api/src/modules/ingest/video-context.ts — Updated `extractVideoContext()` to track visual status lifecycle: sets 'processing' on start, 'completed' on success, 'failed' on error. Uses `incrementVisualAttempts` in retry error handler for per-attempt tracking.
-- packages/api/src/modules/ingest/pipeline.ts — Updated `triggerVisualExtraction()` to set initial 'pending' visual status before fire-and-forget extraction.
-- packages/api/src/modules/visual-parity/service.ts (new) — VisualParityService with `findRequeueCandidates()` (finds failed/null visual status video assets), `requeue()` (refreshes signed URLs for uploads, re-triggers visual extraction), and `getParityStats()` (compares YouTube vs upload visual success rates by source type).
-- packages/api/src/modules/visual-parity/index.ts (new) — Admin-only Elysia routes at `/api/admin/visual`: POST `/requeue` (batch requeue failed visual extractions with fresh signed URLs), GET `/stats` (parity dashboard data by source type).
-- packages/api/src/index.ts — Mounted visual-parity module.
-Outcome: Visual extraction now has full lifecycle tracking via `visual_status`, `visual_attempts`, and `visual_last_error` columns on media_asset, decoupled from transcript readiness. Admin requeue endpoint finds failed or never-attempted video assets, refreshes signed URLs for uploads (solving TTL expiration), and re-triggers visual extraction. Parity stats endpoint returns visual extraction success/failure/pending counts grouped by source type (YouTube vs upload) for observability dashboards. All video assets (YouTube and upload) follow the same visual status lifecycle.
-
-## Task 1.3 - Tenant-Level Multimodal Quota Policy ✅ (2026-03-10)
-Files changed:
-- packages/db/src/schema/monthly-usage.ts (new) — New `monthly_usage` table: id, userId, periodStart (first of month), videoMinutesUsed, visualSegmentsUsed, commentsGenerated. Composite unique on (userId, periodStart). Cascade delete from user.
-- packages/db/src/schemas.ts — Added barrel export for monthly-usage schema.
-- packages/db/src/migrations/0023_pale_texas_twister.sql — Migration creating monthly_usage table with FK and unique constraint.
-- packages/api/src/modules/quota/plans.ts (new) — Plan catalog defining PlanId ('free' | 'pro' | 'team'), MultimodalQuota type, and per-plan quota thresholds. Free: 120 video min, 200 visual segments, 100 comments/month. Pro: 1200/2000/1000. Team: 4000/6000/3000. `resolveUserPlan()` defaults to 'free' until billing integration.
-- packages/api/src/modules/quota/service.ts (new) — QuotaService with `getMonthlyUsage(userId)`, `checkQuota(userId, unit, requested)` for pre-checks, `increment(userId, unit, amount)` with advisory locks for atomic counter updates, and `getAggregateStats()` for admin dashboards.
-- packages/api/src/modules/quota/index.ts (new) — Elysia routes: GET `/api/quota` (user-facing: current usage + limits by plan), GET `/api/admin/quota/stats` (admin: aggregate stats across all users for current period).
-- packages/api/src/modules/ingest/index.ts — Added quota soft-check before YouTube and upload ingest: rejects with 402 + upgrade-aware error when monthly video minutes exhausted. Admins bypass quota.
-- packages/api/src/modules/ingest/pipeline.ts — Added `QuotaService.increment(userId, 'video_minutes', durationMinutes)` after finalizePipeline marks asset ready.
-- packages/api/src/modules/ingest/video-context.ts — Added `QuotaService.increment(userId, 'visual_segments', count)` after visual segments are stored. Changed `_userId` → `userId` parameter.
-- packages/api/src/modules/comments/index.ts — Added quota check before comment generation: rejects with 402 + upgrade-aware error when monthly comments exhausted. Admins bypass.
-- packages/api/src/modules/comments/generate.ts — Added `QuotaService.increment(userId, 'comments', count)` after comments are persisted.
-- packages/api/src/index.ts — Mounted quota and quotaAdmin modules.
-Outcome: Multimodal quota policy is now enforced per-user per-month for three resource types: video minutes processed, visual segments generated, and comments generated. Quotas are defined per plan (free/pro/team) in code. Pre-checks in ingest and comment routes return 402 with upgrade-aware error payloads (code, unit, used, limit) when limits are exhausted. Counters are atomically incremented with advisory locks after successful pipeline/extraction/generation completion. Admin endpoint provides aggregate stats. User endpoint surfaces current usage vs limits. Admins (ADMIN_EMAILS) bypass all quota checks. `resolveUserPlan()` defaults to 'free' and is ready for billing integration to return the actual plan.
-
-## Task 2.1 - SaaS Billing Foundation ✅ (2026-03-10)
-Files changed:
-- packages/db/src/schema/billing.ts (new) — New `billing_customer` table (id, userId unique, provider enum, providerCustomerId unique), `billing_subscription` table (id, userId, provider, providerSubscriptionId unique, planId, status enum, currentPeriodStart/End, cancelAtPeriodEnd, canceledAt), and `billing_webhook_event` table (id, provider, providerEventId unique, eventType, payload jsonb, processedAt). Enums: `billing_provider` ('polar' | 'razorpay'), `subscription_status` ('trialing' | 'active' | 'past_due' | 'canceled' | 'incomplete').
-- packages/db/src/schemas.ts — Added barrel export for billing schema.
-- packages/db/src/migrations/0024_flaky_nomad.sql — Migration creating billing_provider and subscription_status enums, billing_customer, billing_subscription, and billing_webhook_event tables with FKs and indexes.
-- packages/api/src/modules/quota/plans.ts — Extended with `PlanEntitlements` type (aiWordsDaily, maxActiveShareLinks, allowedModelIds, canUsePublicShareQA, priorityProcessing, maxCollections), `PLAN_ENTITLEMENTS` catalog per plan (free: 2k words/day, 3 fast models, 1 share link, 5 collections; pro: 30k/all models/unlimited; team: 100k/all models/unlimited), `getEntitlementsForPlan()` function. Converted `resolveUserPlan()` from sync stub to async function that queries `billing_subscription` for active/trialing subscriptions, falling back to 'free'.
-- packages/api/src/modules/quota/service.ts — Updated `getMonthlyUsage()` to await async `resolveUserPlan()`.
-- packages/api/src/modules/quota/index.ts — Updated quota route to await async `resolveUserPlan()`.
-- packages/api/src/modules/billing/service.ts (new) — `BillingService` static class with `getActiveSubscription()`, `getCustomer()`, `getUserEntitlements()`, `getSummary()` (aggregates plan, subscription status, daily word usage, monthly multimodal usage, and entitlements), and `getDailyWordUsage()`.
-- packages/api/src/modules/billing/index.ts (new) — Elysia router at `/api/billing` with `GET /summary` (authenticated, returns full billing summary).
-- packages/api/src/index.ts — Mounted billing module.
-- packages/api/src/types.ts — Added `BillingCustomer`, `BillingSubscription`, `BillingWebhookEvent` types derived from Drizzle schemas.
-Outcome: Billing foundation is in place with three new database tables for provider-agnostic subscription management. Plans catalog now defines full entitlements (daily word budget, model access list, share link limits, collection limits, priority processing, public share Q&A) per plan tier. `resolveUserPlan()` queries `billing_subscription` for active subscriptions instead of hardcoding 'free'. `GET /api/billing/summary` returns a comprehensive view of a user's plan, subscription status, all usage counters (daily words + monthly multimodal quotas), and entitlements. The entitlement resolver and summary endpoint are ready for provider integration (checkout/webhook) in the next step.
-
-## Task 2.2 - SaaS Billing Provider Integration ✅ (2026-03-10)
-Files changed:
-- packages/api/src/modules/billing/provider.ts (new) — `BillingProvider` interface with methods: `createCheckoutSession`, `createPortalSession`, `cancelSubscription`, `verifyWebhookSignature`, `parseWebhookEvent`. `NormalizedWebhookEvent` type normalizing provider events to internal types (`checkout.completed`, `subscription.updated`, `subscription.canceled`, `payment.failed`).
-- packages/api/src/modules/billing/providers/polar.ts (new) — Polar adapter implementing `BillingProvider` interface. Uses Polar REST API (`/v1/checkouts/`, `/v1/customer-sessions/`, `/v1/subscriptions/:id`). Webhook signature verification via Standard Webhooks spec (HMAC-SHA256 with `whsec_` prefixed base64 secret). Maps Polar subscription events to normalized types. Product-to-plan mapping via env vars (`POLAR_PRODUCT_PRO`, `POLAR_PRODUCT_TEAM`).
-- packages/api/src/modules/billing/resolve-provider.ts (new) — Provider resolver that reads `BILLING_PROVIDER` env var and returns the configured `BillingProvider` instance (or null if billing is disabled).
-- packages/api/src/modules/billing/service.ts — Extended `BillingService` with webhook processing methods: `isEventProcessed()` (idempotency check), `processWebhookEvent()` (transactional: inserts webhook event, upserts billing_customer + billing_subscription based on event type), `getActiveProviderSubscriptionId()` (for cancel endpoint).
-- packages/api/src/modules/billing/index.ts — Extended billing router with four new endpoints: `POST /checkout` (authenticated, creates Polar checkout session, returns checkoutUrl), `POST /portal` (authenticated, creates customer portal session, returns portalUrl), `POST /cancel` (authenticated, cancels active subscription at period end or immediately), `POST /webhook` (unauthenticated, signature-verified, idempotent webhook processing with duplicate detection and transactional state transitions).
-- packages/env/src/server.ts — Added optional billing env vars: `BILLING_PROVIDER` (enum: polar|razorpay), `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `POLAR_PRODUCT_PRO`, `POLAR_PRODUCT_TEAM`.
-- apps/server/.env.example — Added commented-out billing env var examples.
-- CLAUDE.md — Documented new billing env vars.
-Outcome: Full billing provider integration with provider-agnostic abstraction. Polar is the first adapter, implementing checkout (redirect to Polar-hosted payment page), customer portal (manage subscriptions/invoices), cancellation (soft cancel at period end or immediate revoke), and webhook processing (signature verification + idempotent event handling). Webhook processing uses transactional upserts to maintain billing_customer and billing_subscription state. The `BillingProvider` interface allows adding a Razorpay (or other) adapter later with no changes to routes or business logic. All billing routes return 503 when `BILLING_PROVIDER` is not set, allowing gradual rollout.
-
-## Task 2.3 - SaaS Billing Enforcement ✅ (2026-03-10)
-Files changed:
-- packages/api/src/modules/usage/service.ts — Made UsageService plan-aware: added `resolveWordBudget(userId)` helper, updated `reserveWords()` and `getRemainingWords()` to accept optional `dailyBudget` parameter that overrides the hardcoded `DAILY_WORD_BUDGET` constant. Budget is resolved from user's billing plan entitlements.
-- packages/api/src/modules/usage/index.ts — Updated `/api/usage/remaining` endpoint to return plan-aware daily word budget instead of hardcoded constant.
-- packages/api/src/modules/chat/index.ts — Added plan entitlement resolution on every chat request. Model gating: rejects requests for models not in the user's `allowedModelIds` with 402 + `MODEL_NOT_ALLOWED` code. Word reservation now uses plan-aware `aiWordsDaily` budget. Remaining words header uses plan-aware budget.
-- packages/api/src/modules/shares/index.ts — Share link creation: enforces `maxActiveShareLinks` per plan (402 + `SHARE_LINK_LIMIT`). Shared chat: checks `canUsePublicShareQA` entitlement (402 + `PUBLIC_SHARE_QA_NOT_ALLOWED`), reserves words from the share link owner's daily budget, and releases unused words on finish.
-- packages/api/src/modules/shares/service.ts — Added `countActive(userId)` method for counting non-revoked share links. Added `getOwnerEmail(userId)` for admin bypass check in shared chat. Added `user` table import.
-- packages/api/src/modules/collections/index.ts — Collection creation: enforces `maxCollections` per plan (402 + `COLLECTION_LIMIT`).
-- packages/api/src/modules/collections/service.ts — Added `countForUser(userId)` method for counting user's collections.
-- docs/future-work-outline.md — Marked task 2.3 as complete.
-Outcome: All six plan entitlements are now enforced at their respective API gates. Daily word budgets are plan-aware (Free: 2k, Pro: 30k, Team: 100k words/day) instead of using a hardcoded 2k constant. Model access is gated per plan (Free users restricted to 3 models; Pro/Team get all 7). Share link creation is capped per plan (Free: 1, Pro/Team: unlimited). Collection creation is capped (Free: 5, Pro/Team: unlimited). Public share Q&A is gated by `canUsePublicShareQA` (Pro/Team only). Shared chat word usage is deducted from the share link owner's daily budget with atomic reservation/release. Admins bypass all enforcement. All enforcement returns upgrade-aware error payloads (402 with code, limits, and usage info).
-
-## Task 2.4 - Frontend UX: Pricing, Billing Dashboard, Upgrade Prompts ✅ (2026-03-10)
-Files changed:
-- apps/web/src/app/pricing/page.tsx (new) — Pricing page route at `/pricing`. Server component that authenticates session and renders PricingGrid.
-- apps/web/src/components/billing/pricing-grid.tsx (new) — Client component with 3-column plan grid (Free/Pro/Team), monthly/yearly interval toggle, feature lists, and checkout flow via `POST /api/billing/checkout`. Shows current plan state and handles billing-disabled errors.
-- apps/web/src/app/dashboard/billing/page.tsx (new) — Billing dashboard page route at `/dashboard/billing`. Server component that authenticates session and renders BillingDashboard.
-- apps/web/src/components/billing/billing-dashboard.tsx (new) — Client component fetching `GET /api/billing/summary`. Shows plan card with subscription status and period dates, 4 usage bars (daily words, monthly video minutes, visual segments, comments) with progress indicators, entitlement grid, past-due payment warning, manage/cancel/upgrade actions via billing portal and checkout APIs.
-- apps/web/src/lib/upgrade-prompt.ts (new) — Upgrade prompt utility. `handleUpgradeError()` checks for 402 status, maps error codes (QUOTA_EXCEEDED, MODEL_NOT_ALLOWED, SHARE_LINK_LIMIT, COLLECTION_LIMIT, PUBLIC_SHARE_QA_NOT_ALLOWED) to user-friendly messages, shows toast with "View plans" action linking to `/pricing`. Returns boolean so callers can short-circuit.
-- apps/web/src/components/library/url-input-form.tsx — Added `handleUpgradeError()` calls before generic error toasts in both URL ingest and file upload error paths.
-- apps/web/src/components/library/create-collection-dialog.tsx — Added `handleUpgradeError()` call in collection creation error path (catches 402 COLLECTION_LIMIT).
-- apps/web/src/components/share/share-dialog.tsx — Updated to use new `createShareLink` return type that surfaces error objects. Added `handleUpgradeError()` call (catches 402 SHARE_LINK_LIMIT).
-- apps/web/src/lib/api-fetchers.ts — Changed `createShareLink` return type from `ShareLink | null` to `ShareLink | { error }` to surface 402 error details to the share dialog.
-- apps/web/src/components/comments/comments-tab.tsx — Added `handleUpgradeError()` call in comment generation error path (catches 402 QUOTA_EXCEEDED for comments).
-- apps/web/src/hooks/use-milkpod-chat.ts — Added 402 interception in customFetch: clones response, parses JSON body, and calls `handleUpgradeError()` before useChat processes the error (catches MODEL_NOT_ALLOWED and word budget 402s).
-- apps/web/src/components/dashboard/dashboard-shell.tsx — Sidebar plan usage now fetches `GET /api/billing/summary` to show actual plan name (Free/Pro/Team) instead of generic label; shows "Manage plan" button for paid users (links to `/dashboard/billing`) and "Upgrade" button for free users (links to `/pricing`). User dropdown badge shows actual plan name instead of hardcoded "Starter". Billing menu item is now enabled and navigates to `/dashboard/billing`.
-Outcome: Full frontend billing UX is in place. Users can browse plans on `/pricing` with monthly/yearly toggle and checkout to Polar. The billing dashboard at `/dashboard/billing` shows current plan, subscription status, all usage counters with visual progress bars, and entitlement details. Upgrade prompts surface automatically at all 402 gates: video ingest, file upload, collection creation, share link creation, comment generation, and chat (model gating + word budget). All prompts include a "View plans" action linking to the pricing page. The sidebar and user menu reflect the user's actual plan tier from the billing summary API.
+pnpm check-types: PASS (all 7 packages)
 
