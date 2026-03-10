@@ -1,4 +1,4 @@
-import { index, integer, pgEnum, pgTable, text, unique } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, pgEnum, pgTable, text, timestamp, unique } from 'drizzle-orm/pg-core';
 import { createId, lifecycle_dates } from '../helpers';
 import { user } from './auth';
 
@@ -42,6 +42,9 @@ export const mediaAssets = pgTable(
     lastError: text('last_error'),
     attempts: integer('attempts').default(0).notNull(),
     providerJobId: text('provider_job_id'),
+    rawMediaRetentionUntil: timestamp('raw_media_retention_until'),
+    rawMediaDeletedAt: timestamp('raw_media_deleted_at'),
+    retentionHold: boolean('retention_hold').default(false).notNull(),
     ...lifecycle_dates,
   },
   (t) => [

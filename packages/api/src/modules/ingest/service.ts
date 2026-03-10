@@ -9,6 +9,7 @@ import {
   videoContextEmbeddings,
 } from '@milkpod/db/schemas';
 import { and, eq, sql } from 'drizzle-orm';
+import { serverEnv } from '@milkpod/env/server';
 import type { Segment } from './segments';
 import type { VisualSegment } from './video-context';
 
@@ -147,6 +148,20 @@ export abstract class IngestService {
       const batch = items.slice(i, i + BATCH_SIZE);
       await db().insert(videoContextEmbeddings).values(batch);
     }
+  }
+
+  /**
+   * Set retention deadline on an upload asset based on RAW_MEDIA_RETENTION_DAYS.
+   */
+  static async setRetentionDeadline(assetId: string) {
+    const days = serverEnv().RAW_MEDIA_RETENTION_DAYS;
+    const deadline = new Date();
+    deadline.setDate(deadline.getDate() + days);
+
+    await db()
+      .update(mediaAssets)
+      .set({ rawMediaRetentionUntil: deadline })
+      .where(eq(mediaAssets.id, assetId));
   }
 
   static async findBySourceId(sourceId: string, userId: string) {

@@ -148,6 +148,13 @@
       "when": 1773066465910,
       "tag": "0020_petite_salo",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1773117999530,
+      "tag": "0021_simple_hulk",
+      "breakpoints": true
     }
   ]
 }

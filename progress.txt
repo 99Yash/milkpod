@@ -60,3 +60,15 @@ Files changed:
 - apps/web/src/app/asset/[id]/comments/page.tsx (new) — Server component page route: authenticates session, loads initial comments via getComments query, renders CommentsTab.
 Outcome: Full hybrid comments feature with dedicated data model, generation pipeline, API module, and UI surface. Comments are generated from fused transcript + visual context evidence using Gemini 2.5 Flash Lite. Each comment includes a timestamp range, source label (audio/visual/hybrid), and evidence references for explainability. The UI provides a dedicated Comments tab with timestamp-based video navigation and source-type badges. Comments can be dismissed (soft delete). The generation endpoint caches results and supports regeneration.
 
+## Task 1.1 - Retention Policy for Uploaded Raw Media ✅ (2026-03-10)
+Files changed:
+- packages/db/src/schema/media-assets.ts — Added `rawMediaRetentionUntil` (timestamp), `rawMediaDeletedAt` (timestamp), `retentionHold` (boolean, default false) columns to media_asset table.
+- packages/db/src/migrations/0021_simple_hulk.sql — Migration adding three retention columns to media_asset.
+- packages/env/src/server.ts — Added `RAW_MEDIA_RETENTION_DAYS` env var (integer, default 90 days).
+- packages/api/src/modules/ingest/service.ts — Added `setRetentionDeadline(assetId)` method to IngestService that computes deadline from `RAW_MEDIA_RETENTION_DAYS` and writes `rawMediaRetentionUntil`.
+- packages/api/src/modules/ingest/pipeline.ts — Called `IngestService.setRetentionDeadline()` in `orchestrateUploadPipeline` after successful finalization.
+- packages/api/src/modules/retention/service.ts (new) — RetentionService with `findExpiredUploads()`, `purge()` (deletes S3 objects + marks `rawMediaDeletedAt`), `setRetentionHold()`, and `getStats()` (counts for expired-pending, purged, held).
+- packages/api/src/modules/retention/index.ts (new) — Admin-only Elysia routes at `/api/admin/retention`: POST `/purge` (batch purge expired uploads), POST `/hold/:assetId` (toggle legal hold), GET `/stats` (retention metrics).
+- packages/api/src/index.ts — Mounted retention module.
+Outcome: Upload assets now receive a retention deadline (default 90 days) after successful processing. Admin endpoints allow triggering batch purge of expired raw media from object storage, toggling legal hold on individual assets, and querying retention metrics. Purge is idempotent: deletes S3 object then marks `rawMediaDeletedAt`. Assets under legal hold (`retentionHold=true`) are excluded from purge. Metrics return counts for expired-pending, purged-total, and held-total.
+

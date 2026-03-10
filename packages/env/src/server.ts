@@ -26,6 +26,7 @@ const serverEnvSchema = z.object({
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
   ADMIN_EMAILS: z.string().optional().default(''),
   COOKIE_DOMAIN: z.string().optional(),
+  RAW_MEDIA_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
