@@ -216,7 +216,7 @@ function ThreadItem({
                   'ml-1 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground',
                   isActive
                     ? 'opacity-100'
-                    : 'opacity-0 group-hover:opacity-100',
+                    : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
                 )}
               >
                 <Ellipsis className="size-3.5" />

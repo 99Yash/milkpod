@@ -693,3 +693,100 @@ Checklist verification:
 
 pnpm check-types: PASS (all 7 packages)
 
+## Task 12 - Frontend: Chat UI [DONE]
+
+Files reviewed:
+- apps/web/src/components/chat/chat-panel.tsx
+- apps/web/src/components/chat/chat-shell.tsx
+- apps/web/src/components/chat/message.tsx
+- apps/web/src/components/chat/tool-result.tsx
+- apps/web/src/components/chat/ai-avatar.tsx
+- apps/web/src/components/chat/shimmer-text.tsx
+- apps/web/src/components/chat/thinking-indicator.tsx
+- apps/web/src/components/chat/tool-meta.ts
+- apps/web/src/components/chat/model-picker.tsx
+- apps/web/src/components/chat/word-limit-picker.tsx
+- apps/web/src/components/chat/thread-sidebar.tsx
+
+Issues found and fixed:
+1. chat-panel.tsx:120 - Bug: `.finally(onLoaded)` in `useRestoredThread` prematurely set `isLoading=false`
+   when a thread was found but its messages weren't cached. `resolveThreadMessages` starts an async
+   fetch, but `.finally()` fires synchronously after the `.then()` callback returns void. This caused
+   `ChatPanelContent` to mount with `initialMessages=undefined` before messages arrived, and since
+   `useMilkpodChat` captures `initialMessages` on mount, the later state update was never reflected.
+   Fix: Replaced `.finally(onLoaded)` with explicit `onLoaded()` calls in each exit path: when no
+   thread is found (`.then` early return), on error (`.catch`). When a thread IS found,
+   `resolveThreadMessages` calls `onLoaded` internally after fetch completes.
+2. thinking-indicator.tsx - Dead code. New file created in this diff but never imported or used anywhere.
+   The inline thinking indicators in chat-panel.tsx and message.tsx use different layouts. Removed file.
+3. thread-sidebar.tsx:216-219 - DropdownMenu trigger button on non-active thread items used
+   `opacity-0 group-hover:opacity-100` but lacked `group-focus-within:opacity-100`. Keyboard users
+   tabbing to the menu trigger couldn't see it. Same class of issue fixed in Task 11 (comment-card.tsx).
+   Fix: Added `group-focus-within:opacity-100` to the opacity classes.
+4. chat-panel.tsx:384 - Icon-only submit button (`SendHorizonal` icon) had no accessible label.
+   Screen readers would announce it as an unlabeled button.
+   Fix: Added `aria-label="Send message"` to the Button.
+
+Issues noted (no fix needed):
+5. chat-panel.tsx & message.tsx - Duplicate "Thinking" indicator UI (BrainCircuit + ShimmerText +
+   animated dots) inlined in both files. Different layout contexts (chat-panel wraps with AiAvatar,
+   message.tsx is within an existing avatar-wrapped assistant message). Extracting would require
+   parameterizing layout differences for minimal deduplication gain.
+6. model-picker.tsx:87 - `MODEL_REGISTRY[0]!` non-null assertion. MODEL_REGISTRY is a constant
+   array defined in @milkpod/ai/models, always populated with at least one model. Safe.
+7. model-picker.tsx:114 - `onChange(id as ModelId)` type assertion. The `id` comes from
+   `CommandItem value={model.id}` where model is from MODEL_REGISTRY. Always a valid ModelId.
+8. message.tsx:140 - User message parts use index keys (`key={i}`). User messages only contain
+   text parts that don't reorder or change. Array index keys are acceptable here.
+9. shimmer-text.tsx:22 - `animate-[shimmer_2.1s_linear_infinite]` arbitrary animation. The
+   `@keyframes shimmer` is properly defined in globals.css:272. Verified.
+10. chat-shell.tsx:82 - `window.setTimeout` usage. Inside a `useEffect` (client-only execution),
+    with proper cleanup via `window.clearTimeout` in the effect destructor. SSR-safe.
+11. chat-shell.tsx:104-121 - `handleNewThread` has try/finally but no catch. `createThread` uses
+    Eden treaty internally, catches errors, and returns null on failure. The `if (!created)` guard
+    handles errors. `try/finally` is solely for the `isCreatingThreadRef` guard. No unhandled throw.
+
+Checklist verification:
+- No unnecessary re-renders in message list: ChatMessage is not wrapped in React.memo, but each
+  message is a lightweight render (text + tools). `useAutoAnimate` adds a ref but no re-render
+  overhead. `useMilkpodChat` provides `messages` as a stable reference from AI SDK. The
+  `handleSubmit` and `handleKeyDown` are properly memoized with useCallback. `useChatSettings`
+  returns stable setters. No unnecessary re-render concerns.
+- Streaming state handled without flicker: `isStreaming` prop computed per-message based on status
+  and position. Thinking indicator shown only when loading and last message isn't assistant. Text
+  parts use `isAnimating` prop for character-by-character animation. ShimmerText deactivates when
+  `active` is false. Tool results distinguish pending (loading/streaming) from complete. No flicker.
+- Proper cleanup on unmount: useRestoredThread effect has `cancelled` flag checked before all state
+  updates, with cleanup function. Chat-shell's prefetch warmup effect clears timeout. No abort
+  controllers needed — Eden treaty handles cleanup internally, and useMilkpodChat (from AI SDK)
+  manages its own stream lifecycle.
+- Tool result rendering handles all tool types: `getFallbackToolOutput` covers 'context', 'read',
+  'retrieve', and a default case. `normalizeToolName` maps AI SDK tool names to these kinds.
+  `getLabel` and `getProgressMessage` cover all three ToolOutput discriminants. TOOL_META has
+  entries for all kinds plus a generic 'tool' fallback. Correct.
+- No `any` types: No `any` found. Two `as` assertions noted (ModelId, non-null MODEL_REGISTRY[0])
+  — both justified and safe (see #6, #7). `isToolOutput` is a proper type guard.
+- Keys are stable and unique: message.id for message list, segment.id for tool result pills,
+  thread.id for thread list, model.id for model picker, String(option.value) for word limit.
+  Index keys only for user message text parts (see #8). Correct.
+- Accessibility: Fixed — submit button now has aria-label. Thread menu trigger now visible on
+  keyboard focus. ThinkingIndicator had role="status" and aria-live="polite" but was unused/removed.
+  Animated dots have aria-hidden. Delete confirmation uses AlertDialog with proper title/description.
+  Thread items have role="button", tabIndex=0, keyboard handlers. Textarea has placeholder.
+  Form has onSubmit. Buttons have type="button" or type="submit".
+- No dangerouslySetInnerHTML: Correct. All AI text rendered via Streamdown component (safe markdown
+  renderer). User text rendered as plain Streamdown. No raw HTML injection.
+- Tailwind v4 best practices: Uses theme tokens throughout (bg-muted, text-foreground, border-border,
+  bg-primary, text-primary-foreground, bg-accent, text-accent-foreground, text-muted-foreground).
+  size-* used for icons. Minimal arbitrary values: text-[13px] for tool labels (no 13px theme token),
+  text-[15px] for textarea, text-[10px] for thread dates, bg-[length:240%_100%] for shimmer gradient.
+  All justified — no equivalent theme tokens exist. No `w-* h-*` where `size-*` could be used.
+- No console.log in production: Correct. No console.log/warn/error in any file. Error handling
+  uses toast.error() throughout.
+- No SSR issues: All components are 'use client'. Browser APIs (window.setTimeout, window.history,
+  localStorage) accessed only inside useEffect or event handlers. getCachedChatMessages in useState
+  initializer is an in-memory cache (returns undefined on server, consistent with client first render
+  on fresh page load). No hydration mismatch.
+
+pnpm check-types: PASS (all 7 packages)
+
