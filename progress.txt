@@ -210,3 +210,69 @@ Checklist verification:
 
 pnpm check-types: PASS (all 7 packages)
 
+## Task 5 - Backend: Comments Module [DONE]
+
+Files reviewed:
+- packages/api/src/modules/comments/generate.ts
+- packages/api/src/modules/comments/service.ts
+- packages/api/src/modules/comments/model.ts
+- packages/api/src/modules/comments/index.ts
+
+Issues found and fixed:
+1. generate.ts:220 - Missing timeout on `generateText` LLM call. Comment generation could hang
+   indefinitely if the AI provider is unresponsive (same class of issue fixed in Task 2).
+   Fix: Added `timeout: { totalMs: 300_000 }` (5 min) matching video-context.ts pattern.
+2. rate-limit.ts:77 - `/api/comments` paths were not covered by the rate limiter. The generate
+   endpoint triggers expensive LLM calls and was unprotected from abuse.
+   Fix: Added `/api/comments` to the categorize function under 'ingest' category (10 req/min burst),
+   matching the rate limit tier for other AI-generation endpoints.
+3. generate.ts:273-274 - `console.warn` logged full error object `err` in quota increment catch.
+   Could expose internal DB details (connection strings, query state).
+   Fix: Changed to log only `err.message` (with instanceof Error guard), consistent with Task 3 fix.
+4. index.ts:44 - No error handling around `generateComments` call. LLM API failures (timeouts,
+   parsing errors, provider errors) would propagate as raw 500 with potentially sensitive error
+   text (API URLs, model names, stack traces).
+   Fix: Wrapped in try/catch; returns safe 500 message. Logs only error message, not full object.
+
+Issues noted (no fix needed):
+5. index.ts:15+44 - `AssetService.getById` called in handler (line 15) and again inside
+   `generateComments` → `AssetService.getWithTranscript` (which calls getById internally).
+   Redundant query, but acceptable: handler validates ownership/status, generator is self-contained
+   and always validates. One extra SELECT is cheap vs. tight coupling.
+6. generate.ts:197 - `entities as string[] | null` type assertion on jsonb column. The schema
+   defines entities as jsonb without $type. Acceptable since the ingest pipeline always writes
+   string arrays, and the assertion matches the DB contract.
+7. service.ts - `list()` returns all non-dismissed comments without pagination. Comments are
+   capped at MAX_COMMENTS (20) by the generation pipeline, so the result set is bounded.
+
+Checklist verification:
+- AI generation timeout: Fixed — 5 min timeout on generateText. Error handling: Fixed — try/catch
+  in handler returns safe error message.
+- Structured output validation: AI SDK v6 `Output.array({ element: commentSchema })` validates
+  LLM output against Zod schema. Invalid output → `result.output` is null, handled by `?? []`
+  fallback. Additional filter on line 236 rejects invalid times and empty bodies.
+- Max comments cap: Enforced via `MAX_COMMENTS = 20` constant. Applied at two levels:
+  `maxComments` in prompt instructions and `.slice(0, MAX_COMMENTS)` post-filter (line 237).
+  `MAX_WINDOWS = 30` bounds the input. No unbounded arrays.
+- Auth: All three endpoints use `{ auth: true }`. Asset ownership verified via
+  `AssetService.getById(id, user.id)` in generate and list. Comment ownership verified via
+  `CommentService.getById(id, user.id)` in feedback. Admin bypass properly gated via
+  `isAdminEmail(user.email)` (server-derived, not spoofable).
+- Regenerate cleanup: `deleteByAsset(assetId, userId)` deletes all user comments for the asset
+  before regeneration. Scoped to user — won't affect other users' comments.
+- Evidence references: `evidenceRefs` jsonb column stores transcript segment IDs (from
+  transcriptSegments table) and visual segment IDs (from videoContextSegments table). These are
+  FK-equivalent references set during generation from actual DB rows. Not enforced as DB-level FKs
+  (jsonb limitation), but integrity maintained by construction — IDs come from the same query that
+  loads the segments.
+- N+1 queries: No N+1. Generate pipeline: 1 call for asset+transcript (2-3 queries via
+  getWithTranscript), 1 query for visual segments, 1 batch insert. List: 1 ownership check +
+  1 filtered select. Feedback: 1 lookup + 1 update. All O(1) queries per request.
+- Rate limiting: Fixed — comments endpoints now rate-limited under 'ingest' tier (10 req/min).
+- Input validation: Elysia body/query validation via CommentModel schemas (t.Object with typed
+  fields). assetId validated as string; regenerate as optional boolean; action as literal union.
+- HTTP status codes: 404 (not found), 422 (not ready), 402 (quota exceeded), 500 (generation
+  failed), 429 (rate limit). Correct.
+
+pnpm check-types: PASS (all 7 packages)
+

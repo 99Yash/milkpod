@@ -101,7 +101,7 @@ Checklist:
 - Proper HTTP status codes for quota exceeded (402)
 - Error payloads include useful info for client-side upgrade prompts
 
-## Task 5 - Backend: Comments Module
+## ~~Task 5 - Backend: Comments Module~~ ✅
 
 Files:
 - packages/api/src/modules/comments/generate.ts
