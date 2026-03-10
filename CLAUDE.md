@@ -107,6 +107,12 @@ Key differences from older versions:
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` - OAuth provider
 - `NODE_ENV` - Runtime mode (`development`, `production`, `test`)
 - `ELEVENLABS_API_KEY` - Optional, required for ElevenLabs transcription in ingest flows
+- `UPLOAD_STORAGE_BUCKET` - S3-compatible bucket for durable manual uploads
+- `UPLOAD_STORAGE_REGION` - Region for the upload bucket (`auto` works for providers like R2)
+- `UPLOAD_STORAGE_ENDPOINT` - Optional custom S3 endpoint (for R2/MinIO/etc.)
+- `UPLOAD_STORAGE_ACCESS_KEY_ID` / `UPLOAD_STORAGE_SECRET_ACCESS_KEY` - Credentials for upload storage
+- `UPLOAD_STORAGE_FORCE_PATH_STYLE` - `true` for path-style S3 providers, else `false`
+- `UPLOAD_STORAGE_SIGNED_URL_TTL_SECONDS` - Lifetime for signed download URLs used in ingest
 - `OPENAI_API_KEY` - Used by `@ai-sdk/openai` in `@milkpod/ai` (provider reads from process env)
 - `GOOGLE_GENERATIVE_AI_API_KEY` - Used by `@ai-sdk/google` in `@milkpod/ai` (provider reads from process env)
 - `RESEND_API_KEY` - Required for sending email OTP codes via Resend

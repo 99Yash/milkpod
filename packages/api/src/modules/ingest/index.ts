@@ -5,6 +5,7 @@ import { IngestService } from './service';
 import { AssetService } from '../assets/service';
 import { resolveYouTubeMetadata } from './youtube';
 import { orchestratePipeline, orchestrateUploadPipeline } from './pipeline';
+import { isUploadStorageConfigured, storeUploadedMedia } from './upload-storage';
 
 /** 100 MB */
 const MAX_UPLOAD_SIZE = 100 * 1024 * 1024;
@@ -83,10 +84,26 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       const mediaType = file.type.startsWith('video/') ? 'video' as const : 'audio' as const;
       const assetTitle = title?.trim() || file.name.replace(/\.[^.]+$/, '');
 
+      if (!isUploadStorageConfigured()) {
+        return status(503, {
+          message: 'Upload storage is not configured on the server.',
+        });
+      }
+
+      let storedUpload;
+      try {
+        storedUpload = await storeUploadedMedia({ file, userId });
+      } catch (error) {
+        console.error('[ingest] Failed to persist upload before pipeline start:', error);
+        return status(500, { message: 'Failed to store uploaded file' });
+      }
+
       const asset = await AssetService.create(userId, {
         title: assetTitle,
+        sourceUrl: storedUpload.canonicalUrl,
         sourceType: 'upload',
         mediaType,
+        sourceId: storedUpload.key,
       });
 
       if (!asset) {
@@ -94,7 +111,7 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       }
 
       // Fire-and-forget pipeline
-      orchestrateUploadPipeline(asset.id, file, userId).catch((err) => {
+      orchestrateUploadPipeline(asset.id, storedUpload.canonicalUrl, userId, mediaType).catch((err) => {
         console.error(`Upload pipeline failed for asset ${asset.id}:`, err);
       });
 

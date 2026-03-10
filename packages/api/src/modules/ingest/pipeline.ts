@@ -4,9 +4,10 @@ import { IngestService } from './service';
 import { withRetry } from './retry';
 import { embedSegments } from './embed';
 import { emitAssetStatus } from '../../events/asset-events';
-import { transcribeAudio, transcribeFile } from './elevenlabs';
+import { transcribeAudio } from './elevenlabs';
 import { extractVideoContext } from './video-context';
 import type { TranscriptionStrategy } from './model';
+import { createUploadDownloadUrl } from './upload-storage';
 
 type TranscriptionMethod = 'audio' | 'captions' | 'audio_fallback_to_captions';
 
@@ -166,8 +167,9 @@ export async function orchestratePipeline(
 
 export async function orchestrateUploadPipeline(
   assetId: string,
-  file: File,
-  userId: string
+  sourceUrl: string,
+  userId: string,
+  mediaType: 'audio' | 'video'
 ): Promise<void> {
   const retry = makeRetry(assetId);
 
@@ -175,12 +177,23 @@ export async function orchestrateUploadPipeline(
     await IngestService.updateStatus(assetId, 'transcribing');
     emitAssetStatus(userId, assetId, 'transcribing');
 
-    const result = await retry('transcribing', () => transcribeFile(file));
+    const transcriptionUrl = await retry('resolving-upload-url', () =>
+      createUploadDownloadUrl(sourceUrl)
+    );
+
+    const result = await retry('transcribing', () => transcribeAudio(transcriptionUrl));
     const segments = groupWordsIntoSegments(result.words);
 
     await finalizePipeline(assetId, userId, result.language_code, segments, 'elevenlabs', retry, {
       transcriptionMethod: 'audio',
     });
+
+    if (mediaType === 'video') {
+      const visualUrl = await retry('resolving-upload-visual-url', () =>
+        createUploadDownloadUrl(sourceUrl, { expiresInSeconds: 3600 })
+      );
+      triggerVisualExtraction(assetId, visualUrl, userId, segments);
+    }
   } catch (error) {
     await handlePipelineError(assetId, userId, error);
   }
