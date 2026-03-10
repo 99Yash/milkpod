@@ -20,6 +20,13 @@ export const assetStatusEnum = pgEnum('asset_status', [
   'failed',
 ]);
 
+export const visualStatusEnum = pgEnum('visual_status', [
+  'pending',
+  'processing',
+  'completed',
+  'failed',
+]);
+
 export const mediaAssets = pgTable(
   'media_asset',
   {
@@ -45,6 +52,9 @@ export const mediaAssets = pgTable(
     rawMediaRetentionUntil: timestamp('raw_media_retention_until'),
     rawMediaDeletedAt: timestamp('raw_media_deleted_at'),
     retentionHold: boolean('retention_hold').default(false).notNull(),
+    visualStatus: visualStatusEnum('visual_status'),
+    visualAttempts: integer('visual_attempts').default(0).notNull(),
+    visualLastError: text('visual_last_error'),
     ...lifecycle_dates,
   },
   (t) => [

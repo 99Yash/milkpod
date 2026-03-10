@@ -72,6 +72,9 @@ function triggerVisualExtraction(
   const duration = lastSeg ? Math.ceil(lastSeg.endTime) : 0;
   if (duration <= 0) return;
 
+  // Set initial pending status synchronously before fire-and-forget
+  IngestService.updateVisualStatus(assetId, 'pending').catch(() => {});
+
   extractVideoContext(assetId, sourceUrl, userId, duration).catch((err) => {
     console.warn(
       `[ingest] Visual context extraction failed for ${assetId}:`,

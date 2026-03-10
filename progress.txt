@@ -72,3 +72,15 @@ Files changed:
 - packages/api/src/index.ts — Mounted retention module.
 Outcome: Upload assets now receive a retention deadline (default 90 days) after successful processing. Admin endpoints allow triggering batch purge of expired raw media from object storage, toggling legal hold on individual assets, and querying retention metrics. Purge is idempotent: deletes S3 object then marks `rawMediaDeletedAt`. Assets under legal hold (`retentionHold=true`) are excluded from purge. Metrics return counts for expired-pending, purged-total, and held-total.
 
+## Task 1.2 - Full Upload Multimodal Parity Hardening ✅ (2026-03-10)
+Files changed:
+- packages/db/src/schema/media-assets.ts — Added `visualStatusEnum` ('pending' | 'processing' | 'completed' | 'failed'), `visualStatus`, `visualAttempts` (default 0), `visualLastError` columns to media_asset table.
+- packages/db/src/migrations/0022_pink_captain_marvel.sql — Migration creating visual_status enum and adding three visual tracking columns to media_asset.
+- packages/api/src/modules/ingest/service.ts — Added `updateVisualStatus(assetId, status, opts?)` and `incrementVisualAttempts(assetId, error)` methods to IngestService.
+- packages/api/src/modules/ingest/video-context.ts — Updated `extractVideoContext()` to track visual status lifecycle: sets 'processing' on start, 'completed' on success, 'failed' on error. Uses `incrementVisualAttempts` in retry error handler for per-attempt tracking.
+- packages/api/src/modules/ingest/pipeline.ts — Updated `triggerVisualExtraction()` to set initial 'pending' visual status before fire-and-forget extraction.
+- packages/api/src/modules/visual-parity/service.ts (new) — VisualParityService with `findRequeueCandidates()` (finds failed/null visual status video assets), `requeue()` (refreshes signed URLs for uploads, re-triggers visual extraction), and `getParityStats()` (compares YouTube vs upload visual success rates by source type).
+- packages/api/src/modules/visual-parity/index.ts (new) — Admin-only Elysia routes at `/api/admin/visual`: POST `/requeue` (batch requeue failed visual extractions with fresh signed URLs), GET `/stats` (parity dashboard data by source type).
+- packages/api/src/index.ts — Mounted visual-parity module.
+Outcome: Visual extraction now has full lifecycle tracking via `visual_status`, `visual_attempts`, and `visual_last_error` columns on media_asset, decoupled from transcript readiness. Admin requeue endpoint finds failed or never-attempted video assets, refreshes signed URLs for uploads (solving TTL expiration), and re-triggers visual extraction. Parity stats endpoint returns visual extraction success/failure/pending counts grouped by source type (YouTube vs upload) for observability dashboards. All video assets (YouTube and upload) follow the same visual status lifecycle.
+
