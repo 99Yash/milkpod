@@ -1,23 +1,18 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import type { MilkpodMessage, ToolOutput } from '@milkpod/ai/types';
 import { isToolOutput } from '@milkpod/ai/types';
 import { isToolUIPart } from 'ai';
-import { BrainCircuit, ChevronRight } from 'lucide-react';
+import { BrainCircuit } from 'lucide-react';
 import type { Components } from 'streamdown';
 import { Streamdown } from 'streamdown';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '~/components/ui/collapsible';
-import { Spinner } from '~/components/ui/spinner';
 import { cn } from '~/lib/utils';
+import { AiAvatar } from './ai-avatar';
 import { useAssetSource } from './asset-source-context';
+import { ShimmerText } from './shimmer-text';
 import { TimestampLink } from './timestamp-link';
-import { TOOL_META, normalizeToolName, type ActivityKind } from './tool-meta';
+import { normalizeToolName } from './tool-meta';
 import { ToolResult } from './tool-result';
 
 // Matches [MM:SS], [HH:MM:SS], and ranges like [MM:SS–MM:SS] or [MM:SS-MM:SS]
@@ -66,13 +61,6 @@ const streamdownComponents: Components = {
       </a>
     );
   },
-};
-
-type ActivitySummaryItem = {
-  key: ActivityKind;
-  count: number;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
 };
 
 function getReasoningSnippet(part: MilkpodMessage['parts'][number]): string {
@@ -133,223 +121,144 @@ function getFallbackToolOutput(toolName: string): ToolOutput {
 export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const assetSource = useAssetSource();
-  const [activityOpen, setActivityOpen] = useState(false);
   const [partsRef] = useAutoAnimate({
     duration: 220,
     easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
   });
-  const [activityRef] = useAutoAnimate({
-    duration: 180,
-    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-  });
 
   const shouldLinkify = !!assetSource && assetSource.sourceType !== 'upload';
-  const activityParts = useMemo(
-    () => message.parts.filter(isActivityPart),
-    [message.parts],
-  );
-  const firstActivityIndex = useMemo(
-    () => message.parts.findIndex(isActivityPart),
-    [message.parts],
-  );
-  const activitySummary = useMemo<ActivitySummaryItem[]>(() => {
-    const counts = new Map<ActivityKind, number>();
-
-    for (const part of activityParts) {
-      const key: ActivityKind = part.type === 'reasoning' ? 'thinking' : normalizeToolName(part.type);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-
-    return Array.from(counts.entries()).map(([key, count]) => {
-      const config = TOOL_META[key];
-      return {
-        key,
-        count,
-        label: config.label,
-        icon: config.icon,
-      };
-    });
-  }, [activityParts]);
-  const pendingActivity = useMemo(
-    () =>
-      activityParts.some((part) => {
-        if (part.type === 'reasoning') return !!isStreaming;
-        if (!isToolUIPart(part)) return false;
-
-        if (part.state !== 'output-available') return true;
-        if (part.preliminary === true) return true;
-        if (!isToolOutput(part.output)) return true;
-
-        return (
-          part.output.status === 'loading' || part.output.status === 'searching'
-        );
-      }),
-    [activityParts, isStreaming],
-  );
   const hasRenderableAssistantPart = message.parts.some((part) => {
     if (part.type === 'text') return part.text.trim().length > 0;
     return !isUser && isActivityPart(part);
   });
-  const wasPendingActivityRef = useRef(pendingActivity);
 
-  useEffect(() => {
-    const wasPending = wasPendingActivityRef.current;
-    if (wasPending && !pendingActivity && activityOpen) {
-      setActivityOpen(false);
-    }
-    wasPendingActivityRef.current = pendingActivity;
-  }, [activityOpen, pendingActivity]);
+  // --- User message ---
+  if (isUser) {
+    return (
+      <div className="flex justify-end py-2">
+        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-primary-foreground shadow-sm">
+          {message.parts.map((part, i) =>
+            part.type === 'text' ? (
+              <Streamdown
+                key={i}
+                className="text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+              >
+                {part.text}
+              </Streamdown>
+            ) : null,
+          )}
+        </div>
+      </div>
+    );
+  }
 
+  // --- Assistant message ---
   return (
-    <div
-      className={cn(
-        'flex gap-3 py-3',
-        isUser ? 'justify-end' : 'justify-start',
-      )}
-    >
-      <div
-        className={cn(
-          'max-w-[85%]',
-          isUser
-            ? 'rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-primary-foreground shadow-sm'
-            : 'rounded-2xl rounded-bl-md bg-muted/40 px-4 py-3',
-        )}
-      >
-        <div ref={partsRef} className="space-y-1.5">
-          {message.parts.map((part, i) => {
-            if (!isUser && i === firstActivityIndex && activityParts.length > 0) {
-              return (
-                <Collapsible
-                  key="assistant-activity"
-                  open={activityOpen}
-                  onOpenChange={setActivityOpen}
-                  className="space-y-1"
+    <div className="flex gap-3 py-2">
+      <AiAvatar />
+
+      <div ref={partsRef} className="min-w-0 flex-1 space-y-3 pt-0.5">
+        {message.parts.map((part, i) => {
+          // Reasoning step — shown inline
+          if (part.type === 'reasoning') {
+            const snippet = getReasoningSnippet(part);
+            return (
+              <div
+                key={`reasoning-${i}`}
+                className="flex items-start gap-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300"
+              >
+                <BrainCircuit className="mt-px size-4 shrink-0 text-muted-foreground/45" />
+                <ShimmerText
+                  active={!!isStreaming}
+                  className="text-[13px] leading-relaxed text-muted-foreground/65"
                 >
-                  <CollapsibleTrigger
-                    className={cn(
-                      'group flex w-full items-center gap-2 rounded-lg border border-border/45 bg-muted/25 px-2.5 py-1 text-xs text-muted-foreground transition-all duration-200 hover:border-border/70 hover:bg-muted/45 hover:text-foreground',
-                      pendingActivity && 'border-border/55',
-                    )}
-                  >
-                    <ChevronRight
-                      className={cn(
-                        'size-3 shrink-0 transition-transform duration-200',
-                        activityOpen && 'rotate-90',
-                      )}
-                    />
-                    <span className="font-medium">
-                      {pendingActivity ? 'Working through tools' : 'Thinking and tools'}
-                    </span>
-                    {pendingActivity && <Spinner className="size-3 shrink-0" />}
+                  {snippet || 'Thinking...'}
+                </ShimmerText>
+              </div>
+            );
+          }
 
-                    <span className="ml-auto inline-flex items-center gap-1">
-                      {activitySummary.map((item) => {
-                        const Icon = item.icon;
-                        return (
-                          <span
-                            key={item.key}
-                            className="inline-flex items-center gap-0.5 rounded-md border border-border/40 bg-background/65 px-1 py-0.5 text-[10px] leading-none text-muted-foreground"
-                            title={`${item.count} ${item.label.toLowerCase()} step${item.count === 1 ? '' : 's'}`}
-                          >
-                            <Icon className="size-2.5" />
-                            {item.count > 1 && <span>{item.count}</span>}
-                          </span>
-                        );
-                      })}
-                    </span>
-                  </CollapsibleTrigger>
+          // Tool step — shown inline with source pills
+          if (isToolUIPart(part)) {
+            const hasOutput = part.state === 'output-available';
+            const toolStreaming = hasOutput && part.preliminary === true;
+            const output =
+              hasOutput && isToolOutput(part.output)
+                ? part.output
+                : getFallbackToolOutput(part.type);
 
-                  <CollapsibleContent>
-                    <div ref={activityRef} className="space-y-1.5 pt-0.5">
-                      {activityParts.map((activityPart, index) => {
-                        if (activityPart.type === 'reasoning') {
-                          const snippet = getReasoningSnippet(activityPart);
-                          return (
-                            <div
-                              key={`thinking-${index}`}
-                              className="flex items-center gap-2 rounded-lg border border-border/35 bg-muted/20 px-2 py-1 text-xs text-muted-foreground"
-                            >
-                              <BrainCircuit className="size-3.5 shrink-0" />
-                              <span className="font-medium text-muted-foreground">
-                                Thinking
-                              </span>
-                              {snippet && (
-                                <span className="truncate text-muted-foreground/80">
-                                  {snippet}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        }
+            return (
+              <ToolResult
+                key={`tool-${i}`}
+                toolName={part.type}
+                output={output}
+                isStreaming={toolStreaming}
+              />
+            );
+          }
 
-                        if (isToolUIPart(activityPart)) {
-                          const hasOutput =
-                            activityPart.state === 'output-available';
-                          const toolStreaming =
-                            hasOutput && activityPart.preliminary === true;
-                          const output =
-                            hasOutput && isToolOutput(activityPart.output)
-                              ? activityPart.output
-                              : getFallbackToolOutput(activityPart.type);
+          // Text content
+          if (part.type === 'text') {
+            const text = shouldLinkify
+              ? linkifyTimestamps(part.text)
+              : part.text;
 
-                          return (
-                            <ToolResult
-                              key={`tool-${index}`}
-                              toolName={activityPart.type}
-                              output={output}
-                              isStreaming={toolStreaming}
-                            />
-                          );
-                        }
-
-                        return null;
-                      })}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              );
-            }
-
-            if (isActivityPart(part)) return null;
-
-            if (part.type === 'text') {
-              const text =
-                !isUser && shouldLinkify
-                  ? linkifyTimestamps(part.text)
-                  : part.text;
-
-              return (
+            return (
+              <div
+                key={i}
+                className={cn(
+                  'rounded-2xl rounded-tl-md bg-muted/40 px-4 py-3',
+                  // If this is the first text part and there are activity parts before it,
+                  // add a subtle top margin for separation
+                  i > 0 && message.parts.slice(0, i).some(isActivityPart) && 'mt-1',
+                )}
+              >
                 <Streamdown
-                  key={i}
                   isAnimating={isStreaming}
                   className="text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1"
                   components={shouldLinkify ? streamdownComponents : undefined}
                 >
                   {text}
                 </Streamdown>
-              );
-            }
+              </div>
+            );
+          }
 
-            return null;
-          })}
+          return null;
+        })}
 
-          {!isUser && isStreaming && !hasRenderableAssistantPart && (
-            <div className="inline-flex items-center gap-2 rounded-lg border border-border/45 bg-muted/25 px-2.5 py-1 text-xs text-muted-foreground">
-              <Spinner className="size-3" />
-              <BrainCircuit className="size-3.5" />
-              <span className="font-medium">Thinking</span>
-            </div>
-          )}
+        {/* Initial thinking state (before any parts arrive) */}
+        {isStreaming && !hasRenderableAssistantPart && (
+          <div className="flex items-center gap-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
+            <BrainCircuit className="size-4 shrink-0 text-muted-foreground/45 animate-pulse" />
+            <ShimmerText
+              active
+              className="text-[13px] font-medium text-muted-foreground/65"
+            >
+              Thinking
+            </ShimmerText>
+            <span className="inline-flex items-center gap-1" aria-hidden>
+              {[0, 1, 2].map((index) => (
+                <span
+                  key={index}
+                  className="size-1 rounded-full bg-muted-foreground/40 animate-pulse motion-reduce:animate-none"
+                  style={{
+                    animationDelay: `${index * 160}ms`,
+                    animationDuration: '1s',
+                  }}
+                />
+              ))}
+            </span>
+          </div>
+        )}
 
-          {!isUser &&
-            !isStreaming &&
-            message.metadata?.finishReason === 'length' && (
-              <p className="mt-1 rounded-lg bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
-                Response trimmed due to output limit — try a higher word limit or
-                ask a follow-up.
-              </p>
-            )}
-        </div>
+        {/* Output length notice */}
+        {!isStreaming && message.metadata?.finishReason === 'length' && (
+          <p className="mt-1 rounded-lg bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
+            Response trimmed due to output limit — try a higher word limit or
+            ask a follow-up.
+          </p>
+        )}
       </div>
     </div>
   );

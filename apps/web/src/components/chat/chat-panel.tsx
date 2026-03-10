@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { MessageSquareText, SendHorizonal, Sparkles } from 'lucide-react';
+import { BrainCircuit, MessageSquareText, SendHorizonal, Sparkles } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
 import { ScrollArea } from '~/components/ui/scroll-area';
@@ -9,11 +9,12 @@ import { Spinner } from '~/components/ui/spinner';
 import { toast } from 'sonner';
 import { useMilkpodChat } from '~/hooks/use-milkpod-chat';
 import { useChatSettings } from '~/hooks/use-chat-settings';
+import { AiAvatar } from './ai-avatar';
 import { ChatMessage } from './message';
 import { ModelPicker } from './model-picker';
+import { ShimmerText } from './shimmer-text';
 import { WordLimitPicker } from './word-limit-picker';
 import { DailyQuota } from './daily-quota';
-import { ThinkingIndicator } from './thinking-indicator';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 import {
   fetchChatMessages,
@@ -326,8 +327,29 @@ function ChatPanelContent({
                 />
               ))}
               {isLoading && messages.at(-1)?.role !== 'assistant' && (
-                <div className="py-4">
-                  <ThinkingIndicator />
+                <div className="flex gap-3 py-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
+                  <AiAvatar />
+                  <div className="flex items-center gap-2 pt-1">
+                    <BrainCircuit className="size-4 shrink-0 text-muted-foreground/45 animate-pulse" />
+                    <ShimmerText
+                      active
+                      className="text-[13px] font-medium text-muted-foreground/65"
+                    >
+                      Thinking
+                    </ShimmerText>
+                    <span className="inline-flex items-center gap-1" aria-hidden>
+                      {[0, 1, 2].map((idx) => (
+                        <span
+                          key={idx}
+                          className="size-1 rounded-full bg-muted-foreground/40 animate-pulse motion-reduce:animate-none"
+                          style={{
+                            animationDelay: `${idx * 160}ms`,
+                            animationDuration: '1s',
+                          }}
+                        />
+                      ))}
+                    </span>
+                  </div>
                 </div>
               )}
               <div ref={bottomRef} />
