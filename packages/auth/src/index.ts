@@ -79,7 +79,9 @@ export function auth() {
             : 'lax',
         secure: env.NODE_ENV === 'production',
         httpOnly: true,
-        ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
+        ...(env.NODE_ENV === 'production' && env.COOKIE_DOMAIN
+          ? { domain: env.COOKIE_DOMAIN }
+          : {}),
       },
     },
   });
