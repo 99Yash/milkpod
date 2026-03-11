@@ -11,6 +11,8 @@
     "deploy": "pnpm --filter @milkpod/db db:migrate"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1004.0",
+    "@aws-sdk/s3-request-presigner": "^3.1004.0",
     "elysia": "catalog:",
     "@elysiajs/cors": "catalog:",
     "@elysiajs/node": "catalog:",
