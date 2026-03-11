@@ -115,7 +115,7 @@ export function AssetCard({
     <DashboardPanel
       className={cn(
         'transition',
-        isReady && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md'
+        isReady && 'cursor-pointer hover:-translate-y-0.5 card-hover'
       )}
     >
       {asset.thumbnailUrl && (
@@ -123,7 +123,7 @@ export function AssetCard({
           <img
             src={asset.thumbnailUrl}
             alt={asset.title}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover image-inset-outline"
           />
         </div>
       )}

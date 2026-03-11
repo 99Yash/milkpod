@@ -47,7 +47,7 @@ export function MomentPresetSwitcher({
           disabled={disabled}
           onClick={() => onChange(preset)}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+            'inline-flex items-center gap-1.5 rounded-full pl-2.5 pr-3 py-1 text-xs font-medium transition-colors',
             'disabled:pointer-events-none disabled:opacity-50',
             value === preset
               ? 'bg-foreground text-background'

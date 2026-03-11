@@ -100,7 +100,7 @@ Key differences from older versions:
 - **Library leverage**: Before writing manual logic, verify the library doesn't already provide it. Read `.d.ts` files in `node_modules/.pnpm/` for actual type signatures. Search library GitHub repos via `mcp__grep__searchGitHub` (elysiajs/elysia, drizzle-team/drizzle-orm, vercel/ai) for API examples. Prefer Drizzle relational queries over manual joins, Elysia `.guard()`/`.onError()` over per-route boilerplate, AI SDK `Output` over manual JSON parsing.
 - **Composability**: Extract shared patterns (admin checks, ownership resolution, quota enforcement) into typed utilities. Functions should be generic over dependencies. Keep module interfaces narrow.
 
-See `review-prompt.md` for the full checklist, library-specific guidance, and high-signal nudges from prior reviews.
+See `review-prompt.md` for the full checklist, library-specific guidance, and high-signal nudges from prior reviews. See `docs/typescript-patterns.md` for TypeScript patterns reference (discriminated unions, branded types, type guards, generics, `satisfies`, mapped types, React component typing). See `docs/ai-sdk-v6-patterns.md` for AI SDK v6 API patterns (tools, streaming, structured output, workflows, error handling).
 
 ## Keeping Agent Docs Useful
 

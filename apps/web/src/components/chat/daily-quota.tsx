@@ -22,7 +22,7 @@ export function DailyQuota({ remaining }: DailyQuotaProps) {
       <TooltipTrigger asChild>
         <span
           className={cn(
-            'inline-flex items-center px-2 text-xs',
+            'inline-flex items-center px-2 text-xs tabular-nums',
             isLow ? 'text-destructive' : 'text-muted-foreground',
           )}
         >

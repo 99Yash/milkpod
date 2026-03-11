@@ -13,7 +13,7 @@ export function TimestampLink({ seconds, children }: TimestampLinkProps) {
     useTimestampAction();
 
   if (!isClickable) {
-    return <span>{children}</span>;
+    return <span className="tabular-nums">{children}</span>;
   }
 
   return (
@@ -21,7 +21,7 @@ export function TimestampLink({ seconds, children }: TimestampLinkProps) {
       <button
         type="button"
         onClick={() => handleClick(seconds)}
-        className="cursor-pointer font-medium tracking-tight text-purple-600 dark:text-purple-400"
+        className="cursor-pointer font-medium tracking-tight tabular-nums text-purple-600 dark:text-purple-400"
       >
         {children}
       </button>

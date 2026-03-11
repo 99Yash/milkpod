@@ -146,13 +146,18 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
-          {moments.map((moment) => (
-            <MomentCard
+          {moments.map((moment, index) => (
+            <div
               key={moment.id}
-              moment={moment}
-              onSave={handleSave}
-              onDismiss={handleDismiss}
-            />
+              className="animate-enter"
+              style={index > 0 ? { animationDelay: `${Math.min(index, 8) * 60}ms` } : undefined}
+            >
+              <MomentCard
+                moment={moment}
+                onSave={handleSave}
+                onDismiss={handleDismiss}
+              />
+            </div>
           ))}
         </div>
       )}

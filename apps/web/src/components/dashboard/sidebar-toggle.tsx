@@ -24,7 +24,7 @@ export function DashboardSidebarToggle({
       size="icon-sm"
       onClick={onToggle}
       className={cn(
-        'rounded-full bg-background shadow-none',
+        'rounded-full bg-background shadow-none transition-transform duration-200',
         'hover:bg-muted/60',
         collapsed && 'rotate-180',
       )}

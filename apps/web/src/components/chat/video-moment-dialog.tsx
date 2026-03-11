@@ -28,7 +28,7 @@ export function VideoMomentDialog({
           <iframe
             src={embedUrl}
             title={`Video at ${formatTime(timestamp)}`}
-            className="size-full rounded-lg"
+            className="size-full rounded-lg image-inset-outline"
             allow="autoplay; fullscreen; picture-in-picture"
             sandbox="allow-scripts allow-same-origin allow-popups"
             allowFullScreen

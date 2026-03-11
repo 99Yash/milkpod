@@ -136,28 +136,30 @@ export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
 
       {/* Source pills — timestamp badges */}
       {!pending && segments.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pl-6 animate-in fade-in-0 duration-300">
-          {segments.slice(0, MAX_PILLS).map((segment) =>
+        <div className="flex flex-wrap gap-1.5 pl-6">
+          {segments.slice(0, MAX_PILLS).map((segment, index) =>
             isClickable ? (
               <button
                 key={segment.id}
                 type="button"
                 onClick={() => handleClick(segment.startTime)}
-                className="rounded-full border border-border/40 bg-muted/40 px-2.5 py-0.5 font-mono text-xs tabular-nums text-muted-foreground/80 transition-all hover:border-border/60 hover:bg-muted/70 hover:text-foreground"
+                className="animate-enter rounded-full border border-border/40 bg-muted/40 px-2.5 py-0.5 font-mono text-xs tabular-nums text-muted-foreground/80 transition-all hover:border-border/60 hover:bg-muted/70 hover:text-foreground"
+                style={index > 0 ? { animationDelay: `${index * 40}ms` } : undefined}
               >
                 {formatTime(segment.startTime)}
               </button>
             ) : (
               <span
                 key={segment.id}
-                className="rounded-full border border-border/40 bg-muted/40 px-2.5 py-0.5 font-mono text-xs tabular-nums text-muted-foreground/70"
+                className="animate-enter rounded-full border border-border/40 bg-muted/40 px-2.5 py-0.5 font-mono text-xs tabular-nums text-muted-foreground/70"
+                style={index > 0 ? { animationDelay: `${index * 40}ms` } : undefined}
               >
                 {formatTime(segment.startTime)}
               </span>
             ),
           )}
           {segments.length > MAX_PILLS && (
-            <span className="self-center text-xs text-muted-foreground/50">
+            <span className="animate-enter self-center text-xs text-muted-foreground/50" style={{ animationDelay: `${MAX_PILLS * 40}ms` }}>
               +{segments.length - MAX_PILLS} more
             </span>
           )}
