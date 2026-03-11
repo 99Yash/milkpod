@@ -37,7 +37,7 @@ export function WordLimitPicker({ value, onChange }: WordLimitPickerProps) {
           <ChevronDown className="size-3" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0" side="top" align="start">
+      <PopoverContent className="w-[200px] font-open-runde p-0" side="top" align="start">
         <Command>
           <CommandList>
             <CommandGroup>
