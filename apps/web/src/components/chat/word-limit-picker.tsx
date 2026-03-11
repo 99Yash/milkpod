@@ -33,7 +33,7 @@ export function WordLimitPicker({ value, onChange }: WordLimitPickerProps) {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="sm" className="h-8 gap-1.5 rounded-lg px-2.5 text-[13px] text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground">
-          {getLabel(value)}
+          <span className="tabular-nums">{getLabel(value)}</span>
           <ChevronDown className="size-3" />
         </Button>
       </PopoverTrigger>

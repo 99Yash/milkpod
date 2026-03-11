@@ -41,7 +41,7 @@ export function CommentCard({ comment, onDismiss }: CommentCardProps) {
 
   return (
     <>
-      <div className="group flex flex-col gap-2 rounded-lg border border-border/60 p-4 transition-colors hover:border-border">
+      <div className="group flex flex-col gap-2 rounded-lg card-elevated p-4 transition-shadow card-hover">
         {/* Header: timestamp + source badge */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">

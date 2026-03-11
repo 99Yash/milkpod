@@ -309,7 +309,7 @@ function ChatPanelContent({
                     key={suggestion}
                     type="button"
                     onClick={() => sendMessage({ text: suggestion })}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-background px-3.5 py-2 text-xs font-medium text-muted-foreground shadow-sm transition-all hover:border-border hover:bg-muted hover:text-foreground hover:shadow-md"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-background pl-3 pr-3.5 py-2 text-xs font-medium text-muted-foreground shadow-sm transition-all hover:border-border hover:bg-muted hover:text-foreground hover:shadow-md"
                   >
                     <Sparkles className="size-3" />
                     {suggestion}
@@ -365,7 +365,7 @@ function ChatPanelContent({
       <div className="shrink-0 px-3 pb-3 pt-2">
         <form
           onSubmit={handleSubmit}
-          className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-border/60 bg-muted/30 shadow-sm transition-shadow focus-within:border-border focus-within:shadow-md"
+          className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-border/60 bg-muted/30 shadow-sm transition-[box-shadow,border-color] duration-200 focus-within:border-border focus-within:shadow-md"
         >
           <Textarea
             value={input}
@@ -389,7 +389,7 @@ function ChatPanelContent({
                 className="rounded-xl bg-muted-foreground/15 text-muted-foreground hover:bg-muted-foreground/25 hover:text-foreground disabled:bg-muted-foreground/8"
                 disabled={isLoading || !input.trim()}
               >
-                <SendHorizonal className="size-4" />
+                <SendHorizonal className="size-4 translate-x-px" />
               </Button>
             </div>
           </div>

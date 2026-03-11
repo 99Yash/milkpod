@@ -89,17 +89,22 @@ function ThreadList({
 
   return (
     <div className="flex flex-col gap-0.5 p-1.5">
-      {threads.map((thread) => (
-        <ThreadItem
+      {threads.map((thread, index) => (
+        <div
           key={thread.id}
-          thread={thread}
-          isActive={thread.id === activeThreadId}
-          onSelect={() => onSelectThread(thread.id)}
-          onDelete={() => onDeleteThread(thread.id)}
-          onRename={(title) => onRenameThread(thread.id, title)}
-          onRegenerateTitle={() => onRegenerateTitle(thread.id)}
-          onPrefetch={() => onPrefetchThread?.(thread.id)}
-        />
+          className="animate-enter"
+          style={index > 0 ? { animationDelay: `${Math.min(index, 10) * 40}ms` } : undefined}
+        >
+          <ThreadItem
+            thread={thread}
+            isActive={thread.id === activeThreadId}
+            onSelect={() => onSelectThread(thread.id)}
+            onDelete={() => onDeleteThread(thread.id)}
+            onRename={(title) => onRenameThread(thread.id, title)}
+            onRegenerateTitle={() => onRegenerateTitle(thread.id)}
+            onPrefetch={() => onPrefetchThread?.(thread.id)}
+          />
+        </div>
       ))}
     </div>
   );

@@ -7,7 +7,7 @@ type PanelProps = React.ComponentProps<'div'>;
 export function DashboardPanel({ className, ...props }: PanelProps) {
   return (
     <Card
-      className={cn('border-border/60 shadow-none gap-0 py-0', className)}
+      className={cn('border-0 shadow-none card-elevated gap-0 py-0', className)}
       {...props}
     />
   );

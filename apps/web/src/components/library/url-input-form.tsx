@@ -133,7 +133,7 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
           type="button"
           onClick={() => setMode('url')}
           className={cn(
-            'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+            'flex items-center gap-1.5 rounded-md pl-2 pr-2.5 py-1 text-xs font-medium transition-colors',
             mode === 'url'
               ? 'bg-muted text-foreground'
               : 'text-muted-foreground hover:text-foreground'
@@ -146,7 +146,7 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
           type="button"
           onClick={() => setMode('upload')}
           className={cn(
-            'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+            'flex items-center gap-1.5 rounded-md pl-2 pr-2.5 py-1 text-xs font-medium transition-colors',
             mode === 'upload'
               ? 'bg-muted text-foreground'
               : 'text-muted-foreground hover:text-foreground'

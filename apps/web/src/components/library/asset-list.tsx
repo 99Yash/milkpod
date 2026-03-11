@@ -115,15 +115,20 @@ export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }:
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {assets.map((asset) => (
-        <AssetCard
+      {assets.map((asset, index) => (
+        <div
           key={asset.id}
-          asset={asset}
-          onSelect={onSelectAsset}
-          onRetry={() => queryClient.invalidateQueries({ queryKey: queryKeys.assets.all })}
-          progress={progressMap[asset.id]?.progress}
-          progressMessage={progressMap[asset.id]?.message}
-        />
+          className="animate-enter"
+          style={index > 0 ? { animationDelay: `${Math.min(index, 8) * 60}ms` } : undefined}
+        >
+          <AssetCard
+            asset={asset}
+            onSelect={onSelectAsset}
+            onRetry={() => queryClient.invalidateQueries({ queryKey: queryKeys.assets.all })}
+            progress={progressMap[asset.id]?.progress}
+            progressMessage={progressMap[asset.id]?.message}
+          />
+        </div>
       ))}
     </div>
   );

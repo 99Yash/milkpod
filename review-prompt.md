@@ -147,6 +147,19 @@ Don't just check if code works — check if it's using the libraries well. Hand-
 - Are `'use client'` components doing data fetching that could be lifted to a server component parent?
 - Are there manual loading/error state machines that a data-fetching hook would provide for free?
 
+### TypeScript Patterns (see `docs/typescript-patterns.md` for full reference)
+
+When reviewing TypeScript code, actively look for opportunities to apply these patterns:
+
+- **Discriminated unions + exhaustive switches** over separate boolean/string state fields. Every `switch` on a union type MUST have `default: never` check.
+- **Type guards (`is`) and assertion functions (`asserts`)** over `as` casts. Use `.filter((x): x is T => ...)` instead of `.filter(...) as T[]`.
+- **`satisfies`** for config objects that need both type validation and literal preservation. Use instead of bare `as const` when shape validation matters.
+- **`as const` + `keyof typeof`** to derive union types from config objects. The config is the single source of truth — don't maintain a parallel union by hand.
+- **Generic constraints** (`<T extends { id: string }>`) to make utility functions work with any type that has the required shape, preserving the full type for the caller.
+- **Branded types** for entity IDs when functions accept multiple ID parameters that could be swapped.
+- **`Awaited<ReturnType<typeof fn>>`** to derive types from function signatures instead of hand-maintaining interface definitions.
+- **Discriminated union state** (`AsyncState<T>`) instead of separate `isLoading`, `error`, `data` state variables in React.
+
 ### Composability Principles
 
 - **Functions should be generic over their dependencies.** A function that takes `(assetId, userId)` and internally queries the DB is less composable than one that takes `(asset, transcript)` and operates on data. Separate data fetching from data processing where it simplifies testing and reuse.
@@ -188,7 +201,9 @@ These are real issues found repeatedly across this codebase. Actively look for t
 - `CLAUDE.md` — project conventions, gotchas, env vars, package boundaries, AI SDK v6 specifics
 - `ARCHITECTURE.md` — system design, data flow, module structure
 - `docs/elysia.md` — Elysia framework reference (guards, derive, lifecycle hooks, error handling)
-- `docs/ai-sdk.md` — AI SDK v6 patterns, RAG agent guide, streaming, tools, structured output
+- `docs/ai-sdk-v6-patterns.md` — AI SDK v6 API patterns (tools with `inputSchema`, `stopWhen`, `createUIMessageStream`, `writer.merge`, `streamObject`, `onFinish`, `onError`, guardrails, model routing, iterative refinement)
+- `docs/ai-sdk.md` — RAG agent guide (embeddings, retrieval, vector databases)
+- `docs/typescript-patterns.md` — TypeScript patterns reference (generics, discriminated unions, branded types, type guards, satisfies, mapped types, React component typing)
 
 ### Library Source of Truth (when docs aren't enough)
 - **Type signatures:** Read `.d.ts` files in `node_modules/.pnpm/<pkg>@<version>/node_modules/<pkg>/dist/`. This is the ground truth — do not guess from memory. Key paths:

@@ -60,13 +60,18 @@ export function CollectionList({ refreshKey, initialCollections }: CollectionLis
         </p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {collections.map((collection) => (
-            <CollectionCard
+          {collections.map((collection, index) => (
+            <div
               key={collection.id}
-              collection={collection}
-              onDeleted={invalidate}
-              onUpdated={invalidate}
-            />
+              className="animate-enter"
+              style={index > 0 ? { animationDelay: `${Math.min(index, 8) * 60}ms` } : undefined}
+            >
+              <CollectionCard
+                collection={collection}
+                onDeleted={invalidate}
+                onUpdated={invalidate}
+              />
+            </div>
           ))}
         </div>
       )}

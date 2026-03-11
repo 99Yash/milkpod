@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { Input } from '~/components/ui/input';
+import { cn } from '~/lib/utils';
 import {
   Select,
   SelectContent,
@@ -51,18 +52,20 @@ export function SearchFilterBar({ filters, onChange }: SearchFilterBarProps) {
           onChange={(e) => setLocalQuery(e.target.value)}
           className="h-8 pl-8 pr-8 text-xs"
         />
-        {localQuery && (
-          <button
-            type="button"
-            onClick={() => {
-              setLocalQuery('');
-              onChange({ ...filters, q: '' });
-            }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          >
-            <X className="size-3.5" />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            setLocalQuery('');
+            onChange({ ...filters, q: '' });
+          }}
+          className={cn(
+            "absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-[opacity,transform] duration-150",
+            localQuery ? "opacity-100 scale-100" : "opacity-0 scale-75 pointer-events-none"
+          )}
+          tabIndex={localQuery ? 0 : -1}
+        >
+          <X className="size-3.5" />
+        </button>
       </div>
       <Select
         value={filters.status || '_all'}

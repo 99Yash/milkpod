@@ -1,0 +1,784 @@
+# Pattern Distillation Progress
+
+## Task A1 - AI SDK Basics (01-ai-sdk-basics)
+Files read: 13 (6 exercises: 01.04, 01.05, 01.06, 01.07, 01.08, 01.10)
+
+Patterns found:
+- Provider setup: import `openai`/`google`/`anthropic` from `@ai-sdk/*`, call with model ID string
+- `generateText({ model, prompt })` → `result.text` (one-shot)
+- `streamText({ model, prompt })` → `result.textStream` (async iterable for terminal)
+- `toUIMessageStream()` wire format: protocol chunks for client consumption
+- Full client-server chat: `convertToModelMessages()` → `streamText` → `toUIMessageStream()` → `createUIMessageStreamResponse()`
+- `useChat()` → `{ messages, sendMessage, status, error }`
+- `sendMessage({ text })` shorthand vs `sendMessage({ parts: [...] })` for explicit parts
+- `FileUIPart` type for sending files/images: `{ type: 'file', url: dataURL, mediaType }`
+- `convertToModelMessages` handles file parts automatically server-side
+
+Added to ai-sdk-v6-patterns.md:
+- Section 5: `sendMessage` text vs parts API, `FileUIPart` pattern with data URL helper
+- Section 8: Added `UIMessagePart` and `FileUIPart` to type imports
+- Anti-patterns table: Added file sending anti-pattern
+
+Already covered (no changes needed):
+- `generateText` basic usage (Section 1)
+- `streamText` + `textStream` (Section 1)
+- `convertToModelMessages` (Section 1)
+- `toUIMessageStreamResponse()` shortcut (Section 3)
+- `useChat` basic usage (Section 5)
+- `sendMessage` vs `handleSubmit` (v6 changes table)
+
+## Task A2 - LLM Fundamentals (02-llm-fundamentals)
+Files read: 12 (1 solution: 02.02, 5 explainers: 02.01, 02.03, 02.04, 02.05.1, 02.05.2)
+
+Patterns found:
+- `await result.usage` on streamText → `{ promptTokens, completionTokens, totalTokens, cachedInputTokens }` (Promise, resolves after stream ends)
+- `maxRetries` option (default 3) on generateText/streamText — set to 0 to disable retries
+- Token counting with `js-tiktoken` (conceptual — not an SDK API)
+- Data format token efficiency: Markdown < XML < JSON for same data (context engineering tip)
+- Context window overflow causes provider-specific errors
+- Prompt caching: prefix-based, `cachedInputTokens` in usage tracks cached portion; invalidates at first divergent token
+
+Added to ai-sdk-v6-patterns.md:
+- Section 1 generateText: `cachedInputTokens` added to usage comment
+- Section 1 streamText: Added `result.usage` as Promise + `maxRetries` option example
+
+Already covered (no changes needed):
+- `result.usage` basic shape was already on generateText (just missing cachedInputTokens)
+- `result.textStream` async iteration
+- `result.text` as Promise
+
+Not added (conceptual/non-SDK):
+- Token counting with js-tiktoken (not an SDK pattern)
+- Data format efficiency comparison (general LLM knowledge)
+- Context window overflow behavior (provider-specific, no SDK API pattern)
+
+## Task A3 - Agents & Tool Calling (03-agents)
+Files read: 29 (4 solutions: 03.01, 03.03, 03.05, 03.07; 3 explainers: 03.02, 03.04, 03.06)
+
+Patterns found:
+- `tool({ needsApproval: true })` — pauses before execute, waits for client-side approval
+- `InferUITools<typeof tools>` — 3rd generic on UIMessage for typed tool parts (tool-{name})
+- `InferUITool` — single tool type inference
+- Tool part properties: `part.type` = `'tool-writeFile'` etc., `part.input` typed per schema, `part.state` = `'approval-requested'` | `'output-available'`
+- `addToolApprovalResponse({ id: part.approval.id, approved: boolean })` from `useChat()`
+- `sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses` — auto-resend when all approvals handled
+- MCP stdio transport: `createMCPClient` + `StdioMCPTransport({ command, args, env })`
+- MCP HTTP transport: `createMCPClient` + `{ type: 'http', url, headers }`
+- `await mcpClient.tools()` returns tools compatible with streamText; must `await mcpClient.close()` in `onFinish`
+- `ToolLoopAgent` class: `new ToolLoopAgent({ model, instructions, tools })` — higher-level agent abstraction
+- `createAgentUIStreamResponse({ agent, uiMessages })` — returns Response directly
+- `InferAgentUIMessage<typeof agent>` — infer UIMessage type from agent instance
+- `toUIMessageStream({ onFinish: ({ messages }) => ... })` — access final messages array including tool parts
+
+Added to ai-sdk-v6-patterns.md:
+- Section 2: `needsApproval` subsection with example
+- Section 2: `InferUITools` / typed tool parts subsection
+- Section 2: MCP Client Integration (stdio + HTTP transports, close pattern)
+- Section 2: `ToolLoopAgent` + `createAgentUIStreamResponse` subsection
+- Section 5: Typed tool part rendering with `InferUITools` example
+- Section 5: Tool approval client-side flow (`addToolApprovalResponse`, `sendAutomaticallyWhen`, part states)
+- Section 8: Added `InferUITools`, `InferUITool`, `InferAgentUIMessage` to type imports; added 3rd generic param docs
+- Anti-patterns: 4 new entries (untyped tool parts, MCP client leak, manual tool loop, no approval on destructive tools)
+
+Already covered (no changes needed):
+- Basic `tool()` with `inputSchema` (Section 2)
+- `stopWhen: [stepCountIs(n)]` (Section 2)
+- `toUIMessageStreamResponse()` (Section 3)
+- `onFinish` callback on `toUIMessageStreamResponse` (Section 4)
+
+## Task A4 - Persistence (04-persistence)
+Files read: 22 (2 solutions: 04.02, 04.03; 3 explainers: 04.01, 04.04, 04.05)
+
+Patterns found:
+- Two `onFinish` locations: `streamText.onFinish` gives ModelMessage[] (not for UI); `toUIMessageStreamResponse.onFinish` gives `responseMessage` (UIMessage) and `messages` (full history)
+- `originalMessages` option on `toUIMessageStreamResponse` — pass incoming messages so `onFinish.messages` includes full history
+- `useChat({ id: chatId })` — sets chat ID, sent as `body.id` to API; client generates with `crypto.randomUUID()`
+- `useChat({ messages: savedMessages })` — hydrate from DB on page load (e.g. via react-query)
+- Append-only persistence: save user message on receive, save `responseMessage` in `onFinish`
+- GET endpoint pattern: load chat by chatId for client hydration
+- Validation: check last message is from user, check messages not empty
+- `validateUIMessages({ messages })` — SDK-provided validation, throws on invalid shape (no custom Zod schema needed)
+- Normalized DB schema (explainer 04.04): chats → messages → parts tables, mapping functions for UI ↔ DB conversion, CHECK constraints per part type
+- `InferToolInput<typeof myTool>` / `InferToolOutput<typeof myTool>` — extract typed IO from tool definitions
+
+Added to ai-sdk-v6-patterns.md:
+- Section 4: Complete rewrite — two onFinish callbacks with distinction, `originalMessages` option, append-only persistence flow (POST + GET), `validateUIMessages` subsection
+- Section 5: Added `id` and `messages` options to `useChat` for chat hydration
+- Section 8: Added `InferToolInput`, `InferToolOutput` types; added `validateUIMessages` import
+- Anti-patterns: 3 new entries (unvalidated body.messages, wrong onFinish for persistence, parts as JSON blob)
+
+Already covered (no changes needed):
+- `onFinish: ({ responseMessage })` basic pattern (Section 4 — but was too minimal, now expanded)
+- `convertToModelMessages` (Section 1)
+- `sendMessage` (Section 5)
+
+## Task A5 - Context Engineering (05-context-engineering)
+Files read: 10 (1 explainer: 05.01; 4 solutions: 05.02, 05.03, 05.04, 05.05; 5 problem readmes)
+
+Patterns found:
+- Anthropic prompt template: ordered sections — task-context → tone-context → background-data → rules → examples → conversation-history → the-ask → thinking-instructions → output-formatting
+- LLMs biased toward beginning/end of prompt; put high-level context first, background data in middle, critical instructions at end
+- XML tags for section boundaries (but simpler version with fewer tags works too)
+- Few-shot exemplars as `<example><input>...</input><expected>...</expected></example>` pairs — can replace rules/output-format sections
+- Retrieval augmentation: scrape external content → inject into `<background-data>` with nested XML tags for document boundaries
+- Chain-of-thought: `<thinking-instructions>` section asking model to plan before answering + output format specifying `<thinking>` block then answer
+- All exercises use `streamText({ model, prompt })` — one-shot string prompt, not chat `messages`
+
+Added to ai-sdk-v6-patterns.md:
+- Section 1 streamText: Added `prompt` option comment (mirrors generateText which already shows it)
+
+Already covered (no changes needed):
+- `streamText` basic usage (Section 1)
+- `generateText` with `prompt` option (Section 1)
+- Research workflow with retrieval (Section 6)
+- Guardrails with pre-flight classification (Section 6)
+
+Not added (prompt engineering, not SDK API patterns):
+- Prompt template structure/ordering (context engineering pattern, not SDK-specific)
+- Few-shot exemplar formatting (prompt engineering technique)
+- Chain-of-thought thinking instructions (prompt engineering technique)
+- XML tag conventions for section boundaries (prompt engineering technique)
+
+## Task A6 - Evals (06-evals)
+Files read: 14 (5 solutions: 06.01, 06.02, 06.03, 06.05, 06.07; 2 explainers: 06.04, 06.06; 3 readmes)
+
+Patterns found:
+- `evalite(name, { data, task, scorers })` — eval framework: `data()` returns `{ input, expected }[]`, `task(input)` calls AI, `scorers` array with `{ name, scorer: ({ input, output, expected }) => number (0-1) }`
+- `runEvalite({ cwd, mode: 'watch-for-file-changes' })` — runner entry point
+- Deterministic scorers: regex/string matching on output (e.g. markdown link detection, output length check)
+- `createScorer<TInput, TOutput, TExpected>()` from `evalite` — typed scorer factory for reusable scorers
+- LLM-as-judge: `generateObject` inside a scorer with structured schema `{ feedback: string, score: enum }` → map to 0-1, return `{ score, metadata }` for rich feedback
+- CSV dataset loading: `papaparse` → `{ input, expected }[]` with `EVAL_DATA_SIZE` slicing for dev-sized subsets
+- Empty `scorers: []` = eyeball eval (no automated scoring, just inspect output in UI)
+- Dataset tiers: Dev (5-10, every change), CI (medium, every commit), Regression (500-1000+, scheduled)
+- Dataset quality metrics: quantity, quality, coverage/diversity (same length/language/intent = poor coverage)
+- `experimental_telemetry` on `streamText`/`generateText`: `{ isEnabled: true, functionId: 'chat', metadata: { langfuseTraceId: trace.id } }`
+- Langfuse setup: `LangfuseExporter` as OpenTelemetry `traceExporter` in `NodeSDK`, `langfuse.trace({ sessionId })` creates trace container
+- `langfuse.flushAsync()` in `onFinish` — flush traces to Langfuse after stream completes
+- `toUIMessageStream({ onFinish })` — attach onFinish to the UIMessageStream itself (not the response wrapper)
+- Parallel LLM calls in same trace: `generateText` (title) + `streamText` (chat) share same `langfuseTraceId`
+
+Added to ai-sdk-v6-patterns.md:
+- Section 1 streamText: `experimental_telemetry` option with `isEnabled`, `functionId`, `metadata` example
+- Anti-patterns: "No observability on LLM calls in production" → use `experimental_telemetry`
+
+Already covered (no changes needed):
+- `generateText` basic usage (Section 1)
+- `streamText` basic usage (Section 1)
+- `generateObject` with schema (Section 1)
+- `createUIMessageStreamResponse({ stream })` (Section 3)
+- `toUIMessageStream()` (Section 3 Writer API)
+- `onFinish` callbacks (Section 4)
+
+Not added (third-party tools, not AI SDK patterns):
+- evalite framework setup/runner (separate package, not `ai` SDK)
+- `createScorer` / scorer patterns (evalite-specific API)
+- Langfuse client setup / trace creation (Langfuse SDK, not `ai` SDK)
+- Dataset management strategy (process guidance, not code pattern)
+- Dataset quality metrics (conceptual, not code pattern)
+
+## Task A7 - Streaming Deep Dive (07-streaming)
+Files read: 12 (4 exercises: 07.01, 07.02, 07.03, 07.04; no explainers)
+
+Patterns found:
+- 07.01: `createUIMessageStream<MyMessage>` with `UIMessage<never, { suggestion: string }>` — stream custom data parts via `writer.write({ id, type: 'data-suggestion', data })` with same `id` to update part in-place
+- 07.02: Same pattern but with `streamObject` + `partialObjectStream` for structured data — `UIMessage<never, { suggestions: string[] }>`, filter `undefined` from partial arrays
+- 07.03: `UIMessage<{ duration: number }>` (first generic = metadata type), `toUIMessageStreamResponse<MyUIMessage>({ messageMetadata({ part }) { if (part.type === 'finish') return { duration }; } })`, client reads `message.metadata?.duration`
+- 07.04: `onError(error)` in `createUIMessageStream` returns user-facing string → becomes `error.message` on client via `useChat()`. `RetryError.isInstance(error)` for specific error handling. Client renders `error.message`.
+- 07.04: `UIMessagePart<UIDataTypes, UITools>` types for generic component part props
+
+Added to ai-sdk-v6-patterns.md:
+- Section 3 Writer API: Replaced single-write example with loop showing same-ID update pattern (reuse `dataPartId` to update part in-place)
+- Section 7: Added "Client — error from useChat" subsection showing `error.message` rendering and the server→client error string connection
+- Section 8: Added `UIDataTypes`, `UITools` types to imports
+- Anti-patterns: 2 new entries (not rendering `error` from useChat, new UUID per writer.write for streaming data)
+
+Already covered (no changes needed):
+- `createUIMessageStream<MyMessage>` with typed data parts (Section 3)
+- `writer.merge()` + `consumeStream()` sequencing (Section 3)
+- `streamObject` + `partialObjectStream` in custom stream (Section 3)
+- `messageMetadata({ part })` with `part.type === 'finish'` (Section 3)
+- `RetryError.isInstance` + `onError` server-side (Section 7)
+- Custom data part access via `part.type === 'data-suggestions'` (Section 5)
+- `useChat<MyMessage>()` with error in destructuring (Section 5)
+
+## Task A8 - Agents & Workflows (08-agents-and-workflows)
+Files read: 16 (4 exercises: 08.01, 08.02, 08.03, 08.04; no explainers; 4 readmes)
+
+Patterns found:
+- 08.01: Sequential workflow — chain `generateText` calls, final `streamText.toUIMessageStreamResponse()`. No `createUIMessageStream` needed when intermediate results aren't shown.
+- 08.02: Streaming intermediate results as custom data parts — `writer.write({ type: 'start' })` required before any data writes when not using `merge()` first; `writer.merge(result.toUIMessageStream({ sendStart: false }))` for subsequent streams; `for await (of textStream)` + `writer.write()` with same ID for streaming updates
+- 08.03: Manual iteration loop inside `createUIMessageStream` — `while (step < N)` with draft/feedback state carried across iterations; manual text part writing (`text-start`, `text-delta`, `text-end`) after loop completes
+- 08.04: `streamObject` for structured evaluation with early loop break — schema with `feedback: z.string().optional()` + `isGoodEnough: z.boolean()`; stream partial feedback via `partialObjectStream` while waiting for boolean; `await evalResult.object` for final control flow decision; `break` on `isGoodEnough`
+
+Added to ai-sdk-v6-patterns.md:
+- Section 3 Writer API: Clarified when `writer.write({ type: 'start' })` is required (before raw writes, not needed when merge() is first)
+- Section 6 Iterative Refinement: Added `writer.write({ type: 'start' })` at top (was missing); added `step` variable init; added streaming partial feedback via `partialObjectStream` in the eval step (was only showing `await evalResult.object`)
+- Anti-patterns: 2 new entries (missing `{ type: 'start' }` before writer data parts; using `generateText` for all intermediate steps when user is waiting)
+
+Already covered (no changes needed):
+- `createUIMessageStream` + `writer` pattern (Section 3)
+- `writer.merge()` with `sendStart: false` (Section 3 & 6)
+- Same-ID reuse for streaming data part updates (Section 3 Writer API)
+- Manual text part writing (`text-start`, `text-delta`, `text-end`) (Section 3 Writer API)
+- `streamObject` + `partialObjectStream` in custom stream (Section 3)
+- Loop with `streamObject` evaluation and `isGoodEnough` break (Section 6)
+- `await result.object` after streaming partials for control flow (Section 6)
+- `MyMessage['parts']` for typed component props (Section 5)
+
+Not added (already implied or too basic):
+- Sequential `generateText` chaining (08.01) — just basic `generateText` calls in sequence, covered implicitly by Section 1
+- `formatMessageHistory` helper — prompt engineering, not SDK API pattern
+
+## Task A9 - Advanced Patterns (09-advanced-patterns)
+Files read: 21 (4 exercises: 09.01, 09.02, 09.03, 09.04; no explainers; 4 readmes)
+
+Patterns found:
+- 09.01: Guardrail classification — `generateText` with cheap model, `text.trim() === '0'` → manual rejection text, else `streamText` + `writer.merge()` for main response
+- 09.02: Model router — `generateText` with cheap model to classify complexity → route to basic/advanced model, `messageMetadata` on `toUIMessageStream` to expose chosen model
+- 09.03: Parallel model comparison — fire two `streamText` simultaneously, `Promise.all` to stream both as separate `data-output` custom parts, accumulate `fullText` in loop, same `partId` for in-place updates
+- 09.03: `setMessages` from `useChat` — programmatic message mutation: `messages.slice(0, index)` + push new message with selected output as text part
+- 09.03: `AsyncIterableStream<string>` type for typing `textStream` parameter in helper functions
+- 09.03: `UIMessageStreamWriter<MyMessage>` generic typing for writer parameter in helpers
+- 09.04: Research workflow — `streamObject` for query generation + plan → `partialObjectStream` streamed as `data-queries` and `data-plan` parts → `await queriesResult.object` for final queries → `Promise.all` parallel search → `streamText` synthesis with `sendStart: false`
+- 09.04: `ReturnType<typeof fn>` pattern for typing streamObject results without manual type annotation
+
+Added to ai-sdk-v6-patterns.md:
+- Section 5: Added `setMessages` to `useChat` destructuring + new subsection "setMessages — Programmatic message mutation" with example and use cases
+- Section 6: Added "Parallel Model Comparison — A/B testing outputs" pattern with `streamModelText` helper, `Promise.all`, data part streaming, client-side selection note
+- Section 8: Added `AsyncIterableStream` type to imports
+- Anti-patterns: 1 new entry (sequential await on independent streamText calls → Promise.all)
+
+Already covered (no changes needed):
+- Guardrail pre-check pattern (Section 6 — matches 09.01 exactly)
+- Model router pattern (Section 6 — matches 09.02 exactly)
+- Research workflow pattern (Section 6 — matches 09.04 structure)
+- `createUIMessageStream` + `writer` (Section 3)
+- `writer.merge()` with `sendStart: false` (Section 3 & 6)
+- Same-ID reuse for streaming data part updates (Section 3)
+- `streamObject` + `partialObjectStream` (Section 1 & 3)
+- `messageMetadata({ part })` on `toUIMessageStream` (Section 3)
+- Custom data part rendering via `part.type === 'data-*'` (Section 5)
+
+## Task A10 - Reference Patterns (99-reference)
+Files read: 20 (9 explainers: 99.01–99.09; all main.ts, readme.md, api/*.ts, client/*.tsx files)
+
+Patterns found:
+- 99.01: `UIMessage` (role, id, parts[]) vs `ModelMessage` (role, content[]) — `convertToModelMessages` bridges them
+- 99.02: `tool({ description, inputSchema, execute })` with `.describe()` on Zod fields; execute return value sent back to LLM
+- 99.03: `onFinish` only fires if stream is consumed — via `textStream` iteration, `result.consumeStream()`, or `toUIMessageStreamResponse()`. Top-level `consumeStream({ stream })` function also works.
+- 99.04: `UIMessage<unknown, { hello: string }>` — 2nd generic maps keys to `data-hello` in `writer.write()`
+- 99.05: `useChat<MyMessage>({})` + `MyMessage['parts']` for typed component props + `part.id` as React key
+- 99.06: Same `id` on `writer.write()` → updates existing part in-place; different IDs → separate parts. Use case: status indicator that changes over time
+- 99.07: `toUIMessageStream<MyMessage>()` — generic param on method itself (not just `createUIMessageStream`); `messageMetadata` callback fires on every part type (not just `finish`); `onFinish({ responseMessage })` callback available directly on `toUIMessageStream` (distinct from `toUIMessageStreamResponse`)
+- 99.08: `text-start` → `text-delta` → `text-end` sequence with shared ID for manual text streaming
+- 99.09: **CRITICAL** — exactly ONE `start` and ONE `finish` per stream. Multiple cause duplicate messages in frontend. Fix: `sendStart: false` + `sendFinish: false` on inner merged streams; manual `writer.write({ type: 'start' })` before first raw write; `sendFinish: false` option on `toUIMessageStream`.
+
+Added to ai-sdk-v6-patterns.md:
+- Section 1 streamText: Added `consumeStream` import and top-level `consumeStream({ stream })` pattern; added comment about `onFinish` not firing without consumption
+- Section 3 Writer API: Added `sendFinish: false` option alongside `sendStart: false`; added sequential merge pattern showing exactly-one start/finish rule with 3 merged streams
+- Section 3 metadata: Added `toUIMessageStream<MyMessage>()` with generic param, `onFinish` callback on the stream method, and note that `messageMetadata` can react to any part type
+- Section 8: Added `consumeStream` import
+- Anti-patterns: 2 new entries (multiple start/finish events → duplicate messages; unconsumed stream with onFinish)
+
+Already covered (no changes needed):
+- `convertToModelMessages` (Section 1)
+- `tool({ inputSchema, execute })` (Section 2)
+- `result.consumeStream()` method (Section 1 — but was missing the top-level function and the "must consume" caveat)
+- Custom data parts type mapping (`UIMessage<unknown, DataParts>`) (Section 3)
+- `useChat<MyMessage>({})` (Section 5)
+- Same-ID reuse for in-place updates (Section 3 Writer API)
+- Manual text part streaming (`text-start/delta/end`) (Section 3 Writer API)
+- `writer.write({ type: 'start' })` requirement (Section 3 — but was missing the exactly-one rule)
+- `sendStart: false` (Section 3 — but was missing `sendFinish: false`)
+
+## Task B1 - Generics Intro (01-generics-intro)
+Files read: 11 (6 solutions: 01–06 (04 has 3 variants); 2 explainers: 04.5, 06.5; 1 intro)
+
+Patterns found:
+- Identity generic `<T>(t: T) => t` — preserves literal types (`1` not `number`, `"matt"` not `string`)
+- Generic constraint `<T extends string>(t: T) => t` — restricts to a type while preserving literal narrowness
+- Multiple type params `<A, B>(a: A, b: B)` — each inferred independently from arguments
+- Generic object params: inline `{ a: T1; b: T2 }`, extracted `interface Params<T1, T2>`, or `type Params<T1, T2>` — all equivalent, extract when reused
+- Generic classes: `class Component<TProps>` — type param on class, flows to constructor + methods
+- Generic mapper with constraint: `<T extends { firstName: string; lastName: string }>(user: T) => ({ ...user, fullName })` — constraint ensures shape, generic preserves extra properties
+
+Added to typescript-patterns.md:
+(nothing — all patterns already covered)
+
+Already covered (no changes needed):
+- Generic constraints preserving extra properties (Section 4 — exact same `enrichUser` pattern as exercise 06)
+- Generic classes (Section 13 — covers builder pattern, a more advanced form of exercise 05)
+- Identity generics, multiple type params, generic interfaces — foundational TS, used implicitly throughout the doc
+
+## Task B2 - Passing Type Arguments (02-passing-type-arguments)
+Files read: 7 (5 solutions: 07, 08, 09, 10, 11; 2 explainers: 11.1, 11.2 — both empty)
+
+Patterns found:
+- Generic factory with no inference site: `createSet<T>()` — T must be explicit, defaults to `unknown` without it
+- Default type parameter: `<T = string>` — provides sensible fallback so callers can omit the type arg
+- Inference from generic class args: `cloneComponent(component: Component<TProps>)` infers `TProps` from the component argument
+- Explicit type arg on `.reduce<Record<string, T>>()` — required when accumulator type differs from element type (TS infers `{}` from initial value without it)
+- Typed fetch wrapper: `fetchData<TData>(url: string)` — explicit type arg when no runtime input→output relationship exists
+
+Added to typescript-patterns.md:
+- Section 4: New subsection "Default type parameters & explicit type arguments" with createSet, .reduce, and fetchData examples + guidance on when to pass explicit type args
+- Anti-patterns: 1 new entry (`.reduce()` without type arg when accumulator differs)
+
+Already covered (no changes needed):
+- Generic class inference from arguments (Section 13 — builder pattern covers this more advanced form)
+- Basic generic functions and constraints (Section 4)
+
+Not added (too foundational):
+- Identity generic with explicit type arg — trivial usage
+- Explainers were empty (just `export {};`)
+
+## Task B3 - Art of Type Arguments (03-art-of-type-arguments)
+Files read: 10 solutions (12 sol.1, 12 sol.2, 13 sol.1, 13 sol.2, 14 sol.1, 14 sol.2, 14.7, 15, 16 sol.1, 16 sol.2); 3 explainers (14.5, 14.6, 16.5 — last was empty)
+
+Patterns found:
+- Exercise 12: Generic placement — put generic at the nested type you care about, not the root object. `<TFlags>(config: { raw: { flags: { home: TFlags } } })` vs `<TConfig extends { raw: ... }>(config: TConfig)` then indexing
+- Exercise 13: Typed `Object.keys` via generic wrapper — `<TObj extends object>(obj: TObj) => Object.keys(obj) as Array<keyof TObj>` OR `<TKey extends string>(obj: Record<TKey, any>) => Object.keys(obj) as Array<TKey>`
+- Exercise 14: Generic function wrapper — `<TFunc extends (...args: any[]) => any>(func: TFunc)` then `Parameters<TFunc>` / `ReturnType<TFunc>` for safe wrappers. Alternative: `<TParams extends any[], TReturn>(func: (...args: TParams) => TReturn)` for direct param/return generics
+- Exercise 14.7 + Explainer 14.5: `extends string` constraint forces literal inference — without it, `"a"` widens to `string` when wrapped in object/array
+- Explainer 14.6: Literal inference on arguments — constraining the *field* (`<T extends string>(obj: { input: T })`) preserves literals; constraining the *object* (`<T extends { input: string }>`) does not
+- Exercise 15: Array element literal inference — `<TStatus extends string>(statuses: TStatus[])` gives `("INFO" | "DEBUG")[]` from `["INFO", "DEBUG"]`
+- Exercise 16: Curried generics for partial inference — outer function captures config type, inner function uses it. `<TVariant extends string>(classes: Record<TVariant, string>) => (variant: TVariant) => ...`
+
+Added to typescript-patterns.md:
+- Section 4: New subsection "Literal inference with `extends string`" — explains constraint triggers literal preservation, with array and object return examples
+- Section 4: New subsection "Place generics at the level you care about" — leaf vs root generic placement with before/after example
+- Section 4: New subsection "Curried generics for partial inference" — factory pattern splitting two function layers, with `createClassNames` example
+- Section 4: New subsection "Generic function wrappers" — `<TFunc extends (...args: any[]) => any>` + `Parameters`/`ReturnType` pattern with `makeSafe` example
+- Anti-patterns: 3 new entries (root-level generic with deep indexing, unconstrained generic losing literals, single function needing partial inference)
+
+Already covered (no changes needed):
+- Basic generic constraints preserving extra properties (Section 4 — `enrichUser` pattern)
+- `Object.keys` returning `string[]` anti-pattern (already in anti-patterns table)
+- `Parameters<T>` and `ReturnType<T>` utility types (Section 7 — but not in the function wrapper context, now added separately)
+- `keyof` on Record types (Section 8 — mapped types)
+
+## Task B4 - Generics Advanced (04-generics-advanced)
+Files read: 9 solutions (17 sol.1, 17 sol.2, 17.5, 18, 19, 20, 20.5, 20.6, 20.7); no explainers
+
+Patterns found:
+- Exercise 17: Conditional return type — `<T extends "hello" | "goodbye">(greeting: T): T extends "hello" ? "goodbye" : "hello"`. TS can't narrow conditional types in implementations, requires `as` cast. Extract conditional into named type helper for readability.
+- Exercise 17.5: Correlated key-value via indexed access — `<Key extends keyof Person>(key: Key, value: Person[Key]): Person[Key]` links parameter types so key and value stay in sync
+- Exercise 18: Pure generic currying — `<T>(t: T) => <U>(u: U) => <V>(v: V) => { t, u, v }` — each arrow function captures one generic
+- Exercise 19: Method-level generic on generic interface — `Cache<T>` with `clone: <U>(transform: (elem: T) => U) => Cache<U>` — T is container type, U is transformation target
+- Exercise 20: Generic on whole object with indexed access for tuple extraction — `<TParams extends { a: unknown; b: unknown }>(params: TParams): [TParams["a"], TParams["b"]]`
+- Exercise 20.5: Classic `getValue<TObj, TKey extends keyof TObj>` — two generics for object + key
+- Exercise 20.6: Factory with default type param `<TTheme = {}>()` returning themed hook — curried generics pattern
+- Exercise 20.7: Partial inference workaround — `makeSelectors<TSource>()(<TSelectors extends Record<string, (source: TSource) => any>>(selectors: TSelectors) => selectors)`
+
+Added to typescript-patterns.md:
+- Section 4: New subsection "Conditional return types" with flip example, note about `as` cast requirement, extracted type helper pattern
+- Section 4: New subsection "Correlated key-value with indexed access" with setValue example showing `T[K]` linking key to value type
+- Section 4: New subsection "Method-level generics on generic interfaces" with Cache<T>.clone<U> example, analogy to Array.map/Promise.then
+- Anti-patterns: 2 new entries (union return instead of conditional return type; `(key: string, value: any)` instead of indexed access)
+
+Already covered (no changes needed):
+- Pure generic currying (Section 4 — curried generics for partial inference, exercise 18 is simpler form)
+- Generic on whole object with indexing (Section 4 — "Place generics at the level you care about" anti-pattern)
+- Classic getValue with keyof (Section 4 — foundational, implicitly covered throughout)
+- Factory with default type param (Section 4 — default type parameters subsection covers `<T = {}>`)
+- Partial inference workaround (Section 4 — curried generics subsection covers this exactly)
+
+## Task B5 - Function Overloads (05-function-overloads)
+Files read: 9 solutions (21, 22, 23, 24 sol.1, 24 sol.2, 25, 26, 27, 28); no explainers
+
+Patterns found:
+- Exercise 21: Basic overload syntax — specific signatures above implementation, implementation NOT callable by callers
+- Exercise 22: Overloads as alternative to conditional return types — finite input→output mappings (overloads cleaner for small sets, conditionals better for open-ended generics)
+- Exercise 23: Overload ordering matters — most specific first, `(role: string)` fallback last; TS checks top-to-bottom, first match wins. Privilege hierarchy (Admin extends User extends Anonymous)
+- Exercise 24: Overloads vs union params — sol.1 uses overloads, sol.2 uses union parameter. When all overloads return the same type, union is simpler. Overloads only needed when return type varies per input.
+- Exercise 25: Generic + specific literal overload — `foo(t: 1): 2` takes priority over `foo<T>(t: T): T`. Pattern: exception + generic default.
+- Exercise 26: Real-world example — `document.querySelector` uses overloads for tag→element mapping + generic fallback for complex selectors
+- Exercise 27: Overloads for conditional optionality — `useData` with `initialData` returns `T`, without returns `T | undefined`. The React hook / data fetching pattern.
+- Exercise 28: Default parameter + overload — no-arg overload returns `typeof obj["a"]`, generic overload `<TKey extends ObjKey>(key: TKey)` returns `typeof obj[TKey]`
+
+Added to typescript-patterns.md:
+- Section 16: Function Overloads — basic syntax with privilege hierarchy example, overloads vs conditional return types comparison, generic + specific literal overload combo, conditional optionality pattern (useData), when NOT to use overloads (same return type → union)
+- Anti-patterns: 3 new entries (same-return-type overloads → use union, wrong overload order, missing initialData overload for hooks)
+
+Already covered (no changes needed):
+- Conditional return types (Section 4 — exercise 22 is the overload alternative, both approaches now documented)
+- Indexed access `T[K]` for key→value linking (Section 4 — exercise 28 uses similar pattern)
+
+## Task B6 - Generics Challenges (06-challenges)
+Files read: 7 solutions (29, 29.2, 29.5, 30, 32, 33, 34); no explainers
+
+Patterns found:
+- Exercise 29: Generic config object — `makeInfiniteScroll<TRow>(params)` infers TRow from `fetchRows` return, constrains `key: keyof TRow`
+- Exercise 29.2: Conditional rest parameters — `Events[TEventKey] extends undefined ? [] : [payload: Events[TEventKey]]`
+- Exercise 29.5: Generic pick function — `<TObj, TPicked extends keyof TObj>(obj: TObj, picked: Array<TPicked>)` returns `Pick<TObj, TPicked>`
+- Exercise 30: Three-level curried generics — `makeFormValidatorFactory<TValidatorKeys>(validators) => <TObjKeys>(config) => (values) => errors`; outer captures validator keys, inner captures field keys, innermost constrains values to field keys
+- Exercise 32: Default type param as warning string — `<TResult = "You must pass a type argument to fetchData">` gives a descriptive hint when caller forgets
+- Exercise 33: Compose with overloads — each overload adds one more generic type param to chain return→input types; implementation uses `any` since TS can't track through `reduce`
+- Exercise 34: Template literal type extraction with `infer` — `GetParamKeys` recursively extracts `{param}` placeholders from string literal types using `T extends \`${string}{${infer Param}}${infer Tail}\``; combined with conditional rest params to require/forbid params object
+
+Added to typescript-patterns.md:
+- Section 4: Default type param as warning string example (`<T = "You must pass a type argument">`) + updated guidance text
+- Section 8.5: New subsection "Template Literal Extraction with `infer`" — `GetParamKeys` recursive pattern, practical i18n example with conditional rest params, use cases (i18n, route params, template DSLs)
+- Section 16: New subsection "Overloads for function composition (pipe/compose)" — chaining overloads linking return→input types, compile-time step mismatch detection
+- Anti-patterns: 2 new entries (default `unknown` instead of descriptive string; hand-written string param extraction instead of template literal + infer)
+
+Already covered (no changes needed):
+- Exercise 29.2: Conditional rest parameters (Section 9 — exact same pattern)
+- Exercise 29.5: Generic pick with keyof constraint (Section 4 + Section 7 — composition of existing patterns)
+- Exercise 29: Generic inference from callback return + keyof on sibling field (Section 4 — implicit)
+- Exercise 30: Multi-level curried generics (Section 4 — curried generics subsection covers two levels; three is the same principle)
+
+## Task C1 - Branded Types (01-branded-types)
+Files read: 7 (2 explainers: 00, 01; 5 solutions: 02, 03, 04, 05, 06)
+
+Patterns found:
+- Explainer 01: Brand helper uses `unique symbol` key — `declare const brand: unique symbol; type Brand<T, TBrand> = T & { [brand]: TBrand }` (vs existing doc's `readonly __brand: B`)
+- Exercise 02: Form validation with field-level brands — `validateValues` returns `{ email: Email; password: Password }`, downstream `createUserOnApi` requires branded fields
+- Exercise 03: Entity ID branding — `UserId` and `PostId` prevent swapping IDs in `getUserById`/`getPostById`
+- Exercise 04: Reusable `Valid<T> = Brand<T, "Valid">` — generic validation brand wrapping any type, validation function returns `Valid<PasswordValues>`, downstream requires it
+- Exercise 05: Multi-step brand pipeline — `ConvertedAmount` (branded number) + `AuthorizedUser` (branded User); `performConversion` requires BOTH brands, compiler enforces correct step ordering (convert amount first, then authorize user)
+- Exercise 06: Branded index signatures — `{ [id: PostId]: Post; [id: UserId]: User }` creates heterogeneous type-safe map where key type determines value type; `db[postId]` returns `Post` not `Post | User`
+
+Added to typescript-patterns.md:
+- Section 3: New subsection "Multi-step brand pipeline" — multiple brands enforce operation ordering at compile time, with convert→authorize→execute example
+- Section 3: New subsection "Branded index signatures" — branded types as index signature keys for heterogeneous type-safe maps
+- Anti-patterns: 2 new entries (unordered pipeline without brand enforcement; `Record<string, A | B>` vs branded index signatures)
+
+Already covered (no changes needed):
+- Exercise 02: Form validation brands — covered by existing entity ID and validation brand patterns (Section 3)
+- Exercise 03: Entity ID branding with `UserId`/`PostId` — exact match with existing Section 3 example
+- Exercise 04: `Valid<T>` reusable brand — already in Section 3 validation brands subsection
+- Explainer 01: `unique symbol` brand implementation — existing `readonly __brand: B` is equally valid; style choice, not a correctness issue
+
+Not added (style preference):
+- `unique symbol` brand key vs `readonly __brand` — both work, existing pattern is more widely used and readable
+
+## Task C2 - Globals (02-globals)
+Files read: 5 solutions (07, 08, 09, 10 sol.1, 10 sol.2); no explainers
+
+Patterns found:
+- Exercise 07: `declare global { function myFunc(): T; var myVar: T; }` + assign via `globalThis` — use `var` not `let`/`const` for ambient variable declarations
+- Exercise 08: Window augmentation via declaration merging — `declare global { interface Window { myProp: T; } }` — works because interfaces merge across declarations
+- Exercise 09: process.env typing — `declare global { namespace NodeJS { interface ProcessEnv { MY_VAR: string } } }` removes `| undefined` from env var type
+- Exercise 10 (sol.1 + sol.2): Extensible event dispatch via global interface + mapped type — multiple files add events to the same `interface AppEvents`, a mapped type `{ [K in keyof AppEvents]: { type: K } & AppEvents[K] }[keyof AppEvents]` auto-builds a discriminated union; sol.2 demonstrates a second file adding LOG_OUT and UPDATE_USERNAME events that merge seamlessly
+
+Added to typescript-patterns.md:
+- Section 17: Declaration Merging & Global Augmentation — `declare global` basics (var/function), Window + process.env augmentation examples, extensible interface pattern with auto-built discriminated union from mapped type
+- Anti-patterns: 3 new entries (`let`/`const` in declare global → use `var`; hand-maintained event union → global interface + mapped type; untyped process.env → ProcessEnv augmentation)
+
+Already covered (no changes needed):
+- Discriminated unions (Section 1 — the event dispatch pattern produces one, but the declaration merging mechanism is new)
+- Mapped types (Section 8 — the `{ [K in keyof I]: ... }[keyof I]` pattern uses mapped types, but the global interface merging context is new)
+
+## Task C3 - Type Predicates & Assertion Functions (03-type-predicates-assertion-functions)
+Files read: 7 solutions (12 sol.1, 12 sol.2, 13, 14, 15, 16, 17); no explainers
+
+Patterns found:
+- Exercise 12: Inline type predicate in `.filter()` — `(value): value is string => Boolean(value)` narrows array type without `as` cast. Sol.1 uses ugly `as string[]`, sol.2 is the proper way.
+- Exercise 13: Basic assertion function `asserts user is AdminUser` — narrows type after call, throws on failure
+- Exercise 14: **Critical gotcha** — assertion functions MUST be `function` declarations, NOT arrow functions. Arrow functions don't support `asserts` return type. TS gives a cryptic error ("Assertions require every name in the call target to be declared with an explicit type annotation") instead of a clear "arrow functions can't have asserts".
+- Exercise 15: Type predicate as generic callback parameter — `DOMNodeExtractorConfig<T, TResult>` with `isNode: (node: unknown) => node is T` and `transform: (node: T) => TResult`. The predicate determines `T`, which flows into sibling callbacks. Factory pattern for filter+map pipelines.
+- Exercise 16: Brand + type predicate (`is` form) — `isValidPassword(values): values is Valid<PasswordValues>` returns boolean, caller wraps in `if`. Non-throwing alternative to assertion functions for validation brands.
+- Exercise 17: Brand + assertion function — `assertIsValidPassword(values): asserts values is Valid<PasswordValues>` throws on failure, linear flow (no `if` wrapping). Same validation brand pattern as exercise 16 but with different control flow.
+
+Added to typescript-patterns.md:
+- Section 2: Arrow function limitation note on assertion functions (CRITICAL — must be `function` declaration)
+- Section 2: New subsection "Type predicate as generic callback parameter" — `isNode: (node: unknown) => node is T` flowing T into sibling callbacks, with createExtractor example
+- Section 2: New subsection "`is` predicate vs `asserts` for validation brands" — side-by-side comparison of boolean return (conditional path) vs throws (linear path), both combining with `Brand<T, 'Valid'>`
+- Section 2: Updated "Where to use" to include guidance on when to choose `is` vs `asserts`
+- Anti-patterns: 2 new entries (arrow function with `asserts`; `.filter(Boolean) as T[]` instead of type predicate)
+
+Already covered (no changes needed):
+- Exercise 12 sol.2: `.filter()` with type predicate (Section 2 — already had `isToolOutput` example with filter)
+- Exercise 13: Basic assertion function (Section 2 — `assertIsAdmin` example)
+- Exercise 16/17: Validation brands with `Valid<T>` (Section 3 — but only showed `asserts` form, now both forms documented)
+
+## Task C4 - Classes (04-classes)
+Files read: 9 (6 solutions: 17.8, 18, 18.2, 20, 21, 22; 3 explainers: 19.3, 19.4 (empty), 22.5)
+
+Patterns found:
+- Exercise 17.8: `public` constructor parameter shorthand — `constructor(message: string, public code: number)` declares + assigns in one step
+- Exercise 18: Class method type predicate `this is` — `isInvalid(): this is this & { error: string }` narrows optional class properties to definite types after the check. Form validation pattern.
+- Exercise 18.2: Class method assertion `asserts this is` — `assertIsLoggedIn(): asserts this is this & { loggedInUser: User }` narrows `this.loggedInUser` from `User | undefined` to `User` for all subsequent code. SDK auth pattern — assert auth state before protected operations within the class.
+- Exercise 19.3 (explainer): Builder pattern with tuple accumulation — `BuilderTuple<TList = []>` with `.push<TNum>()` returning `BuilderTuple<[...TList, TNum]>`. Each method returns `this as any` with a new generic. Uses spread types for tuple manipulation.
+- Exercise 19.4 (explainer): Empty (tRPC builder pattern talk reference)
+- Exercise 20: `TypeSafeStringMap<TMap = {}>` — `.set<K>(key, value)` returns `TypeSafeStringMap<TMap & Record<K, string>>`. Builder pattern applied to type-safe map. `.get(key: keyof TMap)` only accepts keys that have been `.set()`.
+- Exercise 21: Same as 20 — emphasizes that `= {}` default generic is critical. Without it, `new TypeSafeStringMap()` requires explicit type arg or starts as `TypeSafeStringMap<Record<string, string>>` defeating the purpose.
+- Exercise 22: `DynamicMiddleware<TInput, TOutput>` — `.use<NewTOutput>(mw: Middleware<TOutput, NewTOutput>): DynamicMiddleware<TInput, NewTOutput>`. Each `.use()` transforms `TOutput` while keeping `TInput` fixed. Middleware chaining for Express/Elysia-style context enrichment.
+- Exercise 22.5 (explainer): Zod subclassing strategy — `ZodString extends ZodType<string, {}>` keeps IntelliSense clean by hiding generics in parent class.
+
+Added to typescript-patterns.md:
+- Section 2: New subsection "Class method predicates — `this is` and `asserts this is`" with Form validation (`this is this & { error: string }`) and SDK auth (`asserts this is this & { loggedInUser: User }`) examples
+- Section 2: Updated "Where to use" to include class method predicates guidance
+- Section 13: New subsection "Middleware chaining — transforming output type per step" with DynamicMiddleware example showing `.use<TNewOutput>()` pattern
+- Anti-patterns: 3 new entries (standalone assertion losing `this` narrowing; manual cast after class state check; untyped middleware chain)
+
+Already covered (no changes needed):
+- Exercise 17.8: `public` constructor shorthand (too basic — standard TS knowledge)
+- Exercise 19.3: Builder pattern with accumulating generics (Section 13 — QueryBuilder already covers this)
+- Exercise 20/21: TypeSafeStringMap + default generic importance (Section 13 — QueryBuilder<TSelected = {}> and Section 4 default type params both cover this)
+- Exercise 22.5: Zod subclassing (niche library-specific strategy, explainer was minimal)
+
+## Task C5 - External Libraries (05-external-libraries)
+Files read: 11 (7 solutions: 23, 24, 25, 26 sol.1, 26 sol.2, 26.5 declaration, 26.5 override; 4 explainers: 22.9, 23.9, 24.9, 25.9 — all nearly empty)
+
+Patterns found:
+- Exercise 23: `Parameters<typeof externalFn>` + `Awaited<ReturnType<typeof externalFn>>` to wrap external lib functions — derive params/return from the function itself, stays in sync when lib updates
+- Exercise 24: Generic constraint `<T extends { age: number }>` on lodash `groupBy` wrapper — preserves extra properties while requiring `age`
+- Exercise 25: Curried generic for Express `makeTypeSafeGet` — parser function's return type determines `TQuery`, flows into handler's `req.query`. Express-specific `RequestHandler<any, any, any, TQuery>` for query param typing
+- Exercise 26 (sol.1 + sol.2): `z.Schema<TValue>` and `z.ZodType<TValue>` are equivalent — both accept any Zod schema in a generic function while inferring the validated type. `makeZodSafeFunction(schema, func)` pattern: schema determines TValue, func receives it typed
+- Exercise 26.5: `declare module "lib-name" { ... }` in a `.d.ts` file provides types for untyped libraries or overrides existing types — alternative to `@ts-ignore`/`as any`
+- Explainer 24.9: Express `RequestHandler<Params, ResBody, ReqBody, Query>` — 4 generic params, query is the 4th
+- Explainer 25.9: `z.ZodType` is the base class for all Zod schemas; `.transform()` creates a `ZodEffects` (not `ZodObject`)
+
+Added to typescript-patterns.md:
+- Section 17: New subsection "`declare module` — override or provide types for external libraries" with `.d.ts` example, `declare global` vs `declare module` distinction
+- Section 17: New subsection "`z.ZodType<T>` — generic functions accepting any Zod schema" with makeZodSafeFunction example, note about ZodType vs ZodObject
+- Anti-patterns: 3 new entries (`@ts-ignore` on untyped imports → `declare module`; `z.ZodObject<T>` too restrictive → `z.ZodType<T>`; manually retyping external function params → `Parameters`/`ReturnType`)
+
+Already covered (no changes needed):
+- Exercise 23: `Parameters`, `ReturnType`, `Awaited` utility types (Section 7)
+- Exercise 23: Generic function wrapper pattern with `Parameters`/`ReturnType` (Section 4)
+- Exercise 24: Generic constraint preserving extra properties (Section 4 — `enrichUser` pattern)
+- Exercise 25: Curried generics (Section 4 — same principle, Express-specific is too niche)
+- Explainers 22.9, 23.9: Empty (just `export {};`)
+
+Not added (framework-specific or too niche):
+- Express `RequestHandler<P, ResBody, ReqBody, Query>` generics (Express-specific, project uses Elysia)
+- Express `makeTypeSafeGet` curried wrapper (same curried generic principle already in Section 4)
+
+## Task C6 - Identity Functions (06-identity-functions)
+Files read: 8 solutions (27 sol.1, 27 sol.2, 28 sol.1, 28 sol.2, 29, 30 sol.1, 30 sol.2, 30.5); no explainers
+
+Patterns found:
+- Exercise 27: `<const T>(t: T) => t` — `const` type parameter preserves literal types + readonly through generic functions. Sol.2 uses `F.Narrow<T>` from ts-toolbelt (pre-TS5.0 workaround, non-readonly result)
+- Exercise 28: `<const T extends readonly { name: string; price: number }[]>(t: T)` — combines `const` with `extends` constraint for literal preservation + shape validation. Function-argument equivalent of `satisfies` + `as const`
+- Exercise 29: `NoInfer<TState>` on `initial` field prevents it from contributing to type inference — `TState` inferred ONLY from `states` Record keys, then `initial` checked against it. Pre-5.4 polyfill: `type NoInfer<T> = [T][T extends any ? 0 : never]`
+- Exercise 30: Identity function pattern for object generics — TS can't put generics on object literals, wrapping in `makeConfig<TRoute>(config: ConfigObj<TRoute>)` enables inference from `routes` array to constrain `fetchers` keys. Sol.1 shows the bad approach (explicit type annotation duplicating route strings)
+- Exercise 30.5: Reverse mapped types — `{ [K in keyof T]: (name: K) => void }` gives each callback its OWN literal key type via reverse inference from the object's keys
+
+Added to typescript-patterns.md:
+- Section 6: New subsection "`const` + constraint — literal preservation with shape validation" with narrowFruits example showing `<const T extends Constraint>` combo
+- Section 7: New subsection "`NoInfer<T>` — prevent inference from a position" with FSM config example showing check-only position pattern
+- Section 7: New subsection "Identity functions for object generics" with routes/fetchers ConfigObj example
+- Section 8: New subsection "Reverse mapped types — per-key callback typing" with makeEventHandlers example
+- Anti-patterns: 4 new entries (generic inferred from wrong position → NoInfer; explicit type annotation on config → identity function; string in per-key callbacks → reverse mapped type; as const at call site → const type parameter)
+
+Already covered (no changes needed):
+- Exercise 27 sol.1: `<const T>` basic usage (Section 6 — already had one-liner, but expanded with const+constraint combo)
+- Exercise 28: `extends` constraint for shape validation (Section 4 — generic constraints)
+- `satisfies` keyword (Section 5 — separate concept, not the function-based equivalent)
+- `as const` for literal preservation (Section 6 — static usage)
+
+## Task C7 - Advanced Challenges (07-challenges)
+Files read: 5 solutions (31, 32, 33, 34, 38); no explainers
+
+Patterns found:
+- Exercise 31: Bulk Window augmentation — `typeof obj` + `interface Window extends StuffToAdd {}` derives type from runtime object and merges all properties into Window at once (vs listing each manually)
+- Exercise 32: **Type-safe const array lookup** — `<const TFruits extends readonly Fruit[]>` captures literal tuple, `TFruits[number]["name"]` extracts name union, `Extract<TFruits[number], { name: TName }>` narrows to specific element. Curried generics: outer captures array, inner constrains to valid names.
+- Exercise 33: `z.Schema<TQuery>` with default type params `= any` — optional schema validation where missing schemas fall back to `any`. Express-specific variant of the `z.ZodType<T>` pattern.
+- Exercise 34: `PayloadsToDiscriminatedUnion<T>` — `{ [K in keyof T]: { type: K } & T[K] }[keyof T]` converts Record to discriminated union. Combined with builder pattern: `.addHandler<TType, TPayload>()` returns `DynamicReducer<TState, TPayloadMap & Record<TType, TPayload>>`. Accumulates action types at the type level.
+- Exercise 38: Custom JSX element typing — `declare global { namespace JSX { interface IntrinsicElements { "my-element": Props } } }` for web component props.
+
+Added to typescript-patterns.md:
+- Section 7: New subsection "Type-safe const array lookup with `Extract`" — `<const T>` + `Extract<TFruits[number], { name: TName }>` pattern with wrapFruit example, explanation of key pieces (`TFruits[number]["name"]` for name union)
+- Section 17 Window augmentation: Added bulk `interface Window extends typeof obj` example
+- Anti-patterns: 2 new entries (const array lookup returning base interface; manually listing Window properties for bulk augmentation)
+
+Already covered (no changes needed):
+- Exercise 31: `declare global` + interface merging (Section 17 — just added the `extends typeof` shorthand)
+- Exercise 33: `z.ZodType<T>` / `z.Schema<T>` for generic Zod params (Section 17 — exact same concept, Express wrapper is framework-specific)
+- Exercise 34: `{ [K in keyof T]: { type: K } & T[K] }[keyof T]` mapped type to union (Section 17 — extensible interfaces subsection has identical pattern)
+- Exercise 34: Builder pattern with accumulating generics via `&` (Section 13 — QueryBuilder covers same technique)
+- Exercise 38: JSX IntrinsicElements augmentation (Section 17 — `declare global` + interface merging, JSX namespace is just another global interface)
+
+Not added (too niche or framework-specific):
+- Express `makeTypeSafeHandler` with `z.Schema` (Express-specific, project uses Elysia)
+- JSX IntrinsicElements for custom elements (web components — niche use case, underlying pattern already covered)
+- DynamicReducer as combined pattern (both components — builder accumulation + mapped type union — already exist separately)
+
+## Task D1 - Inference Basics (01-inference-basics)
+Files read: 6 (4 solutions: 01, 02, 03, 04; 2 explainers: 00, 01.5 — both empty)
+
+Patterns found:
+- Exercise 01: `ReturnType<typeof myFunc>` — extract return type from a runtime function via `typeof`
+- Exercise 02: `Parameters<typeof makeQuery>` — extract parameter tuple from a runtime function via `typeof`
+- Exercise 03: `Awaited<ReturnType<typeof getUser>>` — unwrap Promise from async function return, composition of utility types
+- Exercise 04: `keyof typeof testingFrameworks` — get literal union of keys from a runtime object
+
+Added to typescript-patterns.md:
+(nothing — all patterns already covered)
+
+Already covered (no changes needed):
+- `ReturnType<typeof fn>` (Section 7 — `Awaited<ReturnType<typeof getUser>>` example)
+- `Parameters<typeof fn>` (Section 7 — `Parameters<typeof fetchUser>` example)
+- `Awaited<ReturnType<typeof fn>>` (Section 7 — exact same composition)
+- `keyof typeof obj` (Section 14 — `keyof typeof TOOL_META` is identical pattern)
+
+Not added (too foundational):
+- `typeof` keyword for value→type bridging (implicit throughout the doc, covered by explainer reference)
+- InstanceType was listed in plan focus but not exercised in any solution file
+
+## Task D2 - Unions & Indexing (02-unions-and-indexing)
+Files read: 9 solutions (05, 06, 07, 08, 09, 10, 11 sol.1, 11 sol.2, 12, 13); 1 explainer (07.5 — empty); 9 problem files
+
+Patterns found:
+- Exercise 05: Terminology — discriminated union (objects with common `type` field) vs plain union (`"a" | "b"`) vs enum (conceptual)
+- Exercise 06: `Extract<Event, { type: "click" }>` — extract specific member from discriminated union
+- Exercise 07: `Exclude<Event, { type: "keydown" }>` — remove specific member from discriminated union
+- Exercise 08: `typeof fakeDataDefaults` + `FakeDataDefaults["String"]` — indexed access on object type to get property type
+- Exercise 09: `Event["type"]` → `"click" | "focus" | "keydown"` — indexed access on a union distributes, extracting discriminator values without Extract utility
+- Exercise 10: `as const` on object preserves literal types so indexed access gives `"group"` not `string`
+- Exercise 11: `T["a" | "b"]` distributes — union of keys gives union of corresponding values. Sol.2: `T[Exclude<keyof T, "GROUP" | "ANNOUNCEMENT">]` — "all values except" pattern
+- Exercise 12: `typeof obj[keyof typeof obj]` — get ALL object values as a union type (the "get values" complement to `keyof typeof` for keys)
+- Exercise 13: `typeof fruits[number]` — get all array element types as union; `typeof fruits[0 | 1]` — specific indices as union
+
+Added to typescript-patterns.md:
+- Section 14: `typeof TOOL_META[keyof typeof TOOL_META]` — "get values" companion to existing `keyof typeof` for keys
+- Section 14: New subsection "Indexed access distributes over unions" — union of keys in indexed access, `Exclude` + indexed access for "all values except", `Union["type"]` for extracting discriminator, `typeof arr[number]` for array elements, `typeof arr[0 | 1]` for specific indices
+- Anti-patterns: 2 new entries (manually listing enum values vs `typeof obj[keyof typeof obj]`; Extract for discriminator values vs `Union["type"]`)
+
+Already covered (no changes needed):
+- Exercise 05: Discriminated unions (Section 1 — terminology, `type` discriminator, exhaustive switches)
+- Exercise 06: `Extract<Event, { type: "click" }>` (Section 7 — exact same pattern)
+- Exercise 07: `Exclude<Event, { type: "keydown" }>` (Section 7 — exact same pattern)
+- Exercise 08: `typeof` + indexed access (foundational — implicit throughout, Section 14 uses `keyof typeof`)
+- Exercise 10: `as const` preserving literals (Section 6 — model array example)
+- Exercise 13: `[number]` indexing on arrays (Section 6 — `(typeof MODELS)[number]['id']`, Section 7 — `TFruits[number]["name"]`)
+
+Not added (too foundational / already implicit):
+- Basic `typeof` operator (used throughout the doc)
+- Enum keyword (not used in the codebase, `as const` objects preferred)
+- Explainer 07.5 was empty (just a comment referencing Gabriel Vergnaud's union type multiverse concept)
+
+## Task D3 - Template Literals (03-template-literals)
+Files read: 12 (6 solutions: 14, 15, 16, 17, 18, 19; 6 problem files; no explainers)
+
+Patterns found:
+- Exercise 14: Template literal pattern type `/${string}` — constrains function parameter to strings starting with `/`, rejects `"users/1"` or `"http://..."` at compile time
+- Exercise 15: `Extract<Routes, \`${string}:${string}\`>` — filter a string union by template literal pattern to extract dynamic routes containing `:`
+- Exercise 16: Cartesian product — unions inside template literals produce ALL combinations: `\`${BreadType} sandwich with ${Filling}\`` → 9 literal types (3×3)
+- Exercise 17: `S.Split<Path, "/">` from ts-toolbelt — type-level string splitting (third-party utility, not native TS)
+- Exercise 18: Cartesian product as Record keys — `\`${"user" | "post"}${"Id" | "Name"}\`` → 6 keys → `Record<..., string>` generates typed object
+- Exercise 19: `Uppercase<Event>` intrinsic string type — `Uppercase`, `Lowercase`, `Capitalize`, `Uncapitalize` are built-in, distribute over unions
+
+Added to typescript-patterns.md:
+- Section 8.4: New section "Template Literal Types" with 4 subsections — pattern types (`/${string}`), Extract/Exclude with template literal patterns, cartesian product unions with Record, intrinsic string types (Uppercase/Lowercase/Capitalize/Uncapitalize)
+- Anti-patterns: 2 new entries (`(route: string)` → template literal pattern; manually listing dynamic routes → Extract with template literal)
+
+Already covered (no changes needed):
+- Exercise 17: `S.Split` from ts-toolbelt (third-party utility, not a TS language pattern)
+- `Capitalize` already used in Section 8 mapped type key remapping (`get${Capitalize<string & K>}`)
+- Recursive template literal extraction with `infer` (Section 8.5 — more advanced form of exercise 15's concept)
+- `Extract`/`Exclude` on discriminated unions (Section 7 — exercise 15 extends this to string patterns, now documented)
+
+Not added (third-party or already implicit):
+- `S.Split` from ts-toolbelt (exercise 17) — third-party utility, not a TS pattern; native equivalent would use recursive conditional types with `infer` (covered conceptually in Section 8.5)
+
+## Task D4 - Type Helpers Pattern (03.5-type-helpers-pattern)
+Files read: 16 (8 solutions: 20, 20.1, 20.2, 20.3, 20.4, 20.5, 20.6, 20.7; 8 problem files; no explainers)
+
+Patterns found:
+- Exercise 20: Identity type helper `type ReturnWhatIPassIn<T> = T` — most basic type-level generic
+- Exercise 20.1: `type Maybe<T> = T | null | undefined` — union type alias for nullable values
+- Exercise 20.2: `type AddRoutePrefix<TRoute extends string> = \`/${TRoute}\`` — `extends` constraint on type parameter restricts input + enables template literal
+- Exercise 20.3: `type CreateDataShape<TData, TError> = { data: TData; error: TError }` — multiple type parameters on a type alias
+- Exercise 20.4: `type CreateDataShape<TData, TError = undefined>` — default type parameter on type alias (same concept as function defaults)
+- Exercise 20.5: `type GetParametersAndReturnType<T extends (...args: any) => any>` — function constraint on type param so `Parameters<T>` / `ReturnType<T>` are valid
+- Exercise 20.6: **`extends {}`** — `{}` means "any non-nullish value" in TS; `null` and `undefined` do NOT extend `{}`. `type Maybe<T extends {}> = T | null | undefined` rejects `Maybe<null>` and `Maybe<undefined>` at the type level
+- Exercise 20.7: **`type NonEmptyArray<T> = [T, ...T[]]`** — tuple with at least one required element; `makeEnum([])` errors at compile time
+
+Added to typescript-patterns.md:
+- Section 4: New subsection "`extends {}` — non-nullish constraint" with Maybe example showing `null`/`undefined` rejection
+- Section 7: New subsection "`NonEmptyArray<T>` — enforce at least one element" with makeEnum example
+- Anti-patterns: 2 new entries (unconstrained generic accepting null/undefined → `extends {}`; `string[]` accepting empty arrays → `NonEmptyArray<T>`)
+
+Already covered (no changes needed):
+- Exercise 20: Identity type (foundational — implicit throughout the doc)
+- Exercise 20.1: `Maybe<T>` without constraint (trivial union alias)
+- Exercise 20.2: `extends string` constraint (Section 4 — literal inference subsection)
+- Exercise 20.3: Multiple type params (Section 4 — implicit throughout)
+- Exercise 20.4: Default type params (Section 4 — default type parameters subsection covers functions; concept is identical for types)
+- Exercise 20.5: Function constraint `extends (...args: any) => any` (Section 4 — generic function wrappers)
+
+## Task D5 - Conditional Types & Infer (04-conditional-types-and-infer)
+Files read: 12 solutions (21, 22, 23 sol.1, 23 sol.2, 24, 25 sol.1, 25 sol.2, 26, 27 sol.1, 27 sol.2, 28 sol.1, 28 sol.2); 2 problem files (27, 28); no explainers
+
+Patterns found:
+- Exercise 21: Basic conditional type `T extends "hello" ? "goodbye" : "hello"` — the foundation
+- Exercise 22: Nested conditional with `never` for invalid inputs — `T extends "hello" | "goodbye" ? (T extends "hello" ? "goodbye" : "hello") : never`
+- Exercise 23 (sol.1): Indexed access in conditional — `T extends { data: any } ? T["data"] : never`
+- Exercise 23 (sol.2): `infer` keyword — `T extends { data: infer D } ? D : never` — cleaner than indexed access
+- Exercise 24: `infer` with generic type params — `T extends MyInterface<any, any, any, infer P> ? P : never` — use `any` for positions you don't care about
+- Exercise 25 (sol.1): `infer` in template literals — `T extends \`${infer First} ${infer Last}\` ? Last : never`
+- Exercise 25 (sol.2): `S.Split<T, " ">[1]` from ts-toolbelt (alternative, third-party)
+- Exercise 26: Deep nested `infer` — `T extends () => Promise<{ props: infer P }> ? P : never` — the Next.js getServerSideProps inference pattern
+- Exercise 27 (sol.1): Chained conditionals for polymorphic extraction — `T extends { parse: () => infer R } ? R : T extends () => infer R ? R : ...`
+- Exercise 27 (sol.2): **Union of patterns with same `infer` name** — `T extends { parse: () => infer R } | { extract: () => infer R } | (() => infer R) ? R : never` — TS unifies into single branch
+- Exercise 28 (sol.1): `extends infer T` trick — forces distribution on a raw type without wrapping in a generic helper
+- Exercise 28 (sol.2): Generic + conditional = automatic distribution — `type GetApple<T> = T extends "apple" | "banana" ? T : never; GetApple<Fruit>` — this is how Extract/Exclude work internally
+
+Added to typescript-patterns.md:
+- Section 7.5: New section "Conditional Types & `infer`" with 3 subsections:
+  - `infer` — extract parts of a type (object, generic, function, deep nesting examples)
+  - Union of patterns with same `infer` name (polymorphic extractor pattern)
+  - Distributive conditional types (generic distribution, raw type pitfall, `extends infer T` trick, how Extract/Exclude work)
+- Anti-patterns: 3 new entries (indexed access vs `infer`; chained conditionals vs union of patterns; raw union not distributing)
+
+Already covered (no changes needed):
+- Exercise 21: Basic conditional return types (Section 4 — exact same `flip` example)
+- Exercise 22: `never` as rejection (Section 7.5 shows this but concept is foundational — implicit in Extract/Exclude)
+- Exercise 25 sol.1: Template literal `infer` (Section 8.5 — more advanced recursive version already covered)
+- Exercise 25 sol.2: `S.Split` from ts-toolbelt (third-party, not a TS pattern)
+- Exercise 26: `Awaited<ReturnType<typeof fn>>` composition (Section 7 — but the raw `infer` deep nesting approach is now shown in 7.5 as an alternative)
+
+## Task D6 - Key Remapping (05-key-remapping)
+Files read: 9 solutions (29, 30, 31, 32, 33 sol.1, 33 sol.2, 34, 35, 36); no explainers
+
+Patterns found:
+- Exercise 29: `{ [R in Route]: R }` — iterate over a string union (not just `keyof T`) in a mapped type to create an object where each union member is both key and value
+- Exercise 30: `{ [K in keyof Attributes]: () => Attributes[K] }` — basic mapped type creating getter functions
+- Exercise 31: `{ [K in keyof T as \`get${Capitalize<K>}\`]: () => T[K] }` — key remapping with `as` clause + `Capitalize`
+- Exercise 32: `{ [K in keyof T as K extends \`${string}${"id" | "Id"}${string}\` ? K : never]: T[K] }` — filter keys by mapping unwanted ones to `never`
+- Exercise 33 (sol.1): `{ [R in Route["route"]]: Extract<Route, { route: R }>["search"] }` — discriminated union to object via `Extract` + indexed access
+- Exercise 33 (sol.2): **`{ [R in Route as R["route"]]: R["search"] }`** — iterate over WHOLE union members, `as` extracts the key. Key insight: iterator variable doesn't need to be `string|number|symbol` — `as` clause handles mapping. Cleaner than `Extract` approach.
+- Exercise 34: `{ [K in keyof Values]: [K, Values[K]] }[keyof Values]` — object to union of `[key, value]` tuples via mapped type + `[keyof T]` indexed access
+- Exercise 35: Same `{ ... }[keyof T]` pattern but produces template literal string union: `{ [K in keyof FruitMap]: \`${K}:${FruitMap[K]}\` }[keyof FruitMap]`
+- Exercise 36: Combines union iteration + `as` remapping + `[keyof]` indexing: `{ [F in Fruit as F["name"]]: \`${F["name"]}:${F["color"]}\` }[Fruit["name"]]` — discriminated union → string union
+
+Added to typescript-patterns.md:
+- Section 8: New subsection "Iterate over union members with `as` remapping" — `[R in Route as R["route"]]: R["search"]` pattern with comparison to verbose `Extract` approach
+- Section 8: New subsection "Mapped type → union via `[keyof T]` indexing" — general-purpose object→union conversion with tuple and template literal examples
+- Anti-patterns: 2 new entries (Extract chain vs `as` remapping; manually listed entry tuples vs mapped type + `[keyof T]`)
+
+Already covered (no changes needed):
+- Exercise 29: Union iteration `[R in Route]` (implicit in existing examples — `[K in keyof T]` iterates over a union of keys)
+- Exercise 30: Basic `[K in keyof T]` mapped type (foundational, used throughout Section 8)
+- Exercise 31: `as \`get${Capitalize<K>}\`` (Section 8 — exact same Getters example)
+- Exercise 32: `never` key filtering with template literal pattern (Section 8 — IdKeys example)
+- Exercise 33 sol.1: `Extract` + indexed access approach (Section 7 — Extract/Exclude patterns)
+- Exercise 34/35: `{ ... }[keyof T]` trick was implicitly present in `ToDiscriminatedUnion` (Section 8) and extensible interfaces (Section 17), now explicitly labeled
+
+## Task D7 - Transformation Challenges (06-challenges)
+Files read: 8 (4 solutions: 37, 38, 39, 40; 4 problem files; no explainers)
+
+Patterns found:
+- Exercise 37: `ExtractPathParams<TPath>` — `S.Split` (ts-toolbelt) + mapped type with `as K extends \`:${infer P}\` ? P : never` to extract `:param` segments from URL paths into `{ paramName: string }` object
+- Exercise 38: `MutuallyExclusive<T>` — `{ [K in keyof T]: Record<K, T[K]> }[keyof T]` converts object type to union of single-property objects (each key becomes its own union member)
+- Exercise 39: Union iteration with conditional `infer` on value — `[R in Route as R["route"]]: R extends { search: infer S } ? S : never` handles heterogeneous unions where some members lack a property
+- Exercise 40: `DeepPartial<T>` — recursive conditional type: `T extends Array<infer U> ? Array<DeepPartial<U>> : { [K in keyof T]?: DeepPartial<T[K]> }`. Must special-case arrays to avoid making array methods optional.
+
+Added to typescript-patterns.md:
+- Section 8 "Iterate over union members": Added conditional `infer` extraction example for unions where not all members have the target property (`R extends { search: infer S } ? S : never`)
+- Section 8.6: New section "Recursive Type Utilities" with `DeepPartial<T>` pattern — recursive conditional with array special-case, generalizable to DeepReadonly/DeepRequired/DeepNullable
+- Anti-patterns: 2 new entries (direct indexed access on heterogeneous union → conditional `infer`; `Partial<T>` on nested objects → `DeepPartial<T>`)
+
+Already covered (no changes needed):
+- Exercise 37: `S.Split` is third-party (ts-toolbelt); native recursive `infer` extraction already in Section 8.5; mapped type `as` filtering already in Section 8
+- Exercise 38: `{ [K in keyof T]: ... }[keyof T]` object→union pattern already in Section 8 "Mapped type → union via `[keyof T]` indexing"
+- Exercise 39: Basic `[R in Route as R["route"]]` iteration already in Section 8 (but now extended with conditional value extraction)
+
+Not added (third-party or already implicit):
+- Exercise 37: `S.Split` from ts-toolbelt — third-party utility, native equivalent already covered via recursive `infer` in Section 8.5
+

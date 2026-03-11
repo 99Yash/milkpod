@@ -38,7 +38,7 @@ export function MomentCard({ moment, onSave, onDismiss }: MomentCardProps) {
 
   return (
     <>
-      <div className="group flex flex-col gap-2 rounded-lg border border-border/60 p-4 transition-colors hover:border-border">
+      <div className="group flex flex-col gap-2 rounded-lg card-elevated p-4 transition-shadow card-hover">
         {/* Header: title + score badge */}
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-sm font-medium leading-snug text-foreground">

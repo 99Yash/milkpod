@@ -98,6 +98,8 @@
   --landing-separator: oklch(0 0 0 / 6%);
   --landing-cta: oklch(0.49 0.16 260);
   --landing-cta-hover: oklch(0.54 0.17 260);
+  --shadow-card: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06), 0 2px 4px 0 rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.08), 0 4px 8px 0 rgba(0, 0, 0, 0.06);
 }
 
 .dark {
@@ -146,6 +148,8 @@
   --landing-separator: oklch(1 0 0 / 6%);
   --landing-cta: oklch(0.55 0.18 260);
   --landing-cta-hover: oklch(0.6 0.19 260);
+  --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.3), 0 2px 4px 0 rgba(0, 0, 0, 0.2);
+  --shadow-card-hover: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 2px 4px -1px rgba(0, 0, 0, 0.35), 0 4px 8px 0 rgba(0, 0, 0, 0.25);
 }
 
 @layer base {
@@ -220,16 +224,19 @@
   .heading-xl {
     @apply text-6xl font-bold tracking-tighter sm:text-7xl lg:text-8xl;
     letter-spacing: -0.04em;
+    text-wrap: balance;
   }
 
   .heading-lg {
     @apply text-4xl font-bold tracking-tighter sm:text-5xl lg:text-6xl;
     letter-spacing: -0.03em;
+    text-wrap: balance;
   }
 
   .heading-md {
     @apply text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl;
     letter-spacing: -0.02em;
+    text-wrap: balance;
   }
 
   .text-balance {
@@ -303,6 +310,58 @@
     .dragon-drift {
       animation: none;
     }
+  }
+
+  /* Entrance animation with blur (pattern 7) */
+  @keyframes enter-up {
+    from {
+      opacity: 0;
+      filter: blur(4px);
+      transform: translateY(8px);
+    }
+  }
+
+  /* Subtle exit animation (pattern 8) */
+  @keyframes exit-up {
+    to {
+      opacity: 0;
+      filter: blur(4px);
+      transform: translateY(-8px);
+    }
+  }
+
+  .animate-enter {
+    animation: enter-up 500ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+  }
+
+  .animate-exit {
+    animation: exit-up 350ms cubic-bezier(0.55, 0, 1, 0.45) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-enter,
+    .animate-exit {
+      animation: none;
+    }
+  }
+
+  /* Card shadow utilities (pattern 10) */
+  .card-elevated {
+    box-shadow: var(--shadow-card);
+  }
+
+  .card-hover:hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  /* Image outline utility (pattern 11) */
+  .image-inset-outline {
+    outline: 1px solid rgba(0, 0, 0, 0.1);
+    outline-offset: -1px;
+  }
+
+  .dark .image-inset-outline {
+    outline-color: rgba(255, 255, 255, 0.1);
   }
 
   /* Better focus states */

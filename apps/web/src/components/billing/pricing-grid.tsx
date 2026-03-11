@@ -133,7 +133,7 @@ export function PricingGrid() {
           aria-checked={interval === 'month'}
           onClick={() => setInterval('month')}
           className={cn(
-            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+            'rounded-sm px-4 py-1.5 text-sm font-medium transition-colors',
             interval === 'month'
               ? 'bg-background text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground',
@@ -147,7 +147,7 @@ export function PricingGrid() {
           aria-checked={interval === 'year'}
           onClick={() => setInterval('year')}
           className={cn(
-            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
+            'rounded-sm px-4 py-1.5 text-sm font-medium transition-colors',
             interval === 'year'
               ? 'bg-background text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground',
@@ -183,12 +183,12 @@ export function PricingGrid() {
               )}
 
               <div className="space-y-1">
-                <h3 className="text-lg font-semibold">{plan.name}</h3>
+                <h3 className="text-lg font-semibold text-balance">{plan.name}</h3>
                 <p className="text-sm text-muted-foreground">{plan.description}</p>
               </div>
 
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-3xl font-bold tracking-tight">
+                <span className="text-3xl font-bold tracking-tight tabular-nums">
                   ${price}
                 </span>
                 {plan.monthlyPrice > 0 && (

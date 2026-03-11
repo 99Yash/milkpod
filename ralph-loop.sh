@@ -36,14 +36,16 @@ For every piece of non-trivial logic, ask: does the library already do this? Rea
 If all tasks in plan.md are complete, output <promise>COMPLETE</promise>. \
 \
 Reference these for patterns and solutions: \
+- docs/ai-sdk-v6-patterns.md (AI SDK v6 API reference — tools with inputSchema, stopWhen, createUIMessageStream, writer, streamObject, onFinish, onError, guardrails, model routing, iterative refinement) \
+- docs/typescript-patterns.md (TypeScript patterns — discriminated unions, branded types, type guards, generics, satisfies, mapped types, exhaustive switches, React component typing) \
 - docs/elysia.md (Elysia framework reference — guards, derive, lifecycle hooks) \
-- docs/ai-sdk.md (AI SDK v6 patterns — tools, structured output, streaming, onFinish) \
+- docs/ai-sdk.md (RAG agent guide — embeddings, retrieval, vector databases) \
 - ARCHITECTURE.md (system design, data flow) \
 - CLAUDE.md (project conventions, gotchas, package boundaries, env vars) \
 - node_modules/.pnpm/<pkg>@*/node_modules/<pkg>/dist/*.d.ts for actual library type signatures \
 - mcp__grep__searchGitHub to search elysiajs/elysia, drizzle-team/drizzle-orm, vercel/ai, etc. for API usage examples \
 \
-review-prompt.md has the full review checklists, library leverage guide, composability principles, and high-signal nudges from prior reviews. plan.md has the task list. progress.txt has completed work." \
+review-prompt.md has the full review checklists, library leverage guide, TS patterns, composability principles, and high-signal nudges from prior reviews. plan.md has the task list. progress.txt has completed work." \
   | grep --line-buffered '^{' \
   | tee "$tmpfile" \
   | jq --unbuffered -rj "$stream_text"

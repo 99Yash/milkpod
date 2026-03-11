@@ -80,7 +80,7 @@ export function CollectionCard({
   return (
     <>
       <Link href={route(`/collection/${collection.id}`)}>
-        <DashboardPanel className="cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md">
+        <DashboardPanel className="cursor-pointer transition hover:-translate-y-0.5 card-hover">
           <DashboardPanelContent className="space-y-2">
             <div className="flex items-start justify-between gap-2">
               <p className="text-sm font-medium text-foreground line-clamp-1">

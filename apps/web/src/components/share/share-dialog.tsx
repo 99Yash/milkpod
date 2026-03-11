@@ -250,7 +250,7 @@ export function ShareDialog({
                       onClick={() => copyToClipboard(link.token)}
                     >
                       {copiedToken === link.token ? (
-                        <Check className="size-3.5 text-green-500" />
+                        <Check className="size-3.5 text-green-500 animate-in zoom-in-50 duration-150" />
                       ) : (
                         <Copy className="size-3.5" />
                       )}
