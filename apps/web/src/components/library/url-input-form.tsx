@@ -15,7 +15,7 @@ interface UrlInputFormProps {
 
 type InputMode = 'url' | 'upload';
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 const ACCEPTED_TYPES = 'audio/*,video/*';
 
 function formatFileSize(bytes: number): string {

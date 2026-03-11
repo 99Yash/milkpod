@@ -18,7 +18,7 @@ const server = new Elysia({ adapter: node() })
   .listen(
     {
       port: 3001,
-      maxRequestBodySize: 1024 * 1024 * 150 /* 150 MB — slightly above 100 MB app upload limit */,
+      maxRequestBodySize: 1024 * 1024 * 2150 /* ~2.1 GB — slightly above 2 GB app upload limit */,
     },
     () => {
       console.log('Server is running on http://localhost:3001');
