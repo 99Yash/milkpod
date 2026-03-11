@@ -128,24 +128,42 @@ export function DashboardShell({
     setCollapsed((prev) => !prev);
   }, []);
 
-  const handleTabChange = useCallback((nextTab: DashboardTab) => {
-    setActiveTab(nextTab);
-    setMobileOpen(false);
+  const router = useRouter();
 
-    if (typeof window === 'undefined') return;
-    const url = new URL(window.location.href);
-    if (nextTab === 'library') {
-      url.searchParams.set('tab', 'library');
-      url.searchParams.delete('session');
-    } else if (nextTab === 'agent') {
-      url.searchParams.set('tab', 'agent');
-    } else {
-      url.searchParams.delete('tab');
-      url.searchParams.delete('session');
-    }
-    url.hash = '';
-    window.history.replaceState(null, '', url.toString());
-  }, []);
+  const handleTabChange = useCallback(
+    (nextTab: DashboardTab) => {
+      setActiveTab(nextTab);
+      setMobileOpen(false);
+
+      if (typeof window === 'undefined') return;
+
+      const onDashboard = window.location.pathname === '/dashboard';
+
+      if (onDashboard) {
+        const url = new URL(window.location.href);
+        if (nextTab === 'library') {
+          url.searchParams.set('tab', 'library');
+          url.searchParams.delete('session');
+        } else if (nextTab === 'agent') {
+          url.searchParams.set('tab', 'agent');
+        } else {
+          url.searchParams.delete('tab');
+          url.searchParams.delete('session');
+        }
+        url.hash = '';
+        window.history.replaceState(null, '', url.toString());
+      } else {
+        const target =
+          nextTab === 'library'
+            ? '/dashboard?tab=library'
+            : nextTab === 'agent'
+              ? '/dashboard?tab=agent'
+              : '/dashboard';
+        router.push(route(target));
+      }
+    },
+    [router],
+  );
 
   const contextValue = useMemo(
     () => ({

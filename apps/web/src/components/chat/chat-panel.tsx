@@ -287,7 +287,7 @@ function ChatPanelContent({
   );
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col font-open-runde">
       <ScrollArea className="min-h-0 flex-1 px-4">
         <div className="mx-auto max-w-3xl">
           {messages.length === 0 ? (

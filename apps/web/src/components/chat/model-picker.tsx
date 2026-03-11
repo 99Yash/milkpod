@@ -96,7 +96,7 @@ export function ModelPicker({ value, onChange }: ModelPickerProps) {
           <ChevronDown className={cn("size-3 transition-transform duration-200", open && "rotate-180")} />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="h-[240px] w-[420px] p-0" side="top" align="start">
+      <PopoverContent className="h-[240px] w-[420px] font-open-runde p-0" side="top" align="start">
         <div className="flex h-full">
           <Command className="w-[200px] border-r">
             <CommandInput placeholder="Search models..." className="h-8 text-xs" />
