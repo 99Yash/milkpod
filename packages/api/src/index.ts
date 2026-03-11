@@ -4,7 +4,6 @@ export { closeConnections } from '@milkpod/db';
 import { serverEnv } from '@milkpod/env/server';
 import { sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
-import { z } from 'zod';
 import { requestLogger } from './middleware/logger';
 import { rateLimiter } from './middleware/rate-limit';
 import { chat } from './modules/chat';
@@ -21,11 +20,6 @@ import { retention } from './modules/retention';
 import { visualParity } from './modules/visual-parity';
 import { quota, quotaAdmin } from './modules/quota';
 import { billing } from './modules/billing';
-
-const socialSignInResponseSchema = z.object({
-  url: z.string().optional(),
-  redirect: z.boolean().optional(),
-});
 
 export const app = new Elysia({ name: 'api' })
   .use(requestLogger)
@@ -80,13 +74,10 @@ export const app = new Elysia({ name: 'api' })
         },
       );
 
-      const payload = await res.json().catch(() => null);
-      const parsed = socialSignInResponseSchema.safeParse(payload);
-      if (!parsed.success) {
-        set.status = 500;
-        return { error: 'OAuth initiation failed' };
-      }
-      const data = parsed.data;
+      const data = (await res.json()) as {
+        url?: string;
+        redirect?: boolean;
+      };
       if (data.url && data.redirect) {
         const cookies = res.headers.getSetCookie();
         if (cookies.length > 0) {
