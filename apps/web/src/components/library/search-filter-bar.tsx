@@ -133,7 +133,7 @@ export function SearchFilterBar({ filters, onChange }: SearchFilterBarProps) {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="start"
-          className="w-[--radix-dropdown-menu-trigger-width] min-w-[160px] font-open-runde"
+          className="min-w-(--radix-dropdown-menu-trigger-width) font-open-runde"
         >
           {statusOptions.map((opt) => {
             const selected = (filters.status || '_all') === opt.value;
@@ -183,7 +183,7 @@ export function SearchFilterBar({ filters, onChange }: SearchFilterBarProps) {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="start"
-          className="w-[--radix-dropdown-menu-trigger-width] min-w-[160px] font-open-runde"
+          className="min-w-(--radix-dropdown-menu-trigger-width) font-open-runde"
         >
           {sourceOptions.map((opt) => {
             const selected = (filters.sourceType || '_all') === opt.value;
