@@ -1,16 +1,32 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Search, X } from 'lucide-react';
+import {
+  Search,
+  X,
+  ListFilter,
+  CircleCheck,
+  Clock,
+  Download,
+  AudioLines,
+  Layers,
+  CircleX,
+  Globe,
+  Youtube,
+  Podcast,
+  Upload,
+  ExternalLink,
+  ChevronDown,
+  Check,
+} from 'lucide-react';
 import { Input } from '~/components/ui/input';
 import { cn } from '~/lib/utils';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '~/components/ui/select';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu';
 
 export interface AssetFilters {
   q: string;
@@ -22,6 +38,24 @@ interface SearchFilterBarProps {
   filters: AssetFilters;
   onChange: (filters: AssetFilters) => void;
 }
+
+const statusOptions = [
+  { value: '_all', label: 'All statuses', icon: ListFilter },
+  { value: 'ready', label: 'Ready', icon: CircleCheck, className: 'text-emerald-500' },
+  { value: 'queued', label: 'Queued', icon: Clock, className: 'text-amber-500' },
+  { value: 'fetching', label: 'Fetching', icon: Download, className: 'text-blue-500' },
+  { value: 'transcribing', label: 'Transcribing', icon: AudioLines, className: 'text-violet-500' },
+  { value: 'embedding', label: 'Embedding', icon: Layers, className: 'text-indigo-500' },
+  { value: 'failed', label: 'Failed', icon: CircleX, className: 'text-red-500' },
+] as const;
+
+const sourceOptions = [
+  { value: '_all', label: 'All sources', icon: Globe },
+  { value: 'youtube', label: 'YouTube', icon: Youtube, className: 'text-red-500' },
+  { value: 'podcast', label: 'Podcast', icon: Podcast, className: 'text-purple-500' },
+  { value: 'upload', label: 'Upload', icon: Upload, className: 'text-blue-500' },
+  { value: 'external', label: 'External', icon: ExternalLink, className: 'text-zinc-500' },
+] as const;
 
 export function SearchFilterBar({ filters, onChange }: SearchFilterBarProps) {
   const [localQuery, setLocalQuery] = useState(filters.q);
@@ -41,6 +75,13 @@ export function SearchFilterBar({ filters, onChange }: SearchFilterBarProps) {
   }, [localQuery, filters, onChange]);
 
   const hasActiveFilters = filters.q || filters.status || filters.sourceType;
+
+  const activeStatus = statusOptions.find(
+    (o) => o.value === (filters.status || '_all')
+  )!;
+  const activeSource = sourceOptions.find(
+    (o) => o.value === (filters.sourceType || '_all')
+  )!;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -67,42 +108,107 @@ export function SearchFilterBar({ filters, onChange }: SearchFilterBarProps) {
           <X className="size-3.5" />
         </button>
       </div>
-      <Select
-        value={filters.status || '_all'}
-        onValueChange={(v) =>
-          onChange({ ...filters, status: v === '_all' ? '' : v })
-        }
-      >
-        <SelectTrigger size="sm" className="h-8 text-xs min-w-[110px]">
-          <SelectValue placeholder="Status" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="_all">All statuses</SelectItem>
-          <SelectItem value="ready">Ready</SelectItem>
-          <SelectItem value="queued">Queued</SelectItem>
-          <SelectItem value="fetching">Fetching</SelectItem>
-          <SelectItem value="transcribing">Transcribing</SelectItem>
-          <SelectItem value="embedding">Embedding</SelectItem>
-          <SelectItem value="failed">Failed</SelectItem>
-        </SelectContent>
-      </Select>
-      <Select
-        value={filters.sourceType || '_all'}
-        onValueChange={(v) =>
-          onChange({ ...filters, sourceType: v === '_all' ? '' : v })
-        }
-      >
-        <SelectTrigger size="sm" className="h-8 text-xs min-w-[110px]">
-          <SelectValue placeholder="Source" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="_all">All sources</SelectItem>
-          <SelectItem value="youtube">YouTube</SelectItem>
-          <SelectItem value="podcast">Podcast</SelectItem>
-          <SelectItem value="upload">Upload</SelectItem>
-          <SelectItem value="external">External</SelectItem>
-        </SelectContent>
-      </Select>
+
+      {/* Status dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 h-8 text-xs font-medium font-open-runde",
+            "shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground",
+            "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:border-ring",
+            "data-[state=open]:bg-accent",
+            filters.status && "border-foreground/20"
+          )}
+        >
+          <activeStatus.icon
+            className={cn(
+              "size-3.5",
+              'className' in activeStatus
+                ? activeStatus.className
+                : "text-muted-foreground"
+            )}
+          />
+          <span>{activeStatus.label}</span>
+          <ChevronDown className="size-3 opacity-50" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          className="w-[--radix-dropdown-menu-trigger-width] min-w-[160px] font-open-runde"
+        >
+          {statusOptions.map((opt) => {
+            const selected = (filters.status || '_all') === opt.value;
+            return (
+              <DropdownMenuItem
+                key={opt.value}
+                onSelect={() =>
+                  onChange({ ...filters, status: opt.value === '_all' ? '' : opt.value })
+                }
+                className="gap-2 text-xs"
+              >
+                <opt.icon
+                  className={cn(
+                    "size-3.5",
+                    'className' in opt ? opt.className : "text-muted-foreground"
+                  )}
+                />
+                <span className="flex-1">{opt.label}</span>
+                {selected && <Check className="size-3.5 text-foreground" />}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Sources dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md border border-input bg-transparent px-2.5 h-8 text-xs font-medium font-open-runde",
+            "shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground",
+            "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:border-ring",
+            "data-[state=open]:bg-accent",
+            filters.sourceType && "border-foreground/20"
+          )}
+        >
+          <activeSource.icon
+            className={cn(
+              "size-3.5",
+              'className' in activeSource
+                ? activeSource.className
+                : "text-muted-foreground"
+            )}
+          />
+          <span>{activeSource.label}</span>
+          <ChevronDown className="size-3 opacity-50" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          className="w-[--radix-dropdown-menu-trigger-width] min-w-[160px] font-open-runde"
+        >
+          {sourceOptions.map((opt) => {
+            const selected = (filters.sourceType || '_all') === opt.value;
+            return (
+              <DropdownMenuItem
+                key={opt.value}
+                onSelect={() =>
+                  onChange({ ...filters, sourceType: opt.value === '_all' ? '' : opt.value })
+                }
+                className="gap-2 text-xs"
+              >
+                <opt.icon
+                  className={cn(
+                    "size-3.5",
+                    'className' in opt ? opt.className : "text-muted-foreground"
+                  )}
+                />
+                <span className="flex-1">{opt.label}</span>
+                {selected && <Check className="size-3.5 text-foreground" />}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
       {hasActiveFilters && (
         <button
           type="button"

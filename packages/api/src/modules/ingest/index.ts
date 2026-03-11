@@ -9,8 +9,8 @@ import { isUploadStorageConfigured, storeUploadedMedia } from './upload-storage'
 import { QuotaService } from '../quota/service';
 import { isAdminEmail } from '../usage/service';
 
-/** 100 MB */
-const MAX_UPLOAD_SIZE = 100 * 1024 * 1024;
+/** 2 GB */
+const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024;
 
 const ACCEPTED_MIME_PREFIXES = ['audio/', 'video/'] as const;
 
