@@ -201,7 +201,7 @@ function DashboardHome() {
             <Button
               variant="outline"
               size="sm"
-              className="text-xs"
+              className="border-ring/20 bg-background text-xs hover:bg-accent/20"
               data-tab-target="agent"
             >
               Open agent
@@ -223,7 +223,7 @@ function DashboardHome() {
                 <Badge
                   key={chip}
                   variant="outline"
-                  className="border-border/60 text-muted-foreground"
+                  className="border-ring/20 bg-accent/20 text-muted-foreground"
                 >
                   {chip}
                 </Badge>
@@ -234,7 +234,7 @@ function DashboardHome() {
               data-tab-target="agent"
               role="button"
               tabIndex={0}
-              className="group flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-transparent px-4 py-1 shadow-xs transition hover:border-border/80 focus-visible:border-ring/60 focus-visible:shadow-sm focus-visible:ring-1 focus-visible:ring-ring/20"
+              className="group flex flex-wrap items-center gap-2 rounded-xl border border-ring/20 bg-background px-4 py-1 shadow-xs transition-[border-color,background-color,box-shadow] hover:border-ring/30 hover:bg-accent/16 focus-visible:border-ring/35 focus-visible:shadow-sm focus-visible:ring-2 focus-visible:ring-ring/30"
             >
               <Input
                 placeholder="Ask about a transcript, summarize key points, or find a quote."
@@ -245,7 +245,7 @@ function DashboardHome() {
               <Button
                 size="icon-sm"
                 variant="ghost"
-                className="rounded-lg text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
+                className="rounded-lg text-muted-foreground transition hover:bg-accent/35 hover:text-foreground"
                 aria-label="Send to agent"
               >
                 <Sparkles className="size-4" />
@@ -264,7 +264,10 @@ function DashboardHome() {
           id="get-started-title"
           title="Get started"
           action={
-            <Badge variant="outline" className="border-border/60 text-xs">
+            <Badge
+              variant="outline"
+              className="border-ring/20 bg-accent/20 text-xs text-muted-foreground"
+            >
               0/{onboardingTasks.length} complete
             </Badge>
           }
@@ -310,9 +313,9 @@ function DashboardHome() {
 
 function ActionCard({ action }: { action: QuickAction }) {
   const cardClassName = cn(
-    'group flex h-full w-full flex-col justify-between rounded-xl border border-border/60 bg-card p-4 text-left shadow-xs transition',
+    'group flex h-full w-full flex-col justify-between rounded-xl border border-border/60 bg-card p-4 text-left shadow-xs transition-[transform,box-shadow,border-color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
     action.href || action.tabTarget || action.scrollTarget
-      ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md'
+      ? 'cursor-pointer hover:-translate-y-0.5 hover:border-ring/25 hover:bg-accent/12 hover:shadow-md'
       : 'opacity-70',
   );
 
@@ -320,11 +323,14 @@ function ActionCard({ action }: { action: QuickAction }) {
     <>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-          <action.icon className="size-4 text-primary" />
+          <action.icon className="size-4 text-ring/85" />
           <span>{action.title}</span>
         </div>
         {action.badge ? (
-          <Badge variant="outline" className="border-border/60 text-xs">
+          <Badge
+            variant="outline"
+            className="border-ring/20 bg-accent/20 text-xs text-muted-foreground"
+          >
             {action.badge}
           </Badge>
         ) : null}
@@ -381,7 +387,7 @@ function ChecklistItem({ task }: { task: OnboardingTask }) {
   const Icon = task.done ? CheckCircle2 : Circle;
   const ctaLabel = task.cta ?? 'Open';
   const ctaPill = (
-    <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background px-2.5 py-1 text-xs font-medium text-foreground">
+    <span className="inline-flex items-center gap-1 rounded-md border border-ring/20 bg-accent/20 px-2.5 py-1 text-xs font-medium text-foreground">
       {ctaLabel}
     </span>
   );
@@ -410,8 +416,9 @@ function ChecklistItem({ task }: { task: OnboardingTask }) {
   );
 
   const wrapperClassName = cn(
-    'group flex w-full items-center justify-between gap-4 rounded-lg border border-border/60 bg-muted/30 px-3 py-3 text-left',
-    isInteractive && 'transition hover:bg-muted/50',
+    'group flex w-full items-center justify-between gap-4 rounded-lg border border-ring/12 bg-muted/20 px-3 py-3 text-left',
+    isInteractive &&
+      'transition-[background-color,border-color] hover:border-ring/22 hover:bg-accent/16',
   );
 
   if (task.tabTarget) {
