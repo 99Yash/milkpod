@@ -478,18 +478,17 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
     user?.name?.trim() || user?.email?.split('@')[0] || 'New member';
   const emailLabel = user?.email ?? 'Connect your email';
   const initials = getUserInitials(user?.name ?? user?.email ?? 'Milkpod');
-  const wordsRemainingLabel = dailyUsage
-    ? dailyUsage.isAdmin
-      ? 'Unlimited words left today'
-      : `${dailyUsage.remaining.toLocaleString()} words left today`
-    : 'Loading words left today';
+  const wordsRemainingLabel =
+    dailyUsage && !dailyUsage.isAdmin
+      ? `${dailyUsage.remaining.toLocaleString()} words left today`
+      : null;
   const wordsRemainingRatio =
     dailyUsage && !dailyUsage.isAdmin && dailyUsage.budget > 0
       ? dailyUsage.remaining / dailyUsage.budget
       : null;
   const wordsStatusDotClass =
     wordsRemainingRatio === null
-      ? 'bg-muted-foreground/50'
+      ? null
       : wordsRemainingRatio <= 0.2
         ? 'bg-destructive'
         : 'bg-emerald-500';
@@ -543,10 +542,12 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
             <p className="truncate text-sm font-semibold leading-tight text-foreground">
               {displayName}
             </p>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className={cn('size-1.5 rounded-full', wordsStatusDotClass)} />
-              <p className="truncate">{wordsRemainingLabel}</p>
-            </div>
+            {wordsRemainingLabel ? (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className={cn('size-1.5 rounded-full', wordsStatusDotClass)} />
+                <p className="truncate">{wordsRemainingLabel}</p>
+              </div>
+            ) : null}
           </div>
           <ChevronDown
             className={cn(
@@ -559,11 +560,10 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
       <DropdownMenuContent
         align={collapsed ? 'center' : 'start'}
         sideOffset={8}
-        className="w-72 overflow-hidden rounded-2xl border-border/70 p-0 shadow-xl"
+        className="w-80 overflow-hidden rounded-2xl border border-border/65 bg-card/95 p-0 shadow-2xl"
       >
-        <div className="relative border-b border-border/60 bg-gradient-to-br from-primary/12 via-background to-background px-4 py-4">
-          <div className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-primary/20 blur-2xl" />
-          <div className="relative flex items-start gap-3">
+        <div className="border-b border-border/60 bg-background/70 px-4 py-3.5">
+          <div className="flex items-center gap-3">
             <WordsRemainingAvatar
               size="md"
               image={user?.image}
@@ -578,7 +578,7 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
                 </p>
                 <Badge
                   variant="outline"
-                  className="h-5 border-border/70 px-1.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+                  className="h-5 rounded-md border-border/70 bg-muted/35 px-1.5 text-[10px] font-medium text-muted-foreground"
                 >
                   {planLabel}
                 </Badge>
@@ -586,26 +586,28 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
               <p className="truncate text-xs text-muted-foreground">
                 {emailLabel}
               </p>
-              <p className="truncate text-[11px] text-muted-foreground">
-                {wordsRemainingLabel}
-              </p>
+              {wordsRemainingLabel ? (
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {wordsRemainingLabel}
+                </p>
+              ) : null}
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 px-3 py-3">
+        <div className="grid grid-cols-2 gap-2 px-4 py-3">
           {userStats.map((stat) => (
             <div
               key={stat.id}
-              className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2.5"
+              className="rounded-lg border border-border/60 bg-background/55 px-3 py-2"
             >
-              <div className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                <stat.icon className="size-3.5 text-primary/80" />
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <stat.icon className="size-3.5 text-muted-foreground/90" />
                 <p>
                   {stat.label}
                 </p>
               </div>
-              <p className="text-base font-semibold leading-none text-foreground">
+              <p className="mt-1 text-xl font-semibold leading-none text-foreground">
                 {stat.value}
               </p>
             </div>
@@ -613,7 +615,7 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
         </div>
 
         <div className="px-2 pb-2">
-          <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
             Workspace
           </p>
           <DropdownMenuGroup>
@@ -630,12 +632,12 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
 
             <DropdownMenuItem
               disabled
-              className="rounded-lg px-2.5 py-2 data-[disabled]:opacity-80"
+              className="rounded-lg px-2.5 py-2 data-[disabled]:opacity-70"
             >
               <User className="size-4" />
               <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
                 <span className="truncate font-medium">Profile</span>
-                <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                   Soon
                 </span>
               </div>
@@ -643,12 +645,12 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
 
             <DropdownMenuItem
               disabled
-              className="rounded-lg px-2.5 py-2 data-[disabled]:opacity-80"
+              className="rounded-lg px-2.5 py-2 data-[disabled]:opacity-70"
             >
               <Settings className="size-4" />
               <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
                 <span className="truncate font-medium">Settings</span>
-                <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                   Soon
                 </span>
               </div>
@@ -656,12 +658,12 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
 
             <DropdownMenuItem
               disabled
-              className="rounded-lg px-2.5 py-2 data-[disabled]:opacity-80"
+              className="rounded-lg px-2.5 py-2 data-[disabled]:opacity-70"
             >
               <LifeBuoy className="size-4" />
               <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
                 <span className="truncate font-medium">Support</span>
-                <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                   Soon
                 </span>
               </div>
@@ -704,7 +706,6 @@ function WordsRemainingAvatar({
   usage,
 }: WordsRemainingAvatarProps) {
   const radius = 44;
-  const circumference = 2 * Math.PI * radius;
   const remainingPercentage = usage?.isAdmin
     ? 100
     : usage
@@ -715,23 +716,27 @@ function WordsRemainingAvatar({
     usage && !usage.isAdmin && roundedPercentage <= 20
       ? 'stroke-destructive/70'
       : 'stroke-foreground/45';
-  const markerAngleRadians =
-    (remainingPercentage / 100) * Math.PI * 2 - Math.PI / 2;
-  const markerX = 50 + radius * Math.cos(markerAngleRadians);
-  const markerY = 50 + radius * Math.sin(markerAngleRadians);
+  const hasPartialSegments = remainingPercentage > 0 && remainingPercentage < 100;
+  const segmentGap = hasPartialSegments
+    ? Math.min(3, remainingPercentage, 100 - remainingPercentage)
+    : 0;
+  const remainingArcLength = hasPartialSegments
+    ? Math.max(0, remainingPercentage - segmentGap)
+    : remainingPercentage;
+  const spentArcLength = hasPartialSegments
+    ? Math.max(0, 100 - remainingPercentage - segmentGap)
+    : 100 - remainingPercentage;
+  const shouldRenderSpentArc = spentArcLength > 0;
+  const shouldRenderRemainingArc = remainingArcLength > 0;
+  const ringLineCap: 'butt' | 'round' = hasPartialSegments ? 'round' : 'butt';
+  const finiteUsage = usage && !usage.isAdmin ? usage : null;
   const containerClass = size === 'sm' ? 'size-10' : 'size-12';
   const insetClass = size === 'sm' ? 'inset-[4px]' : 'inset-[5px]';
   const percentageClass = size === 'sm' ? 'text-[10px]' : 'text-xs';
-  const label = usage
-    ? usage.isAdmin
-      ? 'Unlimited words remaining today'
-      : `${usage.remaining.toLocaleString()} of ${usage.budget.toLocaleString()} words remaining today`
-    : 'Loading words remaining today';
-  const hoverLabel = usage?.isAdmin
-    ? 'Unlimited words remaining today'
-    : usage
-      ? `${roundedPercentage}% remaining today`
-      : 'Loading words remaining today';
+  const label = finiteUsage
+    ? `${finiteUsage.remaining.toLocaleString()} of ${finiteUsage.budget.toLocaleString()} words remaining today`
+    : 'Account avatar';
+  const hoverLabel = finiteUsage ? `${roundedPercentage}% remaining today` : undefined;
   const hoverText = usage?.isAdmin ? '∞' : usage ? `${roundedPercentage}%` : '--';
 
   return (
@@ -745,30 +750,36 @@ function WordsRemainingAvatar({
         className="absolute inset-0"
         aria-hidden="true"
       >
-        <circle
-          cx="50"
-          cy="50"
-          r={radius}
-          className="fill-none stroke-border/70"
-          strokeWidth="8"
-        />
-        <circle
-          cx="50"
-          cy="50"
-          r={radius}
-          transform="rotate(-90 50 50)"
-          className={cn('fill-none transition-all duration-300', ringStrokeClass)}
-          strokeWidth="8"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - remainingPercentage / 100)}
-        />
-        <circle
-          cx={markerX}
-          cy={markerY}
-          r={size === 'sm' ? 3.8 : 3.4}
-          className="fill-foreground"
-        />
+        {shouldRenderSpentArc ? (
+          <circle
+            cx="50"
+            cy="50"
+            r={radius}
+            transform="rotate(-90 50 50)"
+            className="fill-none stroke-border/70 transition-all duration-300"
+            strokeWidth="8"
+            strokeLinecap={ringLineCap}
+            pathLength={100}
+            strokeDasharray={`${spentArcLength} 100`}
+            strokeDashoffset={
+              hasPartialSegments ? -(remainingPercentage + segmentGap / 2) : -remainingPercentage
+            }
+          />
+        ) : null}
+        {shouldRenderRemainingArc ? (
+          <circle
+            cx="50"
+            cy="50"
+            r={radius}
+            transform="rotate(-90 50 50)"
+            className={cn('fill-none transition-all duration-300', ringStrokeClass)}
+            strokeWidth="8"
+            strokeLinecap={ringLineCap}
+            pathLength={100}
+            strokeDasharray={`${remainingArcLength} 100`}
+            strokeDashoffset={hasPartialSegments ? -(segmentGap / 2) : 0}
+          />
+        ) : null}
       </svg>
 
       <div className={cn('absolute', insetClass)}>
