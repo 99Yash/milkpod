@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchAssets } from '~/lib/api-fetchers';
 import { queryKeys } from '~/lib/query-keys';
 import { ChatPanel } from '~/components/chat/chat-panel';
+import { AssetSourceProvider } from '~/components/chat/asset-source-context';
 import {
   DashboardPanel,
   DashboardPanelContent,
@@ -37,6 +38,11 @@ export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
     if (selectedId && assets.some((a) => a.id === selectedId)) return selectedId;
     return assets[0]?.id;
   }, [selectedId, assets]);
+
+  const selectedAsset = useMemo(
+    () => assets.find((asset) => asset.id === effectiveSelectedId),
+    [assets, effectiveSelectedId],
+  );
 
   if (isLoading) {
     return (
@@ -83,7 +89,7 @@ export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
         <select
           value={effectiveSelectedId ?? ''}
           onChange={(e) => setSelectedId(e.target.value)}
-          className="rounded-md border border-border/60 bg-background px-3 py-1.5 text-xs text-foreground"
+          className="h-8 rounded-md border border-ring/20 bg-background px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-accent/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
         >
           {assets.map((a) => (
             <option key={a.id} value={a.id}>
@@ -92,8 +98,16 @@ export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
           ))}
         </select>
       </div>
-      <DashboardPanel className="h-[600px]">
-        {effectiveSelectedId && <ChatPanel key={effectiveSelectedId} assetId={effectiveSelectedId} />}
+      <DashboardPanel className="h-[600px] border border-ring/12 bg-accent/5">
+        {effectiveSelectedId && selectedAsset ? (
+          <AssetSourceProvider
+            sourceUrl={selectedAsset.sourceUrl}
+            sourceType={selectedAsset.sourceType}
+            sourceId={selectedAsset.sourceId}
+          >
+            <ChatPanel key={effectiveSelectedId} assetId={effectiveSelectedId} />
+          </AssetSourceProvider>
+        ) : null}
       </DashboardPanel>
     </section>
   );

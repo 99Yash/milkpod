@@ -90,15 +90,25 @@ export function ModelPicker({ value, onChange }: ModelPickerProps) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-8 gap-1.5 rounded-lg px-2.5 text-[13px] text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1.5 rounded-lg px-2.5 text-[13px] text-muted-foreground hover:bg-accent/22 hover:text-foreground data-[state=open]:bg-accent/30 data-[state=open]:text-foreground"
+        >
           <ProviderIcon provider={selected.provider} className="size-3.5" />
           {selected.name}
-          <ChevronDown className={cn("size-3 transition-transform duration-200", open && "rotate-180")} />
+          <ChevronDown
+            className={cn('size-3 transition-transform duration-200', open && 'rotate-180')}
+          />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="h-[240px] w-[420px] font-open-runde p-0" side="top" align="start">
+      <PopoverContent
+        className="h-[240px] w-[420px] border-ring/20 p-0 font-open-runde"
+        side="top"
+        align="start"
+      >
         <div className="flex h-full">
-          <Command className="w-[200px] border-r">
+          <Command className="w-[200px] border-r border-border/60 bg-transparent">
             <CommandInput placeholder="Search models..." className="h-8 text-xs" />
             <CommandList className="min-h-0 flex-1">
               <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">
@@ -118,7 +128,10 @@ export function ModelPicker({ value, onChange }: ModelPickerProps) {
                     onMouseLeave={() => setHoveredId(null)}
                     className="flex items-center gap-2"
                   >
-                    <ProviderIcon provider={model.provider} className="size-3.5 shrink-0" />
+                    <ProviderIcon
+                      provider={model.provider}
+                      className="size-3.5 shrink-0"
+                    />
                     <span className="flex-1 truncate text-xs">{model.name}</span>
                     {model.id === value && <Check className="size-3 shrink-0" />}
                   </CommandItem>

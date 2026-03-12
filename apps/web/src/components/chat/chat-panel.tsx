@@ -292,7 +292,7 @@ function ChatPanelContent({
         <div className="mx-auto max-w-3xl">
           {messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-5 py-12 text-center">
-              <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-b from-muted to-muted/50 shadow-sm ring-1 ring-border/40">
+              <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-b from-accent/30 to-accent/10 shadow-sm ring-1 ring-ring/15">
                 <MessageSquareText className="size-6 text-muted-foreground" />
               </div>
               <div className="space-y-1.5">
@@ -309,7 +309,7 @@ function ChatPanelContent({
                     key={suggestion}
                     type="button"
                     onClick={() => sendMessage({ text: suggestion })}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-background pl-3 pr-3.5 py-2 text-xs font-medium text-muted-foreground shadow-sm transition-all hover:border-border hover:bg-muted hover:text-foreground hover:shadow-md"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background py-2 pl-3 pr-3.5 text-xs font-medium text-muted-foreground shadow-sm transition-all hover:border-ring/25 hover:bg-accent/18 hover:text-foreground hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
                   >
                     <Sparkles className="size-3" />
                     {suggestion}
@@ -365,7 +365,7 @@ function ChatPanelContent({
       <div className="shrink-0 px-3 pb-3 pt-2">
         <form
           onSubmit={handleSubmit}
-          className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-border/60 bg-muted/30 shadow-sm transition-[box-shadow,border-color] duration-200 focus-within:border-border focus-within:shadow-md"
+          className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-ring/15 bg-background/95 shadow-sm transition-[box-shadow,border-color,background-color] duration-200 focus-within:border-ring/30 focus-within:bg-accent/14 focus-within:shadow-md"
         >
           <Textarea
             value={input}
@@ -386,7 +386,7 @@ function ChatPanelContent({
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Send message"
-                className="rounded-xl bg-muted-foreground/15 text-muted-foreground hover:bg-muted-foreground/25 hover:text-foreground disabled:bg-muted-foreground/8"
+                className="rounded-xl bg-accent/35 text-foreground hover:bg-accent/50 disabled:bg-muted-foreground/8 disabled:text-muted-foreground"
                 disabled={isLoading || !input.trim()}
               >
                 <SendHorizonal className="size-4 translate-x-px" />
