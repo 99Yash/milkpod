@@ -49,7 +49,7 @@ export function CommentCard({ comment, onDismiss }: CommentCardProps) {
               <button
                 type="button"
                 onClick={() => handleClick(comment.startTime)}
-                className="inline-flex items-center gap-1 text-xs font-medium text-purple-600 transition-colors hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300"
+                className="inline-flex items-center gap-1 text-xs font-medium text-purple-600 transition-all duration-150 ease-out hover:text-purple-700 active:scale-[0.97] active:will-change-transform motion-reduce:active:scale-100 dark:text-purple-400 dark:hover:text-purple-300"
               >
                 <Play className="size-3" />
                 {formatTime(comment.startTime)} – {formatTime(comment.endTime)}
@@ -74,12 +74,12 @@ export function CommentCard({ comment, onDismiss }: CommentCardProps) {
         </p>
 
         {/* Actions */}
-        <div className="flex items-center gap-1 pt-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <div className="flex items-center gap-1 pt-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
           <button
             type="button"
             onClick={handleDismiss}
             disabled={dismissing}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-all duration-150 ease-out hover:bg-muted hover:text-foreground active:scale-[0.97] active:will-change-transform motion-reduce:active:scale-100 disabled:pointer-events-none disabled:opacity-50"
           >
             <X className="size-3" />
             Dismiss
