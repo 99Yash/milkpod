@@ -54,6 +54,7 @@ export const billingSubscriptions = pgTable('billing_subscription', {
 }, (t) => [
   unique('billing_subscription_provider_sub_id_unique').on(t.providerSubscriptionId),
   index('billing_subscription_user_id_idx').on(t.userId),
+  index('billing_subscription_user_status_idx').on(t.userId, t.status),
 ]);
 
 // ---------------------------------------------------------------------------

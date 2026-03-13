@@ -23,6 +23,7 @@ const perRequest = new WeakMap<Request, Promise<Session>>();
 const TOKEN_TTL_MS = 10_000;
 const MAX_TOKEN_CACHE_SIZE = 1_000;
 const tokenCache = new Map<string, { session: Session; expiresAt: number }>();
+const tokenInflight = new Map<string, Promise<Session>>();
 
 const sweepTimer = setInterval(() => {
   const now = Date.now();
@@ -58,6 +59,12 @@ export function getSessionCached(request: Request): Promise<Session> {
       perRequest.set(request, promise);
       return promise;
     }
+
+    const inflight = tokenInflight.get(token);
+    if (inflight) {
+      perRequest.set(request, inflight);
+      return inflight;
+    }
   }
 
   // 3. DB lookup → populate both caches
@@ -76,7 +83,12 @@ export function getSessionCached(request: Request): Promise<Session> {
         });
       }
       return session;
+    })
+    .finally(() => {
+      if (token) tokenInflight.delete(token);
     });
+
+  if (token) tokenInflight.set(token, promise);
 
   perRequest.set(request, promise);
   return promise;

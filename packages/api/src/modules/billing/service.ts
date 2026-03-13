@@ -72,6 +72,19 @@ function isSubscriptionStatus(value: unknown): value is SubscriptionInfo['status
   );
 }
 
+function toIsoStringOrNull(value: unknown): string | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  return null;
+}
+
 export abstract class BillingService {
   /**
    * Get the user's active subscription row, if any.
@@ -136,10 +149,10 @@ export abstract class BillingService {
     const result = await db().execute(sql<{
       planId: string | null;
       subscriptionStatus: SubscriptionInfo['status'] | null;
-      currentPeriodStart: Date | null;
-      currentPeriodEnd: Date | null;
+      currentPeriodStart: string | Date | null;
+      currentPeriodEnd: string | Date | null;
       cancelAtPeriodEnd: boolean | null;
-      canceledAt: Date | null;
+      canceledAt: string | Date | null;
       wordsUsed: number | null;
       videoMinutesUsed: number | null;
       visualSegmentsUsed: number | null;
@@ -198,16 +211,10 @@ export abstract class BillingService {
     const subscription = isSubscriptionStatus(subscriptionStatus)
       ? {
           status: subscriptionStatus,
-          currentPeriodStart:
-            currentPeriodStart instanceof Date
-              ? currentPeriodStart.toISOString()
-              : null,
-          currentPeriodEnd:
-            currentPeriodEnd instanceof Date
-              ? currentPeriodEnd.toISOString()
-              : null,
+          currentPeriodStart: toIsoStringOrNull(currentPeriodStart),
+          currentPeriodEnd: toIsoStringOrNull(currentPeriodEnd),
           cancelAtPeriodEnd: row?.cancelAtPeriodEnd === true,
-          canceledAt: canceledAt instanceof Date ? canceledAt.toISOString() : null,
+          canceledAt: toIsoStringOrNull(canceledAt),
         }
       : null;
 
