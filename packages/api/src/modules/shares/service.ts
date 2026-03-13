@@ -121,9 +121,12 @@ export abstract class ShareService {
             .orderBy(transcriptSegments.startTime)
         : [];
 
+      // Strip internal error details before returning to the client
+      const { lastError: _, visualLastError: __, ...safeAsset } = asset;
+
       return {
         link,
-        resource: { ...asset, transcript: transcript ?? null, segments },
+        resource: { ...safeAsset, lastError: null, visualLastError: null, transcript: transcript ?? null, segments },
         type: 'asset' as const,
       };
     }

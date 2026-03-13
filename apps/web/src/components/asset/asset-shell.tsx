@@ -180,7 +180,7 @@ export function AssetShell({ assetId, initialAsset, children }: AssetShellProps)
                   )}
                   <p className="text-sm text-muted-foreground">
                     {asset.status === 'failed'
-                      ? `Processing failed${asset.lastError ? `: ${asset.lastError}` : ''}`
+                      ? 'Processing failed. You can retry from the library.'
                       : progressMessage ||
                         'Transcript will appear here once processing completes.'}
                   </p>

@@ -14,21 +14,30 @@ const VALID_STATUSES = new Set<string>(assetStatusEnum.enumValues);
 const VALID_SOURCE_TYPES = new Set<string>(sourceTypeEnum.enumValues);
 
 export abstract class AssetService {
+  /**
+   * Null out internal error details so they never reach the client.
+   * The raw values remain in the DB for debugging via Drizzle Studio.
+   */
+  private static sanitize<T extends { lastError?: unknown; visualLastError?: unknown }>(row: T): T {
+    return { ...row, lastError: null, visualLastError: null };
+  }
+
   static async create(userId: string, data: AssetModel.Create): Promise<Asset> {
     const [asset] = await db()
       .insert(mediaAssets)
       .values({ userId, ...data })
       .returning();
     if (!asset) throw new Error('Failed to insert media asset');
-    return asset;
+    return AssetService.sanitize(asset);
   }
 
   static async list(userId: string): Promise<Asset[]> {
-    return db()
+    const rows = await db()
       .select()
       .from(mediaAssets)
       .where(eq(mediaAssets.userId, userId))
       .orderBy(mediaAssets.createdAt);
+    return rows.map(AssetService.sanitize);
   }
 
   static async search(userId: string, query: AssetModel.ListQuery): Promise<Asset[]> {
@@ -69,11 +78,12 @@ export abstract class AssetService {
       );
     }
 
-    return db()
+    const rows = await db()
       .select()
       .from(mediaAssets)
       .where(and(...conditions))
       .orderBy(mediaAssets.createdAt);
+    return rows.map(AssetService.sanitize);
   }
 
   static async getById(id: string, userId: string): Promise<Asset | null> {
@@ -81,7 +91,7 @@ export abstract class AssetService {
       .select()
       .from(mediaAssets)
       .where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)));
-    return asset ?? null;
+    return asset ? AssetService.sanitize(asset) : null;
   }
 
   static async getWithTranscript(id: string, userId: string): Promise<AssetWithTranscript | null> {
@@ -119,7 +129,7 @@ export abstract class AssetService {
       .set(data)
       .where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)))
       .returning();
-    return updated ?? null;
+    return updated ? AssetService.sanitize(updated) : null;
   }
 
   static async remove(id: string, userId: string): Promise<Asset | null> {
@@ -127,6 +137,6 @@ export abstract class AssetService {
       .delete(mediaAssets)
       .where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)))
       .returning();
-    return deleted ?? null;
+    return deleted ? AssetService.sanitize(deleted) : null;
   }
 }
