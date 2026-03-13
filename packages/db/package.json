@@ -16,6 +16,7 @@
     "check-types": "tsc -b",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "dev": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },

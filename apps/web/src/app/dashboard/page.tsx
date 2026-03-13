@@ -22,7 +22,6 @@ import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { getServerSession, assertAuthenticated } from '~/lib/auth/session';
-import { getAssets, getCollections } from '~/lib/data/queries';
 import { route } from '~/lib/routes';
 import { cn } from '~/lib/utils';
 
@@ -123,42 +122,13 @@ const recentItems: RecentItem[] = [
 
 const agentChips = ['Timestamped', 'Multi-speaker', 'Contextual'];
 
-type DashboardPageProps = {
-  searchParams?:
-    | { tab?: string; session?: string }
-    | Promise<{ tab?: string; session?: string }>;
-};
-
-export default async function DashboardPage({
-  searchParams,
-}: DashboardPageProps) {
-  const resolvedSearchParams = await searchParams;
+export default async function DashboardPage() {
   const session = await getServerSession();
 
   assertAuthenticated(session);
 
-  const tabParam = resolvedSearchParams?.tab;
-  const initialTab =
-    tabParam === 'library'
-      ? 'library'
-      : tabParam === 'agent' || resolvedSearchParams?.session
-        ? 'agent'
-        : 'home';
-
-  let assets: Awaited<ReturnType<typeof getAssets>> | undefined;
-  let collections: Awaited<ReturnType<typeof getCollections>> | undefined;
-
-  if (initialTab !== 'home') {
-    [assets, collections] = await Promise.all([
-      getAssets(session.user.id),
-      getCollections(session.user.id),
-    ]);
-  }
-
   return (
     <DashboardContent
-      initialAssets={assets}
-      initialCollections={collections}
       home={<DashboardHome />}
     />
   );

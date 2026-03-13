@@ -11,16 +11,14 @@ import type { Collection } from '@milkpod/api/types';
 
 interface CollectionListProps {
   refreshKey?: number;
-  initialCollections?: Collection[];
 }
 
-export function CollectionList({ refreshKey, initialCollections }: CollectionListProps) {
+export function CollectionList({ refreshKey }: CollectionListProps) {
   const queryClient = useQueryClient();
 
   const { data: collections = [], isLoading, refetch } = useQuery({
     queryKey: queryKeys.collections.list(),
     queryFn: fetchCollections,
-    initialData: initialCollections,
   });
 
   const mountedRef = useRef(false);
