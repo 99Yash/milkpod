@@ -1,23 +1,40 @@
-import { sessionAuth } from '@milkpod/auth/session';
+import { clientEnv } from '@milkpod/env/client';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { route } from '~/lib/routes';
 
-type SessionAuthInstance = ReturnType<typeof sessionAuth>;
-export type SessionSnapshot = Awaited<
-  ReturnType<SessionAuthInstance['api']['getSession']>
->;
+export type SessionSnapshot = {
+  session: { id: string; userId: string; token: string; expiresAt: string };
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    image: string | null;
+    emailVerified: boolean;
+    createdAt: string;
+    updatedAt: string;
+  };
+} | null;
 
 type AuthenticatedSession = NonNullable<SessionSnapshot> & {
   user: NonNullable<NonNullable<SessionSnapshot>['user']>;
 };
 
-export const getServerSession = cache(async () => {
+export const getServerSession = cache(async (): Promise<SessionSnapshot> => {
   try {
     const requestHeaders = await headers();
-    const session = await sessionAuth().api.getSession({ headers: requestHeaders });
-    return session ?? null;
+    const cookie = requestHeaders.get('cookie');
+    if (!cookie) return null;
+
+    const res = await fetch(
+      `${clientEnv().NEXT_PUBLIC_SERVER_URL}/api/auth/get-session`,
+      { headers: { cookie } },
+    );
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    return data ?? null;
   } catch {
     return null;
   }
