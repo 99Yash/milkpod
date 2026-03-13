@@ -1,12 +1,16 @@
 'use client';
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchAssets } from '~/lib/api-fetchers';
+import {
+  useInfiniteQuery,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query';
+import { fetchAssetsPage, type AssetPageResult } from '~/lib/api-fetchers';
 import { queryKeys } from '~/lib/query-keys';
 import { AssetCard } from './asset-card';
+import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
-import type { Asset } from '@milkpod/api/types';
 import { useAssetEvents, type AssetStatusEvent } from '~/hooks/use-asset-events';
 import type { AssetFilters } from './search-filter-bar';
 
@@ -14,7 +18,6 @@ interface AssetListProps {
   onSelectAsset?: (assetId: string) => void;
   refreshKey?: number;
   filters?: AssetFilters;
-  initialAssets?: Asset[];
 }
 
 /** Per-asset progress info from SSE events */
@@ -23,7 +26,9 @@ interface AssetProgress {
   message?: string;
 }
 
-export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }: AssetListProps) {
+const PAGE_SIZE = 24;
+
+export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps) {
   const queryClient = useQueryClient();
   const [progressMap, setProgressMap] = useState<Record<string, AssetProgress>>({});
 
@@ -35,16 +40,31 @@ export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }:
     return q;
   }, [filters?.q, filters?.status, filters?.sourceType]);
 
-  const hasActiveFilters = Boolean(
-    filters?.q || filters?.status || filters?.sourceType,
-  );
-
-  const { data: assets = [], isLoading, refetch } = useQuery({
-    queryKey: queryKeys.assets.list(query),
-    queryFn: () => fetchAssets(query),
-    initialData: hasActiveFilters ? undefined : initialAssets,
-    initialDataUpdatedAt: initialAssets ? Date.now() : undefined,
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: queryKeys.assets.page(query),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      fetchAssetsPage({
+        q: query.q,
+        status: query.status,
+        sourceType: query.sourceType,
+        cursor: pageParam,
+        limit: PAGE_SIZE,
+      }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
+
+  const assets = useMemo(
+    () => data?.pages.flatMap((page) => page.items) ?? [],
+    [data],
+  );
 
   // Handle refreshKey from parent (skip initial mount)
   const mountedRef = useRef(false);
@@ -62,12 +82,20 @@ export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }:
     useCallback(
       (event: AssetStatusEvent) => {
         // Optimistic status update across all cached asset lists
-        queryClient.setQueriesData<Asset[]>(
-          { queryKey: queryKeys.assets.lists() },
-          (prev) =>
-            prev?.map((a) =>
-              a.id === event.assetId ? { ...a, status: event.status } : a
-            )
+        queryClient.setQueriesData<InfiniteData<AssetPageResult>>(
+          { queryKey: queryKeys.assets.pages() },
+          (prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              pages: prev.pages.map((page) => ({
+                ...page,
+                items: page.items.map((a) =>
+                  a.id === event.assetId ? { ...a, status: event.status } : a,
+                ),
+              })),
+            };
+          },
         );
         setProgressMap((prev) => ({
           ...prev,
@@ -115,22 +143,38 @@ export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }:
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {assets.map((asset, index) => (
-        <div
-          key={asset.id}
-          className="animate-enter"
-          style={index > 0 ? { animationDelay: `${Math.min(index, 8) * 60}ms` } : undefined}
-        >
-          <AssetCard
-            asset={asset}
-            onSelect={onSelectAsset}
-            onRetry={() => queryClient.invalidateQueries({ queryKey: queryKeys.assets.all })}
-            progress={progressMap[asset.id]?.progress}
-            progressMessage={progressMap[asset.id]?.message}
-          />
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {assets.map((asset, index) => (
+          <div
+            key={asset.id}
+            className="animate-enter"
+            style={index > 0 ? { animationDelay: `${Math.min(index, 8) * 60}ms` } : undefined}
+          >
+            <AssetCard
+              asset={asset}
+              onSelect={onSelectAsset}
+              onRetry={() => queryClient.invalidateQueries({ queryKey: queryKeys.assets.all })}
+              progress={progressMap[asset.id]?.progress}
+              progressMessage={progressMap[asset.id]?.message}
+            />
+          </div>
+        ))}
+      </div>
+
+      {hasNextPage ? (
+        <div className="flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+          >
+            {isFetchingNextPage ? <Spinner className="size-4" /> : null}
+            {isFetchingNextPage ? 'Loading...' : 'Load more'}
+          </Button>
         </div>
-      ))}
+      ) : null}
     </div>
   );
 }
