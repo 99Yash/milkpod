@@ -179,9 +179,11 @@
     transition: background-color 0.2s ease;
   }
 
-  ::-webkit-scrollbar-thumb:hover {
-    background: var(--ring);
-    background-clip: padding-box;
+  @media (hover: hover) and (pointer: fine) {
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--ring);
+      background-clip: padding-box;
+    }
   }
 
   /* Firefox scrollbar */
@@ -190,8 +192,10 @@
     scrollbar-width: thin;
   }
 
-  *:hover {
-    scrollbar-color: var(--ring) transparent;
+  @media (hover: hover) and (pointer: fine) {
+    *:hover {
+      scrollbar-color: var(--ring) transparent;
+    }
   }
 
   /* Text gradient utilities */
@@ -272,8 +276,10 @@
     @apply absolute bottom-0 left-0 h-px w-full origin-left scale-x-0 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 transition-transform duration-300;
   }
 
-  .link-underline:hover::after {
-    @apply scale-x-100;
+  @media (hover: hover) and (pointer: fine) {
+    .link-underline:hover::after {
+      @apply scale-x-100;
+    }
   }
 
   /* Subtle animations */
@@ -351,8 +357,19 @@
     box-shadow: var(--shadow-card);
   }
 
-  .card-hover:hover {
-    box-shadow: var(--shadow-card-hover);
+  @media (hover: hover) and (pointer: fine) {
+    .card-hover:hover {
+      box-shadow: var(--shadow-card-hover);
+    }
+  }
+
+  @media (pointer: coarse) {
+    [data-slot='button'][data-size='icon-sm'],
+    [data-slot='button'][data-size='icon'],
+    [data-slot='button'][data-size='icon-lg'] {
+      min-width: 44px;
+      min-height: 44px;
+    }
   }
 
   /* Image outline utility (pattern 11) */

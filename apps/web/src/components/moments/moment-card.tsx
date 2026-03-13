@@ -55,7 +55,7 @@ export function MomentCard({ moment, onSave, onDismiss }: MomentCardProps) {
             <button
               type="button"
               onClick={() => handleClick(moment.startTime)}
-              className="inline-flex items-center gap-1 text-xs font-medium text-purple-600 transition-colors hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300"
+              className="inline-flex items-center gap-1 text-xs font-medium text-purple-600 transition-all duration-150 ease-out hover:text-purple-700 active:scale-[0.97] active:will-change-transform motion-reduce:active:scale-100 dark:text-purple-400 dark:hover:text-purple-300"
             >
               <Play className="size-3" />
               {formatTime(moment.startTime)} – {formatTime(moment.endTime)}
@@ -79,7 +79,7 @@ export function MomentCard({ moment, onSave, onDismiss }: MomentCardProps) {
             onClick={() => handleAction('save')}
             disabled={actionLoading !== null || moment.isSaved}
             className={cn(
-              'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors',
+              'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-all duration-150 ease-out active:scale-[0.97] active:will-change-transform motion-reduce:active:scale-100',
               'disabled:pointer-events-none disabled:opacity-50',
               moment.isSaved
                 ? 'bg-foreground/10 text-foreground'
@@ -95,7 +95,7 @@ export function MomentCard({ moment, onSave, onDismiss }: MomentCardProps) {
             type="button"
             onClick={() => handleAction('dismiss')}
             disabled={actionLoading !== null}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-all duration-150 ease-out hover:bg-muted hover:text-foreground active:scale-[0.97] active:will-change-transform motion-reduce:active:scale-100 disabled:pointer-events-none disabled:opacity-50"
           >
             <X className="size-3" />
             Dismiss

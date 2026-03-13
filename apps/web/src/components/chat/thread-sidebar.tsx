@@ -218,10 +218,10 @@ function ThreadItem({
                 aria-label="Thread options"
                 onClick={(e) => e.stopPropagation()}
                 className={cn(
-                  'ml-1 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground',
+                  'ml-1 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-all duration-150 ease-out hover:text-foreground active:scale-[0.97] active:will-change-transform motion-reduce:active:scale-100',
                   isActive
                     ? 'opacity-100'
-                    : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                    : 'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100',
                 )}
               >
                 <Ellipsis className="size-3.5" />
