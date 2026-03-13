@@ -49,7 +49,8 @@ export const assets = new Elysia({ prefix: '/api/assets' })
           const data = JSON.stringify({
             assetId: event.assetId,
             status: event.status,
-            message: event.message,
+            // Strip internal error details — only forward progress messages
+            message: event.status === 'failed' ? undefined : event.message,
             progress: event.progress,
           });
           write(`data: ${data}\n\n`);

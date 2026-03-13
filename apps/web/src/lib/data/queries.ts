@@ -18,12 +18,18 @@ import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Asset, AssetWithTranscript, Collection, Comment, Moment } from '@milkpod/api/types';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 
+/** Null out internal error details before they reach the client. */
+function sanitizeAsset<T extends { lastError?: unknown; visualLastError?: unknown }>(row: T): T {
+  return { ...row, lastError: null, visualLastError: null };
+}
+
 export async function getAssets(userId: string): Promise<Asset[]> {
-  return db()
+  const rows = await db()
     .select()
     .from(mediaAssets)
     .where(eq(mediaAssets.userId, userId))
     .orderBy(mediaAssets.createdAt);
+  return rows.map(sanitizeAsset);
 }
 
 export async function getAssetWithTranscript(
@@ -56,10 +62,11 @@ export async function getAssetWithTranscript(
   const asset = assetRows[0];
   if (!asset) return null;
 
+  const safe = sanitizeAsset(asset);
   const transcript = transcriptRows[0];
-  if (!transcript) return { ...asset, transcript: null, segments: [] };
+  if (!transcript) return { ...safe, transcript: null, segments: [] };
 
-  return { ...asset, transcript, segments };
+  return { ...safe, transcript, segments };
 }
 
 export async function getCollections(userId: string): Promise<Collection[]> {
