@@ -99,7 +99,7 @@ export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
 
   return (
     <div
-      className="space-y-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300"
+      className="space-y-2"
       data-tool={toolName}
     >
       {/* Step indicator */}

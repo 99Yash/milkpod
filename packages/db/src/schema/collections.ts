@@ -3,17 +3,21 @@ import { createId, lifecycle_dates } from '../helpers';
 import { user } from './auth';
 import { mediaAssets } from './media-assets';
 
-export const collections = pgTable('collection', {
-  id: text('id')
-    .primaryKey()
-    .$defaultFn(() => createId('col')),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  description: text('description'),
-  ...lifecycle_dates,
-});
+export const collections = pgTable(
+  'collection',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId('col')),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    ...lifecycle_dates,
+  },
+  (t) => [index('collection_user_created_idx').on(t.userId, t.createdAt)],
+);
 
 export const collectionItems = pgTable(
   'collection_item',
