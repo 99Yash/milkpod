@@ -5,6 +5,7 @@ import { db } from '@milkpod/db';
 import {
   mediaAssets,
   collections,
+  collectionItems,
   transcripts,
   transcriptSegments,
   qaThreads,
@@ -15,7 +16,7 @@ import {
   momentPresetEnum,
 } from '@milkpod/db/schemas';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
-import type { Asset, AssetWithTranscript, Collection, Comment, Moment } from '@milkpod/api/types';
+import type { Asset, AssetWithTranscript, Collection, CollectionWithItems, Comment, Moment } from '@milkpod/api/types';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 
 /** Null out internal error details before they reach the client. */
@@ -75,6 +76,41 @@ export async function getCollections(userId: string): Promise<Collection[]> {
     .from(collections)
     .where(eq(collections.userId, userId))
     .orderBy(collections.createdAt);
+}
+
+export async function getCollectionWithItems(
+  id: string,
+  userId: string,
+): Promise<CollectionWithItems | null> {
+  const [collectionRows, items] = await Promise.all([
+    db()
+      .select()
+      .from(collections)
+      .where(and(eq(collections.id, id), eq(collections.userId, userId))),
+    db()
+      .select({
+        id: collectionItems.id,
+        position: collectionItems.position,
+        asset: {
+          id: mediaAssets.id,
+          title: mediaAssets.title,
+          sourceType: mediaAssets.sourceType,
+          mediaType: mediaAssets.mediaType,
+          status: mediaAssets.status,
+          thumbnailUrl: mediaAssets.thumbnailUrl,
+          duration: mediaAssets.duration,
+        },
+      })
+      .from(collectionItems)
+      .innerJoin(mediaAssets, eq(collectionItems.assetId, mediaAssets.id))
+      .where(eq(collectionItems.collectionId, id))
+      .orderBy(collectionItems.position),
+  ]);
+
+  const collection = collectionRows[0];
+  if (!collection) return null;
+
+  return { ...collection, items };
 }
 
 export async function getMoments(

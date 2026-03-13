@@ -1,5 +1,5 @@
-import { auth } from '@milkpod/auth';
 import { Elysia } from 'elysia';
+import { getSessionCached } from './session-cache';
 
 // --- Token Bucket ---
 
@@ -120,9 +120,7 @@ export const rateLimiter = new Elysia({ name: 'rate-limiter' }).onBeforeHandle(
 
     let identity: string;
     try {
-      const session = await auth().api.getSession({
-        headers: request.headers,
-      });
+      const session = await getSessionCached(request);
       identity = session?.user?.id
         ? `user:${session.user.id}`
         : `ip:${getClientIp(request)}`;

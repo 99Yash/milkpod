@@ -1,4 +1,4 @@
-import { ChatPanel } from '~/components/chat/chat-panel';
+import { redirect } from 'next/navigation';
 
 export default async function ChatThreadPage({
   params,
@@ -6,5 +6,5 @@ export default async function ChatThreadPage({
   params: Promise<{ id: string; threadId: string }>;
 }) {
   const { id, threadId } = await params;
-  return <ChatPanel assetId={id} threadId={threadId} />;
+  redirect(`/asset/${id}?tab=chat&thread=${threadId}`);
 }
