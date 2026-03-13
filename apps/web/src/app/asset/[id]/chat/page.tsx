@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { redirect } from 'next/navigation';
 import { getServerSession, assertAuthenticated } from '~/lib/auth/session';
 import { getThreadsForAsset } from '~/lib/data/queries';
-import { ChatPanel } from '~/components/chat/chat-panel';
+import { NewThreadChat } from '~/components/chat/new-thread-chat';
 
 export default async function ChatPage({
   params,
@@ -20,6 +20,6 @@ export default async function ChatPage({
     redirect(`/asset/${id}/chat/${threads[0]!.id}`);
   }
 
-  // No threads yet — render empty ChatPanel
-  return <ChatPanel assetId={id} initialMessages={[]} />;
+  // No threads yet — render empty ChatPanel with thread creation handling
+  return <NewThreadChat assetId={id} />;
 }

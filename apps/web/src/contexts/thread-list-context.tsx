@@ -41,3 +41,8 @@ export function useThreadList() {
   if (!ctx) throw new Error('useThreadList must be used within ThreadListProvider');
   return ctx;
 }
+
+/** Safe version that returns null when outside the provider (e.g. collection/agent views). */
+export function useOptionalThreadList() {
+  return useContext(ThreadListContext);
+}
