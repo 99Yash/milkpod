@@ -1,5 +1,5 @@
-import { auth } from '@milkpod/auth';
 import { Elysia } from 'elysia';
+import { getSessionCached } from './session-cache';
 
 // --- Token Bucket ---
 
@@ -108,7 +108,10 @@ function getClientIp(request: Request): string {
 
 /**
  * Token bucket rate limiter keyed by authenticated userId (preferred)
- * with IP fallback for unauthenticated routes (health, share validation).
+ * with IP fallback for unauthenticated routes.
+ *
+ * Auth endpoints are always IP-keyed to avoid an extra session lookup in the
+ * limiter when Better Auth will validate the session in the route itself.
  */
 export const rateLimiter = new Elysia({ name: 'rate-limiter' }).onBeforeHandle(
   async (ctx) => {
@@ -118,16 +121,16 @@ export const rateLimiter = new Elysia({ name: 'rate-limiter' }).onBeforeHandle(
     const category = categorize(path);
     if (!category) return;
 
-    let identity: string;
-    try {
-      const session = await auth().api.getSession({
-        headers: request.headers,
-      });
-      identity = session?.user?.id
-        ? `user:${session.user.id}`
-        : `ip:${getClientIp(request)}`;
-    } catch {
-      identity = `ip:${getClientIp(request)}`;
+    let identity = `ip:${getClientIp(request)}`;
+    if (category !== 'auth') {
+      try {
+        const session = await getSessionCached(request);
+        if (session?.user?.id) {
+          identity = `user:${session.user.id}`;
+        }
+      } catch {
+        // Keep IP fallback
+      }
     }
 
     const key = `${identity}:${category}`;

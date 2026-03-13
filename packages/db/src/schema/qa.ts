@@ -32,7 +32,10 @@ export const qaThreads = pgTable(
     title: text('title'),
     ...lifecycle_dates,
   },
-  (t) => [index('qa_thread_asset_user_idx').on(t.assetId, t.userId)],
+  (t) => [
+    index('qa_thread_asset_user_idx').on(t.assetId, t.userId),
+    index('qa_thread_user_created_idx').on(t.userId, t.createdAt),
+  ],
 );
 
 export const qaMessages = pgTable(

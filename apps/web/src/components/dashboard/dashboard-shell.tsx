@@ -56,8 +56,12 @@ import { AppShell } from '~/components/layouts/main';
 import { authClient } from '~/lib/auth/client';
 import { route } from '~/lib/routes';
 import { siteConfig } from '~/lib/site';
-import { api } from '~/lib/api';
 import { cn, getErrorMessage } from '~/lib/utils';
+import {
+  fetchBillingSummary,
+  fetchUsageRemaining,
+  fetchUsageStats,
+} from '~/lib/sidebar-data';
 
 export type DashboardTab = 'home' | 'library' | 'agent';
 
@@ -333,15 +337,11 @@ function SidebarPlanUsage() {
 
   useEffect(() => {
     let cancelled = false;
-    api.api.usage.remaining.get().then(({ data }) => {
-      if (!cancelled && data) {
-        setUsage(data);
-      }
+    fetchUsageRemaining().then((data) => {
+      if (!cancelled && data) setUsage(data);
     });
-    api.api.billing.summary.get().then(({ data }) => {
-      if (!cancelled && data && 'plan' in data) {
-        setPlan((data as { plan: string }).plan);
-      }
+    fetchBillingSummary().then((data) => {
+      if (!cancelled && data) setPlan(data.plan);
     });
     return () => {
       cancelled = true;
@@ -451,7 +451,7 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
 
   useEffect(() => {
     let cancelled = false;
-    api.api.usage.stats.get().then(({ data }) => {
+    fetchUsageStats().then((data) => {
       if (!cancelled && data) {
         setUserStats([
           { id: 'videos', label: 'Videos', value: String(data.videoCount), icon: Video },
@@ -459,16 +459,11 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
         ]);
       }
     });
-    api.api.usage.remaining.get().then(({ data }) => {
-      if (!cancelled && data) {
-        setDailyUsage(data);
-      }
+    fetchUsageRemaining().then((data) => {
+      if (!cancelled && data) setDailyUsage(data);
     });
-    api.api.billing.summary.get().then(({ data }) => {
-      if (!cancelled && data && 'plan' in data) {
-        const p = (data as { plan: string }).plan;
-        setPlanLabel(PLAN_LABELS[p] ?? 'Free');
-      }
+    fetchBillingSummary().then((data) => {
+      if (!cancelled && data) setPlanLabel(PLAN_LABELS[data.plan] ?? 'Free');
     });
     return () => {
       cancelled = true;

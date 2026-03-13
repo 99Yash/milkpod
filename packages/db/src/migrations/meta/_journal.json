@@ -176,6 +176,20 @@
       "when": 1773119654065,
       "tag": "0024_flaky_nomad",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1773411459445,
+      "tag": "0025_gigantic_steel_serpent",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1773413014555,
+      "tag": "0026_stormy_wolfsbane",
+      "breakpoints": true
     }
   ]
 }

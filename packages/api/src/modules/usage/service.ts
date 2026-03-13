@@ -1,12 +1,19 @@
 import { db } from '@milkpod/db';
-import { dailyUsage, mediaAssets } from '@milkpod/db/schemas';
+import { billingSubscriptions, dailyUsage, mediaAssets } from '@milkpod/db/schemas';
 import { and, eq, sql, count, sum } from 'drizzle-orm';
 import { DAILY_WORD_BUDGET } from '@milkpod/ai';
 import { serverEnv } from '@milkpod/env/server';
-import { resolveUserPlan, getEntitlementsForPlan } from '../quota/plans';
+import { getEntitlementsForPlan, type PlanId } from '../quota/plans';
 
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function normalizePlanId(planId: string | null | undefined): PlanId {
+  if (planId === 'pro' || planId === 'team') {
+    return planId;
+  }
+  return 'free';
 }
 
 export function isAdminEmail(email: string): boolean {
@@ -16,12 +23,45 @@ export function isAdminEmail(email: string): boolean {
   return list.includes(email.toLowerCase());
 }
 
-/**
- * Resolve the daily word budget for a user based on their billing plan.
- */
-export async function resolveWordBudget(userId: string): Promise<number> {
-  const plan = await resolveUserPlan(userId);
-  return getEntitlementsForPlan(plan).aiWordsDaily;
+export async function getRemainingWordsSummary(userId: string): Promise<{
+  budget: number;
+  remaining: number;
+}> {
+  const today = todayUTC();
+
+  const result = await db().execute(sql<{
+    planId: string | null;
+    wordsUsed: number | null;
+  }>`
+    with active_subscription as (
+      select ${billingSubscriptions.planId} as "planId"
+      from ${billingSubscriptions}
+      where
+        ${billingSubscriptions.userId} = ${userId}
+        and ${billingSubscriptions.status} in ('active', 'trialing')
+      limit 1
+    )
+    select
+      active_subscription."planId",
+      coalesce(${dailyUsage.wordsUsed}, 0)::int as "wordsUsed"
+    from (select 1) as one
+    left join active_subscription on true
+    left join ${dailyUsage}
+      on ${dailyUsage.userId} = ${userId}
+     and ${dailyUsage.usageDate} = ${today}
+  `);
+
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  const plan = normalizePlanId(
+    typeof row?.planId === 'string' ? row.planId : null,
+  );
+  const budget = getEntitlementsForPlan(plan).aiWordsDaily;
+  const used = Number(row?.wordsUsed ?? 0);
+
+  return {
+    budget,
+    remaining: Math.max(0, budget - used),
+  };
 }
 
 export abstract class UsageService {
