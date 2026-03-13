@@ -102,8 +102,14 @@ export async function getCollectionWithItems(
         },
       })
       .from(collectionItems)
+      .innerJoin(collections, eq(collectionItems.collectionId, collections.id))
       .innerJoin(mediaAssets, eq(collectionItems.assetId, mediaAssets.id))
-      .where(eq(collectionItems.collectionId, id))
+      .where(
+        and(
+          eq(collectionItems.collectionId, id),
+          eq(collections.userId, userId),
+        ),
+      )
       .orderBy(collectionItems.position),
   ]);
 

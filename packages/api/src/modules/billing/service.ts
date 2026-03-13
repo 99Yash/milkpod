@@ -50,9 +50,8 @@ function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function currentPeriod(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+function currentPeriodUTC(): string {
+  return `${new Date().toISOString().slice(0, 7)}-01`;
 }
 
 function normalizePlanId(planId: string | null | undefined): PlanId {
@@ -144,7 +143,7 @@ export abstract class BillingService {
    */
   static async getSummary(userId: string): Promise<BillingSummary> {
     const today = todayUTC();
-    const period = currentPeriod();
+    const period = currentPeriodUTC();
 
     const result = await db().execute(sql<{
       planId: string | null;

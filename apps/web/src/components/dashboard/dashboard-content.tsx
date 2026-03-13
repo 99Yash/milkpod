@@ -25,7 +25,6 @@ export function DashboardContent({
       library={
         <LibraryTab
           onSelectAsset={setSelectedAssetId}
-          initialAssets={initialAssets}
           initialCollections={initialCollections}
         />
       }

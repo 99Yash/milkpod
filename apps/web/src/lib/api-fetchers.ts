@@ -91,6 +91,51 @@ export async function fetchAssets(
   return data;
 }
 
+export interface AssetPageResult {
+  items: Asset[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+export async function fetchAssetsPage(params: {
+  q?: string;
+  status?: string;
+  sourceType?: string;
+  cursor?: string;
+  limit?: number;
+}): Promise<AssetPageResult> {
+  const query: Record<string, string> = {};
+  if (params.q) query.q = params.q;
+  if (params.status) query.status = params.status;
+  if (params.sourceType) query.sourceType = params.sourceType;
+  if (params.cursor) query.cursor = params.cursor;
+  if (params.limit) query.limit = String(params.limit);
+
+  query.paginate = 'true';
+
+  const { data, error } = await api.api.assets.get({ query });
+  if (error || !data || Array.isArray(data)) {
+    return { items: [], nextCursor: null, hasMore: false };
+  }
+
+  const page = data as {
+    items?: unknown;
+    nextCursor?: unknown;
+    hasMore?: unknown;
+  };
+
+  if (!Array.isArray(page.items)) {
+    return { items: [], nextCursor: null, hasMore: false };
+  }
+
+  return {
+    items: page.items as Asset[],
+    nextCursor:
+      typeof page.nextCursor === 'string' ? page.nextCursor : null,
+    hasMore: page.hasMore === true,
+  };
+}
+
 // Eden doesn't strip `status()` error branches from the data union, so a cast
 // is needed after the error guard. The actual runtime values are correct.
 
