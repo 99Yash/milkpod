@@ -19,6 +19,9 @@ export function db() {
 			max: POOL_MAX,
 			idleTimeoutMillis: POOL_IDLE_TIMEOUT_MS,
 		});
+		_pool.on("error", (err) => {
+			console.warn("[db] Idle pool client error:", err.message);
+		});
 		_db = drizzle(_pool);
 	}
 	return _db;
