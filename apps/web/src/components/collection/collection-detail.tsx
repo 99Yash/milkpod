@@ -23,6 +23,7 @@ import { AddAssetToCollectionDialog } from './add-asset-to-collection-dialog';
 
 interface CollectionDetailProps {
   collectionId: string;
+  initialCollection?: CollectionWithItems;
 }
 
 const statusLabels: Record<AssetStatus, string> = {
@@ -40,7 +41,7 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function CollectionDetail({ collectionId }: CollectionDetailProps) {
+export function CollectionDetail({ collectionId, initialCollection }: CollectionDetailProps) {
   const queryClient = useQueryClient();
   const [removingItemId, setRemovingItemId] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -48,6 +49,8 @@ export function CollectionDetail({ collectionId }: CollectionDetailProps) {
   const { data: collection = null, isLoading } = useQuery({
     queryKey: queryKeys.collections.detail(collectionId),
     queryFn: () => fetchCollectionDetail(collectionId),
+    initialData: initialCollection,
+    initialDataUpdatedAt: initialCollection ? Date.now() : undefined,
   });
 
   const notFound = !isLoading && !collection;

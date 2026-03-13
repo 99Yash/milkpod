@@ -24,10 +24,22 @@ import { ThreadListProvider } from '~/contexts/thread-list-context';
 interface ChatShellProps {
   assetId: string;
   initialThreads: ThreadListItem[];
-  children: ReactNode;
+  children?: ReactNode;
+  /** Callback mode: use this instead of router.push for thread switching */
+  activeThreadId?: string;
+  onThreadChange?: (id: string) => void;
+  /** Called when navigating to "no threads" state */
+  onThreadsEmpty?: () => void;
 }
 
-export function ChatShell({ assetId, initialThreads, children }: ChatShellProps) {
+export function ChatShell({
+  assetId,
+  initialThreads,
+  children,
+  activeThreadId: activeThreadIdProp,
+  onThreadChange,
+  onThreadsEmpty,
+}: ChatShellProps) {
   const router = useRouter();
   const segment = useSelectedLayoutSegment();
   const [threads, setThreads] = useState<ThreadListItem[]>(initialThreads);
@@ -39,13 +51,15 @@ export function ChatShell({ assetId, initialThreads, children }: ChatShellProps)
   const prefetchedThreadIdsRef = useRef<Set<string>>(new Set());
   const isCreatingThreadRef = useRef(false);
 
+  const isCallbackMode = !!onThreadChange;
+
   useEffect(() => {
     const stored = getLocalStorageItem('THREAD_SIDEBAR_OPEN', true);
     if (stored != null) setSidebarOpen(stored);
   }, []);
 
-  // The active thread ID is the [threadId] segment from the URL.
-  const activeThreadId = segment ?? undefined;
+  // In callback mode, use the prop; otherwise derive from URL segment.
+  const activeThreadId = isCallbackMode ? activeThreadIdProp : (segment ?? undefined);
 
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((prev) => {
@@ -61,10 +75,12 @@ export function ChatShell({ assetId, initialThreads, children }: ChatShellProps)
       if (prefetchedThreadIdsRef.current.has(key)) return;
 
       prefetchedThreadIdsRef.current.add(key);
-      router.prefetch(`/asset/${assetId}/chat/${threadId}`);
+      if (!isCallbackMode) {
+        router.prefetch(`/asset/${assetId}/chat/${threadId}`);
+      }
       prefetchChatMessages(threadId);
     },
-    [assetId, router],
+    [assetId, isCallbackMode, router],
   );
 
   useEffect(() => {
@@ -94,11 +110,15 @@ export function ChatShell({ assetId, initialThreads, children }: ChatShellProps)
     (threadId: string) => {
       prefetchThread(threadId);
 
-      if (segment === threadId) return;
-
-      router.push(`/asset/${assetId}/chat/${threadId}`, { scroll: false });
+      if (isCallbackMode) {
+        if (activeThreadIdProp === threadId) return;
+        onThreadChange(threadId);
+      } else {
+        if (segment === threadId) return;
+        router.push(`/asset/${assetId}/chat/${threadId}`, { scroll: false });
+      }
     },
-    [assetId, prefetchThread, router, segment],
+    [assetId, activeThreadIdProp, isCallbackMode, onThreadChange, prefetchThread, router, segment],
   );
 
   const handleNewThread = useCallback(async () => {
@@ -115,11 +135,16 @@ export function ChatShell({ assetId, initialThreads, children }: ChatShellProps)
       primeChatMessagesCache(created.id, []);
       setThreads((prev) => [created, ...prev.filter((thread) => thread.id !== created.id)]);
       prefetchThread(created.id);
-      router.push(`/asset/${assetId}/chat/${created.id}`, { scroll: false });
+
+      if (isCallbackMode) {
+        onThreadChange!(created.id);
+      } else {
+        router.push(`/asset/${assetId}/chat/${created.id}`, { scroll: false });
+      }
     } finally {
       isCreatingThreadRef.current = false;
     }
-  }, [assetId, prefetchThread, router]);
+  }, [assetId, isCallbackMode, onThreadChange, prefetchThread, router]);
 
   const handleDeleteThread = useCallback(
     async (threadId: string) => {
@@ -131,17 +156,24 @@ export function ChatShell({ assetId, initialThreads, children }: ChatShellProps)
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
       const remaining = threadsRef.current.filter((t) => t.id !== threadId);
       const fallbackId = remaining[0]?.id;
+      const currentActive = isCallbackMode ? activeThreadIdProp : segment;
       // If we deleted the active thread, navigate to the next one
-      if (segment === threadId) {
+      if (currentActive === threadId) {
         if (fallbackId) {
           prefetchThread(fallbackId);
-          router.push(`/asset/${assetId}/chat/${fallbackId}`, { scroll: false });
+          if (isCallbackMode) {
+            onThreadChange!(fallbackId);
+          } else {
+            router.push(`/asset/${assetId}/chat/${fallbackId}`, { scroll: false });
+          }
+        } else if (isCallbackMode) {
+          onThreadsEmpty?.();
         } else {
           router.push(`/asset/${assetId}/chat`, { scroll: false });
         }
       }
     },
-    [assetId, prefetchThread, router, segment],
+    [assetId, activeThreadIdProp, isCallbackMode, onThreadChange, onThreadsEmpty, prefetchThread, router, segment],
   );
 
   const handleRenameThread = useCallback(

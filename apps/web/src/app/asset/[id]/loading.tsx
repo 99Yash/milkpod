@@ -1,9 +1,5 @@
-import { Spinner } from '~/components/ui/spinner';
+import { AssetShellSkeleton } from '~/components/asset/asset-shell-skeleton';
 
 export default function AssetLoading() {
-  return (
-    <div className="flex items-center justify-center py-24">
-      <Spinner className="size-5 text-muted-foreground" />
-    </div>
-  );
+  return <AssetShellSkeleton />;
 }

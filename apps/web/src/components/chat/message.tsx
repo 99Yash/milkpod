@@ -1,19 +1,16 @@
 'use client';
 
 import { useAutoAnimate } from '@formkit/auto-animate/react';
-import type { MilkpodMessage, ToolOutput } from '@milkpod/ai/types';
-import { isToolOutput } from '@milkpod/ai/types';
+import type { MilkpodMessage } from '@milkpod/ai/types';
 import { isToolUIPart } from 'ai';
 import { BrainCircuit } from 'lucide-react';
 import type { Components } from 'streamdown';
 import { Streamdown } from 'streamdown';
-import { cn } from '~/lib/utils';
+import { ActivitySteps } from './activity-steps';
 import { AiAvatar } from './ai-avatar';
 import { useAssetSource } from './asset-source-context';
 import { ShimmerText } from './shimmer-text';
 import { TimestampLink } from './timestamp-link';
-import { normalizeToolName } from './tool-meta';
-import { ToolResult } from './tool-result';
 
 // Matches [MM:SS], [HH:MM:SS], and ranges like [MM:SS–MM:SS] or [MM:SS-MM:SS]
 const TS = /\d+(?::\d{2}){1,2}/;
@@ -63,14 +60,6 @@ const streamdownComponents: Components = {
   },
 };
 
-function getReasoningSnippet(part: MilkpodMessage['parts'][number]): string {
-  if ('text' in part && typeof part.text === 'string') {
-    return part.text.trim();
-  }
-
-  return '';
-}
-
 function isActivityPart(part: MilkpodMessage['parts'][number]) {
   return part.type === 'reasoning' || isToolUIPart(part);
 }
@@ -78,44 +67,6 @@ function isActivityPart(part: MilkpodMessage['parts'][number]) {
 interface ChatMessageProps {
   message: MilkpodMessage;
   isStreaming?: boolean;
-}
-
-function getFallbackToolOutput(toolName: string): ToolOutput {
-  const kind = normalizeToolName(toolName);
-
-  switch (kind) {
-    case 'context':
-      return {
-        tool: 'context',
-        status: 'loading',
-        segments: [],
-        message: 'Loading transcript context...',
-      };
-    case 'read':
-      return {
-        tool: 'read',
-        status: 'loading',
-        totalSegments: 0,
-        segments: [],
-        message: 'Reading transcript...',
-      };
-    case 'retrieve':
-      return {
-        tool: 'retrieve',
-        status: 'searching',
-        query: '',
-        segments: [],
-        message: 'Searching transcript...',
-      };
-    default:
-      return {
-        tool: 'retrieve',
-        status: 'searching',
-        query: '',
-        segments: [],
-        message: 'Processing...',
-      };
-  }
 }
 
 export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
@@ -153,78 +104,47 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
   }
 
   // --- Assistant message ---
+  const hasActivityParts = message.parts.some(isActivityPart);
+  const hasTextContent = message.parts.some(
+    (p) => p.type === 'text' && p.text.trim().length > 0,
+  );
+
   return (
     <div className="flex gap-3 py-2">
       <AiAvatar />
 
       <div ref={partsRef} className="min-w-0 flex-1 space-y-3 pt-0.5">
+        {/* Collapsible activity steps (reasoning + tool calls) */}
+        {hasActivityParts && (
+          <ActivitySteps
+            parts={message.parts}
+            isStreaming={!!isStreaming}
+            hasTextContent={hasTextContent}
+          />
+        )}
+
+        {/* Text content */}
         {message.parts.map((part, i) => {
-          // Reasoning step — shown inline
-          if (part.type === 'reasoning') {
-            const snippet = getReasoningSnippet(part);
-            return (
-              <div
-                key={`reasoning-${i}`}
-                className="flex items-start gap-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300"
+          if (part.type !== 'text') return null;
+
+          const text = shouldLinkify
+            ? linkifyTimestamps(part.text)
+            : part.text;
+
+          return (
+            <div
+              key={i}
+              className="rounded-2xl rounded-tl-md bg-muted/40 px-4 py-3"
+            >
+              <Streamdown
+                isAnimating={isStreaming}
+                className="text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1"
+                components={shouldLinkify ? streamdownComponents : undefined}
               >
-                <BrainCircuit className="mt-px size-4 shrink-0 text-muted-foreground/45" />
-                <ShimmerText
-                  active={!!isStreaming}
-                  className="text-[13px] leading-relaxed text-muted-foreground/65"
-                >
-                  {snippet || 'Thinking...'}
-                </ShimmerText>
-              </div>
-            );
-          }
-
-          // Tool step — shown inline with source pills
-          if (isToolUIPart(part)) {
-            const hasOutput = part.state === 'output-available';
-            const toolStreaming = hasOutput && part.preliminary === true;
-            const output =
-              hasOutput && isToolOutput(part.output)
-                ? part.output
-                : getFallbackToolOutput(part.type);
-
-            return (
-              <ToolResult
-                key={`tool-${i}`}
-                toolName={part.type}
-                output={output}
-                isStreaming={toolStreaming}
-              />
-            );
-          }
-
-          // Text content
-          if (part.type === 'text') {
-            const text = shouldLinkify
-              ? linkifyTimestamps(part.text)
-              : part.text;
-
-            return (
-              <div
-                key={i}
-                className={cn(
-                  'rounded-2xl rounded-tl-md bg-muted/40 px-4 py-3',
-                  // If this is the first text part and there are activity parts before it,
-                  // add a subtle top margin for separation
-                  i > 0 && message.parts.slice(0, i).some(isActivityPart) && 'mt-1',
-                )}
-              >
-                <Streamdown
-                  isAnimating={isStreaming}
-                  className="text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1"
-                  components={shouldLinkify ? streamdownComponents : undefined}
-                >
-                  {text}
-                </Streamdown>
-              </div>
-            );
-          }
-
-          return null;
+                {text}
+              </Streamdown>
+            </div>
+          );
         })}
 
         {/* Initial thinking state (before any parts arrive) */}

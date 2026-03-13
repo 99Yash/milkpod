@@ -4,6 +4,9 @@ export const queryKeys = {
     lists: () => ['assets', 'list'] as const,
     list: (filters?: Record<string, string>) =>
       ['assets', 'list', filters ?? {}] as const,
+    pages: () => ['assets', 'page'] as const,
+    page: (filters?: Record<string, string>) =>
+      ['assets', 'page', filters ?? {}] as const,
     detail: (id: string) => ['assets', 'detail', id] as const,
   },
   collections: {

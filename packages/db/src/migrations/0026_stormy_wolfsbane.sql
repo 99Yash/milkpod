@@ -1,0 +1,2 @@
+CREATE INDEX "billing_subscription_user_status_idx" ON "billing_subscription" USING btree ("user_id","status");--> statement-breakpoint
+CREATE INDEX "media_asset_user_created_idx" ON "media_asset" USING btree ("user_id","created_at");

@@ -1,6 +1,6 @@
 import { auth } from '@milkpod/auth';
 import { db } from '@milkpod/db';
-export { closeConnections } from '@milkpod/db';
+export { closeConnections, warmPool } from '@milkpod/db';
 import { serverEnv } from '@milkpod/env/server';
 import { sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';

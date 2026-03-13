@@ -23,7 +23,7 @@ export function NewThreadChat({ assetId }: { assetId: string }) {
         ];
       });
       // Update URL without full navigation to keep the stream alive
-      window.history.replaceState(null, '', `/asset/${assetId}/chat/${threadId}`);
+      window.history.replaceState(null, '', `/asset/${assetId}?tab=chat&thread=${threadId}`);
     },
     [assetId, setThreads],
   );

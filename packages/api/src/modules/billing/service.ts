@@ -4,8 +4,9 @@ import {
   billingSubscriptions,
   billingWebhookEvents,
   dailyUsage,
+  monthlyUsage,
 } from '@milkpod/db/schemas';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
   resolveUserPlan,
   getQuotaForPlan,
@@ -13,7 +14,6 @@ import {
   type PlanId,
   type PlanEntitlements,
 } from '../quota/plans';
-import { QuotaService } from '../quota/service';
 import type { NormalizedWebhookEvent } from './provider';
 
 // ---------------------------------------------------------------------------
@@ -48,6 +48,40 @@ const ACTIVE_STATUSES = ['active', 'trialing'] as const;
 
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function currentPeriodUTC(): string {
+  return `${new Date().toISOString().slice(0, 7)}-01`;
+}
+
+function normalizePlanId(planId: string | null | undefined): PlanId {
+  if (planId === 'pro' || planId === 'team') {
+    return planId;
+  }
+  return 'free';
+}
+
+function isSubscriptionStatus(value: unknown): value is SubscriptionInfo['status'] {
+  return (
+    value === 'trialing'
+    || value === 'active'
+    || value === 'past_due'
+    || value === 'canceled'
+    || value === 'incomplete'
+  );
+}
+
+function toIsoStringOrNull(value: unknown): string | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  return null;
 }
 
 export abstract class BillingService {
@@ -108,12 +142,80 @@ export abstract class BillingService {
    * Build a full billing summary for a user.
    */
   static async getSummary(userId: string): Promise<BillingSummary> {
-    const [plan, subscription, monthlyUsage, dailyWords] = await Promise.all([
-      resolveUserPlan(userId),
-      BillingService.getActiveSubscription(userId),
-      QuotaService.getMonthlyUsage(userId),
-      BillingService.getDailyWordUsage(userId),
-    ]);
+    const today = todayUTC();
+    const period = currentPeriodUTC();
+
+    const result = await db().execute(sql<{
+      planId: string | null;
+      subscriptionStatus: SubscriptionInfo['status'] | null;
+      currentPeriodStart: string | Date | null;
+      currentPeriodEnd: string | Date | null;
+      cancelAtPeriodEnd: boolean | null;
+      canceledAt: string | Date | null;
+      wordsUsed: number | null;
+      videoMinutesUsed: number | null;
+      visualSegmentsUsed: number | null;
+      commentsGenerated: number | null;
+    }>`
+      with active_subscription as (
+        select
+          ${billingSubscriptions.planId} as "planId",
+          ${billingSubscriptions.status} as "subscriptionStatus",
+          ${billingSubscriptions.currentPeriodStart} as "currentPeriodStart",
+          ${billingSubscriptions.currentPeriodEnd} as "currentPeriodEnd",
+          ${billingSubscriptions.cancelAtPeriodEnd} as "cancelAtPeriodEnd",
+          ${billingSubscriptions.canceledAt} as "canceledAt"
+        from ${billingSubscriptions}
+        where
+          ${billingSubscriptions.userId} = ${userId}
+          and ${billingSubscriptions.status} in ('active', 'trialing')
+        limit 1
+      )
+      select
+        active_subscription."planId",
+        active_subscription."subscriptionStatus",
+        active_subscription."currentPeriodStart",
+        active_subscription."currentPeriodEnd",
+        active_subscription."cancelAtPeriodEnd",
+        active_subscription."canceledAt",
+        coalesce(${dailyUsage.wordsUsed}, 0)::int as "wordsUsed",
+        coalesce(${monthlyUsage.videoMinutesUsed}, 0)::int as "videoMinutesUsed",
+        coalesce(${monthlyUsage.visualSegmentsUsed}, 0)::int as "visualSegmentsUsed",
+        coalesce(${monthlyUsage.commentsGenerated}, 0)::int as "commentsGenerated"
+      from (select 1) as one
+      left join active_subscription on true
+      left join ${dailyUsage}
+        on ${dailyUsage.userId} = ${userId}
+       and ${dailyUsage.usageDate} = ${today}
+      left join ${monthlyUsage}
+        on ${monthlyUsage.userId} = ${userId}
+       and ${monthlyUsage.periodStart} = ${period}
+    `);
+
+    const row = result.rows[0] as Record<string, unknown> | undefined;
+
+    const plan = normalizePlanId(
+      typeof row?.planId === 'string' ? row.planId : null,
+    );
+    const dailyWords = Number(row?.wordsUsed ?? 0);
+    const usedVideoMinutes = Number(row?.videoMinutesUsed ?? 0);
+    const usedVisualSegments = Number(row?.visualSegmentsUsed ?? 0);
+    const usedComments = Number(row?.commentsGenerated ?? 0);
+
+    const subscriptionStatus = row?.subscriptionStatus;
+    const currentPeriodStart = row?.currentPeriodStart;
+    const currentPeriodEnd = row?.currentPeriodEnd;
+    const canceledAt = row?.canceledAt;
+
+    const subscription = isSubscriptionStatus(subscriptionStatus)
+      ? {
+          status: subscriptionStatus,
+          currentPeriodStart: toIsoStringOrNull(currentPeriodStart),
+          currentPeriodEnd: toIsoStringOrNull(currentPeriodEnd),
+          cancelAtPeriodEnd: row?.cancelAtPeriodEnd === true,
+          canceledAt: toIsoStringOrNull(canceledAt),
+        }
+      : null;
 
     const entitlements = getEntitlementsForPlan(plan);
     const quotas = getQuotaForPlan(plan);
@@ -128,36 +230,23 @@ export abstract class BillingService {
           remaining: Math.max(0, entitlements.aiWordsDaily - dailyWords),
         },
         monthlyVideoMinutes: {
-          used: monthlyUsage.videoMinutesUsed,
+          used: usedVideoMinutes,
           limit: quotas.videoMinutesMonthly,
-          remaining: Math.max(0, quotas.videoMinutesMonthly - monthlyUsage.videoMinutesUsed),
+          remaining: Math.max(0, quotas.videoMinutesMonthly - usedVideoMinutes),
         },
         monthlyVisualSegments: {
-          used: monthlyUsage.visualSegmentsUsed,
+          used: usedVisualSegments,
           limit: quotas.visualSegmentsMonthly,
-          remaining: Math.max(0, quotas.visualSegmentsMonthly - monthlyUsage.visualSegmentsUsed),
+          remaining: Math.max(0, quotas.visualSegmentsMonthly - usedVisualSegments),
         },
         monthlyComments: {
-          used: monthlyUsage.commentsGenerated,
+          used: usedComments,
           limit: quotas.commentsMonthly,
-          remaining: Math.max(0, quotas.commentsMonthly - monthlyUsage.commentsGenerated),
+          remaining: Math.max(0, quotas.commentsMonthly - usedComments),
         },
       },
       entitlements,
     };
-  }
-
-  /**
-   * Get today's word usage for a user.
-   */
-  private static async getDailyWordUsage(userId: string): Promise<number> {
-    const today = todayUTC();
-    const [row] = await db()
-      .select({ wordsUsed: dailyUsage.wordsUsed })
-      .from(dailyUsage)
-      .where(and(eq(dailyUsage.userId, userId), eq(dailyUsage.usageDate, today)));
-
-    return row?.wordsUsed ?? 0;
   }
 
   // -------------------------------------------------------------------------
@@ -319,8 +408,13 @@ export abstract class BillingService {
     const [row] = await db()
       .select({
         providerSubscriptionId: billingSubscriptions.providerSubscriptionId,
+        providerCustomerId: billingCustomers.providerCustomerId,
       })
       .from(billingSubscriptions)
+      .innerJoin(
+        billingCustomers,
+        eq(billingCustomers.userId, billingSubscriptions.userId),
+      )
       .where(
         and(
           eq(billingSubscriptions.userId, userId),
@@ -329,14 +423,6 @@ export abstract class BillingService {
       )
       .limit(1);
 
-    if (!row) return null;
-
-    const customer = await BillingService.getCustomer(userId);
-    if (!customer) return null;
-
-    return {
-      providerSubscriptionId: row.providerSubscriptionId,
-      providerCustomerId: customer.providerCustomerId,
-    };
+    return row ?? null;
   }
 }

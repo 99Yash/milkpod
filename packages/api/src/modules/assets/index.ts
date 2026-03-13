@@ -20,6 +20,14 @@ export const assets = new Elysia({ prefix: '/api/assets' })
   .get(
     '/',
     async ({ user, query }) => {
+      if (query.paginate === 'true') {
+        const limit = query.limit
+          ? Math.min(Math.max(Number(query.limit) || 24, 1), 100)
+          : 24;
+
+        return AssetService.listPage(user.id, query, limit);
+      }
+
       const hasFilters = query.q || query.status || query.sourceType;
       if (hasFilters) {
         return AssetService.search(user.id, query);

@@ -37,6 +37,9 @@ export namespace AssetModel {
     q: t.Optional(t.String()),
     status: t.Optional(t.String()),
     sourceType: t.Optional(t.String()),
+    cursor: t.Optional(t.String()),
+    limit: t.Optional(t.String()),
+    paginate: t.Optional(t.String()),
   });
   export type ListQuery = typeof listQuery.static;
 
