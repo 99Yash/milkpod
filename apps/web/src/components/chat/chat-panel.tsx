@@ -22,6 +22,7 @@ import {
   getCachedChatMessages,
   primeChatMessagesCache,
 } from '~/lib/api-fetchers';
+import { useOptionalThreadList } from '~/contexts/thread-list-context';
 
 // ---------------------------------------------------------------------------
 // Legacy hook: used by collection-detail and agent-tab where thread data is
@@ -260,6 +261,26 @@ function ChatPanelContent({
     if (!chatThreadId) return;
     primeChatMessagesCache(chatThreadId, messages);
   }, [chatThreadId, messages]);
+
+  // Update sidebar title in real-time when the server streams a data-threadTitle part
+  const threadListCtx = useOptionalThreadList();
+  const appliedTitleRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!threadListCtx) return;
+    for (const msg of messages) {
+      for (const part of msg.parts) {
+        if (part.type === 'data-threadTitle') {
+          const { threadId: tid, title } = part.data;
+          if (tid && title && appliedTitleRef.current !== title) {
+            appliedTitleRef.current = title;
+            threadListCtx.setThreads((prev) =>
+              prev.map((t) => (t.id === tid ? { ...t, title } : t)),
+            );
+          }
+        }
+      }
+    }
+  }, [messages, threadListCtx]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });

@@ -18,6 +18,10 @@ export type ChatDataParts = {
     status: 'processing' | 'completed';
     usage?: LanguageModelUsage;
   };
+  threadTitle: {
+    threadId: string;
+    title: string;
+  };
 };
 
 export type MilkpodMessage = UIMessage<

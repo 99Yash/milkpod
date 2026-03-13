@@ -94,10 +94,12 @@ export const chat = new Elysia({ prefix: '/api/chat' })
 
       // Save the incoming user message (last in the array)
       const lastMessage = body.messages.at(-1);
+      let titleGenerator: (() => Promise<string>) | undefined;
+
       if (lastMessage && lastMessage.role === 'user') {
         await ChatService.saveMessages(threadId, [lastMessage]);
 
-        // Auto-title untitled threads using AI (fire-and-forget)
+        // Prepare title generation for new/untitled threads
         const needsTitle = isNewThread
           || !(await ThreadService.getById(threadId, userId))?.title;
         if (needsTitle) {
@@ -105,11 +107,11 @@ export const chat = new Elysia({ prefix: '/api/chat' })
             (p) => p.type === 'text',
           );
           if (textPart && 'text' in textPart && typeof textPart.text === 'string') {
-            generateThreadTitle(textPart.text)
-              .then((title) => ThreadService.update(threadId, userId, { title }))
-              .catch((err) =>
-                console.error(`[chat] Failed to generate title for thread ${threadId}:`, err instanceof Error ? err.message : String(err)),
-              );
+            titleGenerator = async () => {
+              const title = await generateThreadTitle(textPart.text);
+              await ThreadService.update(threadId, userId, { title });
+              return title;
+            };
           }
         }
       }
@@ -123,6 +125,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         modelId: body.modelId,
         wordLimit: reserved,
         transcriptLanguage,
+        generateTitle: titleGenerator,
         headers: { 'X-Thread-Id': threadId },
         onFinish: async ({ responseMessage, wordCount }) => {
           try {
