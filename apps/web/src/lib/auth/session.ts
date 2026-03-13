@@ -1,21 +1,13 @@
-import { clientEnv } from '@milkpod/env/client';
+import 'server-only';
+import { sessionAuth } from '@milkpod/auth/session';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { route } from '~/lib/routes';
 
-export type SessionSnapshot = {
-  session: { id: string; userId: string; token: string; expiresAt: string };
-  user: {
-    id: string;
-    email: string;
-    name: string;
-    image: string | null;
-    emailVerified: boolean;
-    createdAt: string;
-    updatedAt: string;
-  };
-} | null;
+export type SessionSnapshot = Awaited<
+  ReturnType<ReturnType<typeof sessionAuth>['api']['getSession']>
+>;
 
 type AuthenticatedSession = NonNullable<SessionSnapshot> & {
   user: NonNullable<NonNullable<SessionSnapshot>['user']>;
@@ -25,8 +17,8 @@ type AuthenticatedSession = NonNullable<SessionSnapshot> & {
 // Module-level session cache (survives across React render passes).
 //
 // React.cache() only deduplicates within a single RSC render.  Every tab
-// switch is a NEW render, so getServerSession() fires a fresh ~600ms HTTP
-// call each time.  This token-keyed cache stores the result for 10 s so
+// switch is a NEW render, so getServerSession() would re-check DB session
+// state each time.  This token-keyed cache stores the result for 10 s so
 // navigating between tabs reuses the session instantly.
 // ---------------------------------------------------------------------------
 
@@ -53,13 +45,7 @@ export const getServerSession = cache(async (): Promise<SessionSnapshot> => {
       }
     }
 
-    const res = await fetch(
-      `${clientEnv().NEXT_PUBLIC_SERVER_URL}/api/auth/get-session`,
-      { headers: { cookie } },
-    );
-    if (!res.ok) return null;
-
-    const data = await res.json();
+    const data = await sessionAuth().api.getSession({ headers: requestHeaders });
     if (!data) return null;
 
     // Populate cache

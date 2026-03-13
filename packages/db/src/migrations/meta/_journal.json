@@ -183,6 +183,13 @@
       "when": 1773411459445,
       "tag": "0025_gigantic_steel_serpent",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1773413014555,
+      "tag": "0026_stormy_wolfsbane",
+      "breakpoints": true
     }
   ]
 }
