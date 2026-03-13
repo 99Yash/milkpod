@@ -23,9 +23,8 @@ export default async function AssetLayout({
 
   return (
     <DashboardLayout initialTab="library">
-      <AssetShell assetId={id} initialAsset={asset}>
-        {children}
-      </AssetShell>
+      <AssetShell assetId={id} initialAsset={asset} />
+      {children}
     </DashboardLayout>
   );
 }

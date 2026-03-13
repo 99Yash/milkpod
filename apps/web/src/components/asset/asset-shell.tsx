@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -19,6 +19,8 @@ import {
   DashboardPanelContent,
 } from '~/components/dashboard/dashboard-panel';
 import { AssetTabBar } from './asset-tab-bar';
+import { AssetTabsClient } from './asset-tabs-client';
+import { AssetTabProvider } from './asset-tab-context';
 import type { AssetWithTranscript, AssetStatus } from '@milkpod/api/types';
 import { isProcessingStatus } from '@milkpod/api/types';
 import { AssetSourceProvider } from '~/components/chat/asset-source-context';
@@ -31,7 +33,6 @@ import {
 interface AssetShellProps {
   assetId: string;
   initialAsset: AssetWithTranscript;
-  children: ReactNode;
 }
 
 const statusLabels: Record<AssetStatus, string> = {
@@ -43,7 +44,7 @@ const statusLabels: Record<AssetStatus, string> = {
   failed: 'Failed',
 };
 
-export function AssetShell({ assetId, initialAsset, children }: AssetShellProps) {
+export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
   const [asset, setAsset] = useState<AssetWithTranscript>(initialAsset);
   const [progressMessage, setProgressMessage] = useState<string | undefined>();
 
@@ -100,95 +101,97 @@ export function AssetShell({ assetId, initialAsset, children }: AssetShellProps)
         sourceType={asset.sourceType}
         sourceId={asset.sourceId}
       >
-        <div className="flex flex-col lg:h-[calc(100svh-7rem-4px)]">
-          {/* Header */}
-          <div className="shrink-0 space-y-3 pb-4 pt-1">
-            {/* Row 1: back + actions */}
-            <div className="flex items-center justify-between">
-              <Link
-                href="/dashboard?tab=library"
-                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <ArrowLeft className="size-3.5" />
-                <span className="sr-only sm:not-sr-only">Library</span>
-              </Link>
-              <div className="flex items-center gap-2">
-                <Badge
-                  variant={asset.status === 'failed' ? 'destructive' : 'outline'}
-                  className="text-xs"
+        <AssetTabProvider assetId={assetId}>
+          <div className="flex flex-col lg:h-[calc(100svh-7rem-4px)]">
+            {/* Header */}
+            <div className="shrink-0 space-y-3 pb-4 pt-1">
+              {/* Row 1: back + actions */}
+              <div className="flex items-center justify-between">
+                <Link
+                  href="/dashboard?tab=library"
+                  className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  {isProcessingStatus(asset.status) && (
-                    <Spinner className="mr-1 size-3" />
+                  <ArrowLeft className="size-3.5" />
+                  <span className="sr-only sm:not-sr-only">Library</span>
+                </Link>
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant={asset.status === 'failed' ? 'destructive' : 'outline'}
+                    className="text-xs"
+                  >
+                    {isProcessingStatus(asset.status) && (
+                      <Spinner className="mr-1 size-3" />
+                    )}
+                    {progressMessage || statusLabels[asset.status] || asset.status}
+                  </Badge>
+                  {isReady && (
+                    <ShareDialog assetId={assetId} resourceName={asset.title} />
                   )}
-                  {progressMessage || statusLabels[asset.status] || asset.status}
-                </Badge>
-                {isReady && (
-                  <ShareDialog assetId={assetId} resourceName={asset.title} />
+                </div>
+              </div>
+
+              {/* Row 2: title */}
+              <h1 className="text-lg font-semibold leading-snug text-foreground">
+                {asset.title}
+              </h1>
+
+              {/* Row 3: metadata */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                {asset.channelName && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <User className="size-3.5" />
+                    {asset.channelName}
+                  </span>
+                )}
+                {asset.duration && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock className="size-3.5" />
+                    {formatDuration(asset.duration)}
+                  </span>
+                )}
+                {speakers.size > 0 && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Mic className="size-3.5" />
+                    {speakers.size} speaker{speakers.size > 1 ? 's' : ''}
+                  </span>
                 )}
               </div>
             </div>
 
-            {/* Row 2: title */}
-            <h1 className="text-lg font-semibold leading-snug text-foreground">
-              {asset.title}
-            </h1>
-
-            {/* Row 3: metadata */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-              {asset.channelName && (
-                <span className="inline-flex items-center gap-1.5">
-                  <User className="size-3.5" />
-                  {asset.channelName}
-                </span>
-              )}
-              {asset.duration && (
-                <span className="inline-flex items-center gap-1.5">
-                  <Clock className="size-3.5" />
-                  {formatDuration(asset.duration)}
-                </span>
-              )}
-              {speakers.size > 0 && (
-                <span className="inline-flex items-center gap-1.5">
-                  <Mic className="size-3.5" />
-                  {speakers.size} speaker{speakers.size > 1 ? 's' : ''}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Main content */}
-          {isReady && asset.segments.length > 0 ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <AssetTabBar assetId={assetId} />
-              {children}
-            </div>
-          ) : isReady && asset.segments.length === 0 ? (
-            <DashboardPanel>
-              <DashboardPanelContent>
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  Transcript is empty. The audio may not contain recognizable
-                  speech.
-                </p>
-              </DashboardPanelContent>
-            </DashboardPanel>
-          ) : (
-            <DashboardPanel>
-              <DashboardPanelContent>
-                <div className="flex flex-col items-center gap-2 py-8 text-center">
-                  {isProcessingStatus(asset.status) && (
-                    <Spinner className="size-5" />
-                  )}
-                  <p className="text-sm text-muted-foreground">
-                    {asset.status === 'failed'
-                      ? 'Processing failed. You can retry from the library.'
-                      : progressMessage ||
-                        'Transcript will appear here once processing completes.'}
+            {/* Main content */}
+            {isReady && asset.segments.length > 0 ? (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <AssetTabBar />
+                <AssetTabsClient />
+              </div>
+            ) : isReady && asset.segments.length === 0 ? (
+              <DashboardPanel>
+                <DashboardPanelContent>
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    Transcript is empty. The audio may not contain recognizable
+                    speech.
                   </p>
-                </div>
-              </DashboardPanelContent>
-            </DashboardPanel>
-          )}
-        </div>
+                </DashboardPanelContent>
+              </DashboardPanel>
+            ) : (
+              <DashboardPanel>
+                <DashboardPanelContent>
+                  <div className="flex flex-col items-center gap-2 py-8 text-center">
+                    {isProcessingStatus(asset.status) && (
+                      <Spinner className="size-5" />
+                    )}
+                    <p className="text-sm text-muted-foreground">
+                      {asset.status === 'failed'
+                        ? 'Processing failed. You can retry from the library.'
+                        : progressMessage ||
+                          'Transcript will appear here once processing completes.'}
+                    </p>
+                  </div>
+                </DashboardPanelContent>
+              </DashboardPanel>
+            )}
+          </div>
+        </AssetTabProvider>
       </AssetSourceProvider>
     </AssetProvider>
   );
