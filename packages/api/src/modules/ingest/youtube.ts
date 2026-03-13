@@ -61,10 +61,9 @@ const VIDEO_ID_RE =
 
 const CAPTION_RE = /<p t="(\d+)" d="(\d+)"[^>]*>([\s\S]*?)<\/p>/g;
 
-const INNERTUBE_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
 const ANDROID_USER_AGENT =
-  'com.google.android.youtube/19.02.39 (Linux; U; Android 14) gzip';
-const ANDROID_CLIENT_VERSION = '19.02.39';
+  'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip';
+const ANDROID_CLIENT_VERSION = '20.10.38';
 
 export function extractVideoId(url: string): string {
   const match = url.match(VIDEO_ID_RE);
@@ -117,7 +116,7 @@ async function fetchInnertubePlayer(
   videoId: string
 ): Promise<InnertubePlayerResponse> {
   const res = await fetch(
-    `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}`,
+    'https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
     {
       method: 'POST',
       headers: {
@@ -129,8 +128,9 @@ async function fetchInnertubePlayer(
           client: {
             clientName: 'ANDROID',
             clientVersion: ANDROID_CLIENT_VERSION,
-            androidSdkVersion: 34,
+            androidSdkVersion: 30,
             hl: 'en',
+            gl: 'US',
           },
         },
         videoId,
