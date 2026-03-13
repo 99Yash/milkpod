@@ -39,7 +39,11 @@ export const getServerSession = cache(async (): Promise<SessionSnapshot> => {
 
     const res = await fetch(
       `${clientEnv().NEXT_PUBLIC_SERVER_URL}/api/auth/get-session`,
-      { headers: { cookie } },
+      {
+        headers: { cookie },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(5_000),
+      },
     );
     if (!res.ok) return null;
 
