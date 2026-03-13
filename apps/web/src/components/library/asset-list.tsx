@@ -14,7 +14,6 @@ interface AssetListProps {
   onSelectAsset?: (assetId: string) => void;
   refreshKey?: number;
   filters?: AssetFilters;
-  initialAssets?: Asset[];
 }
 
 /** Per-asset progress info from SSE events */
@@ -23,7 +22,7 @@ interface AssetProgress {
   message?: string;
 }
 
-export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }: AssetListProps) {
+export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps) {
   const queryClient = useQueryClient();
   const [progressMap, setProgressMap] = useState<Record<string, AssetProgress>>({});
 
@@ -42,7 +41,6 @@ export function AssetList({ onSelectAsset, refreshKey, filters, initialAssets }:
   const { data: assets = [], isLoading, refetch } = useQuery({
     queryKey: queryKeys.assets.list(query),
     queryFn: () => fetchAssets(query),
-    initialData: !hasActiveFilters ? initialAssets : undefined,
   });
 
   // Handle refreshKey from parent (skip initial mount)

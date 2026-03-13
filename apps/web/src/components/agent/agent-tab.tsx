@@ -11,23 +11,20 @@ import {
   DashboardPanelContent,
 } from '~/components/dashboard/dashboard-panel';
 import { Spinner } from '~/components/ui/spinner';
-import type { Asset } from '@milkpod/api/types';
 
 interface AgentTabProps {
   initialAssetId?: string;
-  initialAssets?: Asset[];
 }
 
-export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
+export function AgentTab({ initialAssetId }: AgentTabProps) {
   const { data: assets = [], isLoading } = useQuery({
     queryKey: queryKeys.assets.list(),
     queryFn: () => fetchAssets(),
     select: (data) => data.filter((a) => a.status === 'ready'),
-    initialData: initialAssets,
   });
 
   const [selectedId, setSelectedId] = useState<string | undefined>(
-    initialAssetId ?? initialAssets?.filter((a) => a.status === 'ready')[0]?.id
+    initialAssetId
   );
 
   useEffect(() => {
