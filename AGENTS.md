@@ -203,7 +203,7 @@ These are the vars referenced in code and configuration:
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` - OAuth provider configuration for Better Auth.
 - `BETTER_AUTH_SECRET` / `BETTER_AUTH_URL` - Better Auth core settings (per env examples).
 - `NODE_ENV` - Runtime mode (`development`, `production`, `test`).
-- `ASSEMBLYAI_API_KEY` - Optional, required for AssemblyAI transcription in ingest flows.
+- `ASSEMBLYAI_API_KEY` - Required for AssemblyAI transcription in ingest flows.
 - `UPLOAD_STORAGE_BUCKET` - S3-compatible bucket for durable manual uploads.
 - `UPLOAD_STORAGE_REGION` - Region for the upload bucket (`auto` works for providers like R2).
 - `UPLOAD_STORAGE_ENDPOINT` - Optional custom S3 endpoint (for R2/MinIO/etc.).
@@ -213,6 +213,8 @@ These are the vars referenced in code and configuration:
 - `OPENAI_API_KEY` - Used by `@ai-sdk/openai` in `@milkpod/ai` (provider reads from process env).
 - `GOOGLE_GENERATIVE_AI_API_KEY` - Used by `@ai-sdk/google` in `@milkpod/ai` (provider reads from process env).
 - `RESEND_API_KEY` - Required for sending email OTP codes via Resend.
+- `AUTH_FROM_EMAIL` - Optional sender identity for OTP emails (defaults to `Milkpod <noreply@croisillies.xyz>`).
+- `COOKIE_DOMAIN` - Better Auth cookie domain (required in production, optional in development/test).
 - `ADMIN_EMAILS` - Comma-separated list of admin email addresses; these users bypass daily word quota limits.
 
 Environment files live under each app:

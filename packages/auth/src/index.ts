@@ -9,8 +9,6 @@ import { buildOtpEmail } from './otp-email-template';
 
 let _auth: ReturnType<typeof betterAuth<BetterAuthOptions>> | undefined;
 
-const AUTH_FROM_EMAIL = 'Milkpod <noreply@croisillies.xyz>';
-
 export function auth() {
   if (_auth) return _auth;
   const env = serverEnv();
@@ -42,7 +40,7 @@ export function auth() {
           const template = buildOtpEmail(type, safeOtp);
           try {
             await resend.emails.send({
-              from: AUTH_FROM_EMAIL,
+              from: env.AUTH_FROM_EMAIL,
               to: email,
               subject: template.subject,
               html: template.html,
@@ -77,7 +75,7 @@ export function auth() {
         sameSite: 'lax',
         secure: env.NODE_ENV === 'production',
         httpOnly: true,
-        ...(env.NODE_ENV === 'production' ? { domain: env.COOKIE_DOMAIN } : {}),
+        ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
       },
     },
   });
