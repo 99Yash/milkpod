@@ -2,6 +2,8 @@ import { useCallback } from 'react';
 import { Search, X, List, BookOpen, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import type { ViewMode } from './types';
+import type { SpeakerNamesMap } from './speaker-names';
+import { SpeakerNamesPopover } from './speaker-names-popover';
 
 interface TranscriptToolbarProps {
   search: string;
@@ -14,6 +16,10 @@ interface TranscriptToolbarProps {
   onViewModeChange: (mode: ViewMode) => void;
   showViewToggle: boolean;
   isSearching?: boolean;
+  speakerIds?: string[];
+  speakerNames?: SpeakerNamesMap;
+  onSaveSpeakerNames?: (speakerNames: SpeakerNamesMap) => Promise<void>;
+  isSavingSpeakerNames?: boolean;
 }
 
 export function TranscriptToolbar({
@@ -27,6 +33,10 @@ export function TranscriptToolbar({
   onViewModeChange,
   showViewToggle,
   isSearching,
+  speakerIds = [],
+  speakerNames = {},
+  onSaveSpeakerNames,
+  isSavingSpeakerNames,
 }: TranscriptToolbarProps) {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -101,6 +111,15 @@ export function TranscriptToolbar({
             </div>
           )}
         </div>
+
+        {onSaveSpeakerNames && speakerIds.length > 0 && (
+          <SpeakerNamesPopover
+            speakerIds={speakerIds}
+            speakerNames={speakerNames}
+            onSaveSpeakerNames={onSaveSpeakerNames}
+            isSavingSpeakerNames={isSavingSpeakerNames}
+          />
+        )}
 
         {showViewToggle && (
           <div className="flex shrink-0 items-center rounded-full border border-border/60 bg-muted/40 p-0.5">

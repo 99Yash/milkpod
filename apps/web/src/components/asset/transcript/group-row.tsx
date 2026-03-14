@@ -4,6 +4,8 @@ import { cn } from '~/lib/utils';
 import { buildHighlightRegex } from '~/lib/number-words';
 import type { CoalescedGroup } from './types';
 import { formatTime } from './types';
+import type { SpeakerNamesMap } from './speaker-names';
+import { resolveSpeakerLabel } from './speaker-names';
 
 interface GroupRowProps {
   group: CoalescedGroup;
@@ -14,6 +16,7 @@ interface GroupRowProps {
   activeMatchGlobalIndex?: number;
   onSegmentClick?: (segment: TranscriptSegment) => void;
   scrollToSegment: (segmentId: string) => void;
+  speakerNames: SpeakerNamesMap;
 }
 
 export function GroupRow({
@@ -25,8 +28,10 @@ export function GroupRow({
   activeMatchGlobalIndex,
   onSegmentClick,
   scrollToSegment,
+  speakerNames,
 }: GroupRowProps) {
   const firstSegment = group.segments[0];
+  const speakerLabel = resolveSpeakerLabel(group.speaker, speakerNames);
 
   const highlightRegex = useMemo(() => {
     if (!searchQuery) return null;
@@ -61,9 +66,9 @@ export function GroupRow({
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {formatTime(group.startTime)}
         </span>
-        {group.speaker && (
+        {speakerLabel && (
           <span className="truncate text-xs font-medium text-muted-foreground/80">
-            {group.speaker}
+            {speakerLabel}
           </span>
         )}
       </span>

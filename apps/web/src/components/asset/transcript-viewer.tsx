@@ -12,6 +12,11 @@ import { ChapteredView } from './transcript/chaptered-view';
 import { searchTranscript } from '~/lib/api-fetchers';
 import { queryKeys } from '~/lib/query-keys';
 import { buildHighlightRegex } from '~/lib/number-words';
+import {
+  extractSpeakerNames,
+  sortSpeakerIds,
+  type SpeakerNamesMap,
+} from './transcript/speaker-names';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const SCROLL_TO_MATCH_DELAY_MS = 160; // Wait for accordion expansion in chaptered view
@@ -22,6 +27,9 @@ interface TranscriptViewerProps {
   segments: TranscriptSegment[];
   activeSegmentId?: string;
   onSegmentClick?: (segment: TranscriptSegment) => void;
+  transcriptMetadata?: unknown;
+  onSaveSpeakerNames?: (speakerNames: SpeakerNamesMap) => Promise<void>;
+  isSavingSpeakerNames?: boolean;
 }
 
 export function TranscriptViewer({
@@ -29,6 +37,9 @@ export function TranscriptViewer({
   segments,
   activeSegmentId,
   onSegmentClick,
+  transcriptMetadata,
+  onSaveSpeakerNames,
+  isSavingSpeakerNames,
 }: TranscriptViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
@@ -49,6 +60,19 @@ export function TranscriptViewer({
   });
 
   const groups = useMemo(() => coalesceSegments(segments), [segments]);
+  const speakerNames = useMemo(
+    () => extractSpeakerNames(transcriptMetadata),
+    [transcriptMetadata],
+  );
+  const speakerIds = useMemo(() => {
+    const uniqueSpeakerIds = new Set(
+      segments
+        .map((segment) => segment.speaker)
+        .filter((speaker): speaker is string => speaker != null),
+    );
+
+    return sortSpeakerIds(Array.from(uniqueSpeakerIds));
+  }, [segments]);
   const profile = useMemo(() => analyzeContent(groups), [groups]);
   const chapters = useMemo(() => detectChapters(groups), [groups]);
 
@@ -188,6 +212,10 @@ export function TranscriptViewer({
         onViewModeChange={setViewMode}
         showViewToggle={showViewToggle}
         isSearching={isSearching}
+        speakerIds={speakerIds}
+        speakerNames={speakerNames}
+        onSaveSpeakerNames={onSaveSpeakerNames}
+        isSavingSpeakerNames={isSavingSpeakerNames}
       />
 
       <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide">
@@ -204,6 +232,7 @@ export function TranscriptViewer({
             activeMatchGroupId={activeMatchGroupId ?? undefined}
             onSegmentClick={onSegmentClick}
             scrollToSegment={scrollToSegment}
+            speakerNames={speakerNames}
           />
         ) : (
           <FlatView
@@ -219,6 +248,7 @@ export function TranscriptViewer({
             onSegmentClick={onSegmentClick}
             scrollToSegment={scrollToSegment}
             scrollContainerRef={containerRef}
+            speakerNames={speakerNames}
           />
         )}
       </div>

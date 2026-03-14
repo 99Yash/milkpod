@@ -21,6 +21,9 @@ jobs:
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
       ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      COOKIE_DOMAIN: ${{ secrets.COOKIE_DOMAIN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,6 +48,10 @@ jobs:
           echo "GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET" >> apps/web/.env
           echo "CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}" >> apps/web/.env
           echo "RESEND_API_KEY=$RESEND_API_KEY" >> apps/web/.env
+          echo "ASSEMBLYAI_API_KEY=$ASSEMBLYAI_API_KEY" >> apps/web/.env
+          echo "COOKIE_DOMAIN=$COOKIE_DOMAIN" >> apps/web/.env
+          echo "OPENAI_API_KEY=$OPENAI_API_KEY" >> apps/web/.env
+          echo "GOOGLE_GENERATIVE_AI_API_KEY=$GOOGLE_GENERATIVE_AI_API_KEY" >> apps/web/.env
       - name: Typecheck
         run: pnpm check-types
       - name: Build

@@ -26,9 +26,9 @@ const submitTranscriptSchema = z.object({
 const transcriptSchema = z.object({
   id: z.string(),
   status: transcriptStatusSchema,
-  text: z.string().default(''),
+  text: z.string().nullable().optional(),
   language_code: z.string().nullable().optional(),
-  words: z.array(assemblyWordSchema).optional(),
+  words: z.array(assemblyWordSchema).nullable().optional(),
   error: z.string().nullable().optional(),
 });
 
@@ -115,7 +115,7 @@ function toTranscriptionResult(transcript: AssemblyTranscript): TranscriptionRes
   const languageCode = transcript.language_code?.trim();
 
   return {
-    text: transcript.text,
+    text: transcript.text ?? '',
     language_code: languageCode && languageCode.length > 0 ? languageCode : 'unknown',
     words: mapWords(transcript.words ?? []),
   };
@@ -318,6 +318,13 @@ export async function transcribeAudio(
     const uploadUrl = await uploadRemoteAudio(audioUrl);
     return transcribeViaUrl(uploadUrl);
   }
+}
+
+export async function transcribeAudioStream(
+  audioStream: ReadableStream<Uint8Array>
+): Promise<TranscriptionResult> {
+  const uploadUrl = await uploadBody(audioStream);
+  return transcribeViaUrl(uploadUrl);
 }
 
 export async function transcribeFile(

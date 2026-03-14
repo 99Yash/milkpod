@@ -10,7 +10,7 @@ const serverEnvSchema = z.object({
     .default('development'),
   GOOGLE_CLIENT_ID: z.string().min(1, 'GOOGLE_CLIENT_ID is required'),
   GOOGLE_CLIENT_SECRET: z.string().min(1, 'GOOGLE_CLIENT_SECRET is required'),
-  ASSEMBLYAI_API_KEY: z.string().optional(),
+  ASSEMBLYAI_API_KEY: z.string().min(1, 'ASSEMBLYAI_API_KEY is required'),
   UPLOAD_STORAGE_BUCKET: z.string().optional(),
   UPLOAD_STORAGE_REGION: z.string().default('auto'),
   UPLOAD_STORAGE_ENDPOINT: z.url().optional(),
@@ -25,8 +25,11 @@ const serverEnvSchema = z.object({
     .default(900),
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
   ADMIN_EMAILS: z.string().optional().default(''),
-  COOKIE_DOMAIN: z.string().optional(),
+  COOKIE_DOMAIN: z.string().min(1, 'COOKIE_DOMAIN is required'),
   RAW_MEDIA_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),
+  // AI SDK provider keys
+  OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1, 'GOOGLE_GENERATIVE_AI_API_KEY is required'),
   // Billing provider — set to 'polar' to enable billing routes
   BILLING_PROVIDER: z.enum(['polar', 'razorpay']).optional(),
   // Polar provider credentials (required when BILLING_PROVIDER=polar)
