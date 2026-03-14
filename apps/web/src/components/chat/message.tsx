@@ -13,9 +13,10 @@ import { ShimmerText } from './shimmer-text';
 import { TimestampLink } from './timestamp-link';
 
 // Matches [MM:SS], [HH:MM:SS], and ranges like [MM:SS–MM:SS] or [MM:SS-MM:SS]
+// Also strips optional surrounding parentheses, e.g. ([08:03]) → [08:03]
 const TS = /\d+(?::\d{2}){1,2}/;
 const TIMESTAMP_RE = new RegExp(
-  `\\[(${TS.source})(?:[–\\-](${TS.source}))?\\](?!\\()`,
+  `\\(?\\[(${TS.source})(?:[–\\-](${TS.source}))?\\](?!\\()\\)?`,
   'g',
 );
 
