@@ -118,7 +118,24 @@ export function AssetCombobox({ assets, value, onChange }: AssetComboboxProps) {
             value={search}
             onValueChange={setSearch}
           />
-          <CommandList ref={listRef}>
+          <CommandList
+            onScroll={(event) => {
+              const target = event.currentTarget;
+              if (!target) return;
+
+              const threshold = 50; // px from bottom to trigger load
+              const distanceFromBottom =
+                target.scrollHeight - (target.scrollTop + target.clientHeight);
+
+              if (
+                distanceFromBottom <= threshold &&
+                hasNextPage &&
+                !isFetchingNextPage
+              ) {
+                fetchNextPage();
+              }
+            }}
+          >
             {isLoading ? (
               <div className="flex items-center justify-center py-6">
                 <Spinner className="size-4" />
