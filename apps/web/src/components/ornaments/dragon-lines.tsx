@@ -34,7 +34,7 @@ type DragonLinesProps = {
   secondaryClassName?: string;
 };
 
-const lineToneClass = 'text-amber-700/30 dark:text-amber-200/25';
+const lineToneClass = 'text-blue-700/25 dark:text-blue-200/20';
 const baseSvgClass =
   'dragon-drift absolute left-1/2 w-[120vw] -translate-x-1/2';
 

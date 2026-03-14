@@ -207,7 +207,7 @@ export function ChapteredView({
                       {formatTime(chapter.endTime)}
                     </span>
                     {searchQuery && matchCount > 0 && (
-                      <span className="shrink-0 rounded-full bg-yellow-200/60 px-1.5 py-0.5 text-[11px] font-medium tabular-nums dark:bg-yellow-500/30">
+                      <span className="shrink-0 rounded-full bg-sky-200/60 px-1.5 py-0.5 text-[11px] font-medium tabular-nums dark:bg-sky-500/30">
                         {matchCount}
                       </span>
                     )}
