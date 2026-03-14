@@ -1,4 +1,4 @@
-import type { ElevenLabsWord } from './elevenlabs';
+import type { TranscriptionWord } from './assemblyai';
 import type { CaptionItem } from './youtube';
 
 export type Segment = {
@@ -31,18 +31,39 @@ export function captionItemsToSegments(items: CaptionItem[]): Segment[] {
   }));
 }
 
-export function groupWordsIntoSegments(words: ElevenLabsWord[]): Segment[] {
+function joinTokens(words: TranscriptionWord[]): string {
+  let text = '';
+
+  for (const word of words) {
+    const token = word.text.trim();
+    if (token.length === 0) continue;
+
+    if (text.length === 0) {
+      text = token;
+      continue;
+    }
+
+    const noSpaceBefore =
+      /^['’]/.test(token) ||
+      /^n['’]t$/i.test(token) ||
+      /^[,.;:!?%)\]\}]/.test(token) ||
+      (word.type === 'punctuation' && !/^[([{]/.test(token));
+
+    text += noSpaceBefore ? token : ` ${token}`;
+  }
+
+  return text;
+}
+
+export function groupWordsIntoSegments(words: TranscriptionWord[]): Segment[] {
   const segments: Segment[] = [];
-  let currentWords: ElevenLabsWord[] = [];
+  let currentWords: TranscriptionWord[] = [];
   let currentSpeaker: string | null = null;
 
   const flush = () => {
     if (currentWords.length === 0) return;
 
-    const text = currentWords
-      .map((w) => w.text)
-      .join('')
-      .trim();
+    const text = joinTokens(currentWords);
 
     if (text.length > 0) {
       segments.push({

@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 /**
  * Minimal env validation — only the vars needed to verify a session.
- * This avoids pulling in RESEND_API_KEY, ELEVENLABS_API_KEY, etc.
+ * This avoids pulling in RESEND_API_KEY, ASSEMBLYAI_API_KEY, etc.
  * that the web app doesn't (and shouldn't) have.
  */
 const sessionEnvSchema = z.object({

@@ -17,7 +17,7 @@ Milkpod transcription and Q&A workspace.
 - Backend: Elysia in `apps/server` with Eden for typed API.
 - Auth: Better Auth.
 - Data: Postgres + Drizzle, `pgvector` for embeddings.
-- Transcription: ElevenLabs.
+- Transcription: AssemblyAI.
 - Workflows: Restate.dev for durable, resumable jobs.
 - Streaming: Vercel AI SDK for LLM responses with SSE.
 - Realtime: Ably for workflow and batch progress, optional AI Transport for tool
@@ -39,7 +39,7 @@ Milkpod transcription and Q&A workspace.
 ### Link ingestion (YouTube, podcasts, external)
 1. Normalize URL and store metadata (source type, title, channel, duration).
 2. Fetch audio to temporary storage for processing only.
-3. Transcribe with ElevenLabs (async job if supported; otherwise chunked sync).
+3. Transcribe with AssemblyAI (async job with polling and speaker diarization).
 4. Persist transcript segments and embeddings.
 5. Delete temporary audio artifacts.
 

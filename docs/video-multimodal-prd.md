@@ -50,7 +50,7 @@ The following are now explicit product/engineering decisions for v1:
 
 1. **YouTube audio backend (Phase 1):**
    - Use YouTube Innertube Android player response to resolve an audio stream URL.
-   - Transcribe that URL with existing ElevenLabs STT (`scribe_v2`) via `cloud_storage_url`.
+   - Transcribe that URL with AssemblyAI STT with speaker diarization enabled.
    - Captions are fallback only, not primary.
 
 2. **Transcription strategy default:**

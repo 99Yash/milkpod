@@ -4,7 +4,7 @@ import { IngestService } from './service';
 import { withRetry } from './retry';
 import { embedSegments } from './embed';
 import { emitAssetStatus } from '../../events/asset-events';
-import { transcribeAudio } from './elevenlabs';
+import { transcribeAudio } from './assemblyai';
 import { extractVideoContext } from './video-context';
 import type { TranscriptionStrategy } from './model';
 import { createUploadDownloadUrl } from './upload-storage';
@@ -113,7 +113,7 @@ async function transcribeViaAudio(
     transcribeAudio(audioUrl)
   );
   const segments = groupWordsIntoSegments(result.words);
-  return { language: result.language_code, segments, provider: 'elevenlabs' as const };
+  return { language: result.language_code, segments, provider: 'assemblyai' as const };
 }
 
 async function transcribeViaCaptions(
@@ -196,7 +196,7 @@ export async function orchestrateUploadPipeline(
     const result = await retry('transcribing', () => transcribeAudio(transcriptionUrl));
     const segments = groupWordsIntoSegments(result.words);
 
-    await finalizePipeline(assetId, userId, result.language_code, segments, 'elevenlabs', retry, {
+    await finalizePipeline(assetId, userId, result.language_code, segments, 'assemblyai', retry, {
       transcriptionMethod: 'audio',
     });
 
