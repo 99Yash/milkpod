@@ -114,8 +114,8 @@ function HighlightedText({
               className={cn(
                 'rounded-sm px-0.5',
                 isActiveMatch
-                  ? 'bg-orange-300/80 dark:bg-orange-500/50'
-                  : 'bg-yellow-200/60 dark:bg-yellow-500/30',
+                  ? 'bg-blue-300/80 dark:bg-blue-500/50'
+                  : 'bg-sky-200/60 dark:bg-sky-500/30',
               )}
             >
               {part}

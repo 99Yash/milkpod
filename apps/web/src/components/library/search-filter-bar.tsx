@@ -42,7 +42,7 @@ interface SearchFilterBarProps {
 const statusOptions = [
   { value: '_all', label: 'All statuses', icon: ListFilter },
   { value: 'ready', label: 'Ready', icon: CircleCheck, className: 'text-emerald-500' },
-  { value: 'queued', label: 'Queued', icon: Clock, className: 'text-amber-500' },
+  { value: 'queued', label: 'Queued', icon: Clock, className: 'text-sky-500' },
   { value: 'fetching', label: 'Fetching', icon: Download, className: 'text-blue-500' },
   { value: 'transcribing', label: 'Transcribing', icon: AudioLines, className: 'text-violet-500' },
   { value: 'embedding', label: 'Embedding', icon: Layers, className: 'text-indigo-500' },

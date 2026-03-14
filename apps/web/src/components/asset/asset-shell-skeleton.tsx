@@ -6,7 +6,8 @@ import { ArrowLeft } from 'lucide-react';
  */
 export function AssetShellSkeleton() {
   return (
-    <div className="flex flex-col lg:h-[calc(100svh-7rem-4px)]">
+    <div className="relative isolate flex flex-col lg:h-[calc(100svh-7rem-4px)]">
+      <div className="pointer-events-none absolute inset-x-0 top-[-120px] h-[220px] rounded-full bg-[radial-gradient(circle_at_center,oklch(0.95_0.04_238)_0%,transparent_70%)] blur-3xl dark:bg-[radial-gradient(circle_at_center,oklch(0.36_0.06_245)_0%,transparent_70%)] dark:opacity-50" />
       {/* Header */}
       <div className="shrink-0 space-y-3 pb-4 pt-1">
         {/* Row 1: back + status badge */}

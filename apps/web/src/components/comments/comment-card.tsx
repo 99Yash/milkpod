@@ -22,7 +22,7 @@ const sourceLabels: Record<string, string> = {
 const sourceColors: Record<string, string> = {
   audio: 'border-blue-500/30 text-blue-600 dark:text-blue-400',
   visual: 'border-purple-500/30 text-purple-600 dark:text-purple-400',
-  hybrid: 'border-amber-500/30 text-amber-600 dark:text-amber-400',
+  hybrid: 'border-cyan-500/30 text-cyan-600 dark:text-cyan-400',
 };
 
 export function CommentCard({ comment, onDismiss }: CommentCardProps) {
