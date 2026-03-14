@@ -1,4 +1,4 @@
-import { transcribeAudio } from '../ingest/elevenlabs';
+import { transcribeAudio } from '../ingest/assemblyai';
 import { groupWordsIntoSegments } from '../ingest/segments';
 import { IngestService } from '../ingest/service';
 import { withRetry } from '../ingest/retry';
@@ -75,7 +75,8 @@ export async function orchestrateEpisodePipeline(
     const { segments: storedSegments } = await IngestService.storeTranscript(
       assetId,
       result.language_code,
-      segments
+      segments,
+      'assemblyai'
     );
 
     // Stage 3: Generate and store embeddings

@@ -10,7 +10,7 @@ const serverEnvSchema = z.object({
     .default('development'),
   GOOGLE_CLIENT_ID: z.string().min(1, 'GOOGLE_CLIENT_ID is required'),
   GOOGLE_CLIENT_SECRET: z.string().min(1, 'GOOGLE_CLIENT_SECRET is required'),
-  ELEVENLABS_API_KEY: z.string().optional(),
+  ASSEMBLYAI_API_KEY: z.string().optional(),
   UPLOAD_STORAGE_BUCKET: z.string().optional(),
   UPLOAD_STORAGE_REGION: z.string().default('auto'),
   UPLOAD_STORAGE_ENDPOINT: z.url().optional(),

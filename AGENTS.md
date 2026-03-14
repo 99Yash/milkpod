@@ -203,7 +203,7 @@ These are the vars referenced in code and configuration:
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` - OAuth provider configuration for Better Auth.
 - `BETTER_AUTH_SECRET` / `BETTER_AUTH_URL` - Better Auth core settings (per env examples).
 - `NODE_ENV` - Runtime mode (`development`, `production`, `test`).
-- `ELEVENLABS_API_KEY` - Optional, required for ElevenLabs transcription in ingest flows.
+- `ASSEMBLYAI_API_KEY` - Optional, required for AssemblyAI transcription in ingest flows.
 - `UPLOAD_STORAGE_BUCKET` - S3-compatible bucket for durable manual uploads.
 - `UPLOAD_STORAGE_REGION` - Region for the upload bucket (`auto` works for providers like R2).
 - `UPLOAD_STORAGE_ENDPOINT` - Optional custom S3 endpoint (for R2/MinIO/etc.).
