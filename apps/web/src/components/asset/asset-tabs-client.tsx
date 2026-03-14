@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAssetContext } from '~/contexts/asset-context';
 import { useAssetTabContext, type AssetTab } from './asset-tab-context';
@@ -18,6 +18,17 @@ export function AssetTabsClient() {
   const { activeTab, assetId } = useAssetTabContext();
   const { asset, setAsset } = useAssetContext();
   const [isSavingSpeakerNames, setIsSavingSpeakerNames] = useState(false);
+
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // Re-focus the chat textarea when switching back to the chat tab
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      requestAnimationFrame(() => {
+        chatContainerRef.current?.querySelector('textarea')?.focus();
+      });
+    }
+  }, [activeTab]);
 
   const mountedTabsRef = useRef<Record<AssetTab, boolean>>({
     transcript: true,
@@ -40,8 +51,7 @@ export function AssetTabsClient() {
         );
 
         if (updatedSpeakerNames == null) {
-          toast.error('Failed to save speaker names');
-          return;
+          throw new Error('Failed to save speaker names');
         }
 
         setAsset((prev) => {
@@ -67,8 +77,9 @@ export function AssetTabsClient() {
         });
 
         toast.success('Speaker names updated');
-      } catch {
+      } catch (error) {
         toast.error('Failed to save speaker names');
+        throw error;
       } finally {
         setIsSavingSpeakerNames(false);
       }
@@ -97,7 +108,7 @@ export function AssetTabsClient() {
 
       {/* Chat — lazy mount; needs flex-col so ChatShell's flex-1 children size properly */}
       {mounted.chat ? (
-        <div className={activeTab !== 'chat' ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
+        <div ref={chatContainerRef} className={activeTab !== 'chat' ? 'hidden' : 'flex min-h-0 flex-1 flex-col'}>
           <ChatTabContent />
         </div>
       ) : null}

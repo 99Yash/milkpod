@@ -14,7 +14,7 @@ const sessionEnvSchema = z.object({
   BETTER_AUTH_URL: z.string().min(1),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  COOKIE_DOMAIN: z.string().optional(),
+  COOKIE_DOMAIN: z.string().min(1),
 });
 
 let _sessionAuth: ReturnType<typeof betterAuth> | undefined;
@@ -38,15 +38,10 @@ export function sessionAuth() {
     trustedOrigins: [env.CORS_ORIGIN],
     advanced: {
       defaultCookieAttributes: {
-        sameSite:
-          env.NODE_ENV === 'production'
-            ? env.COOKIE_DOMAIN
-              ? 'lax'
-              : 'none'
-            : 'lax',
+        sameSite: 'lax',
         secure: env.NODE_ENV === 'production',
         httpOnly: true,
-        ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
+        ...(env.NODE_ENV === 'production' ? { domain: env.COOKIE_DOMAIN } : {}),
       },
     },
   });

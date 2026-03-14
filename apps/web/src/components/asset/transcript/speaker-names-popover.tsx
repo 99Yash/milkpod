@@ -123,8 +123,13 @@ export function SpeakerNamesPopover({
             disabled={!hasChanges || Boolean(isSavingSpeakerNames)}
             onClick={async () => {
               const sanitized = sanitizeSpeakerNames(draftSpeakerNames);
-              await onSaveSpeakerNames(sanitized);
-              setOpen(false);
+
+              try {
+                await onSaveSpeakerNames(sanitized);
+                setOpen(false);
+              } catch {
+                return;
+              }
             }}
           >
             {isSavingSpeakerNames ? (

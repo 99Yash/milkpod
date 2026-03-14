@@ -235,7 +235,11 @@ export async function orchestrateUploadPipeline(
       createUploadDownloadUrl(sourceUrl)
     );
 
-    const result = await retry('transcribing', () => transcribeAudio(transcriptionUrl));
+    const result = await retry('transcribing', () =>
+      transcribeAudio(transcriptionUrl, {
+        allowRemoteFetchFallback: true,
+      })
+    );
     const segments = groupWordsIntoSegments(result.words);
 
     await finalizePipeline(assetId, userId, result.language_code, segments, 'assemblyai', retry, {

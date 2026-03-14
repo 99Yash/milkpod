@@ -229,6 +229,7 @@ function ChatPanelContent({
 }) {
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { modelId, setModelId, wordLimit, setWordLimit } = useChatSettings();
 
   const { messages, sendMessage, status, error, threadId: chatThreadId, wordsRemaining } = useMilkpodChat({
@@ -281,6 +282,10 @@ function ChatPanelContent({
       }
     }
   }, [messages, threadListCtx]);
+
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
@@ -389,6 +394,7 @@ function ChatPanelContent({
           className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-ring/15 bg-background/95 shadow-sm transition-[box-shadow,border-color,background-color] duration-200 focus-within:border-ring/45 focus-within:bg-accent/16 focus-within:outline-1 focus-within:outline-ring/60 focus-within:ring-[3px] focus-within:ring-ring/35 focus-within:shadow-md"
         >
           <Textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
