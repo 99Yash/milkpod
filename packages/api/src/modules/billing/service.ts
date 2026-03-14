@@ -28,6 +28,16 @@ type SubscriptionInfo = {
   canceledAt: string | null;
 };
 
+type CacheEntry<T> = {
+  value: T;
+  expiresAt: number;
+};
+
+const SUMMARY_CACHE_TTL_MS = 30_000;
+const MAX_SUMMARY_CACHE_SIZE = 2_000;
+const summaryCache = new Map<string, CacheEntry<BillingSummary>>();
+const summaryInflight = new Map<string, Promise<BillingSummary>>();
+
 export type BillingSummary = {
   plan: PlanId;
   subscription: SubscriptionInfo | null;
@@ -84,7 +94,34 @@ function toIsoStringOrNull(value: unknown): string | null {
   return null;
 }
 
+function readSummaryCache(userId: string): BillingSummary | null {
+  const cached = summaryCache.get(userId);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    summaryCache.delete(userId);
+    return null;
+  }
+  return cached.value;
+}
+
+function writeSummaryCache(userId: string, value: BillingSummary): void {
+  if (summaryCache.size >= MAX_SUMMARY_CACHE_SIZE) {
+    const oldestKey = summaryCache.keys().next().value;
+    if (oldestKey) summaryCache.delete(oldestKey);
+  }
+
+  summaryCache.set(userId, {
+    value,
+    expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS,
+  });
+}
+
 export abstract class BillingService {
+  static invalidateSummaryCache(userId: string): void {
+    summaryCache.delete(userId);
+    summaryInflight.delete(userId);
+  }
+
   /**
    * Get the user's active subscription row, if any.
    */
@@ -142,6 +179,26 @@ export abstract class BillingService {
    * Build a full billing summary for a user.
    */
   static async getSummary(userId: string): Promise<BillingSummary> {
+    const cached = readSummaryCache(userId);
+    if (cached) return cached;
+
+    const inflight = summaryInflight.get(userId);
+    if (inflight) return inflight;
+
+    const request = BillingService.fetchSummary(userId)
+      .then((result) => {
+        writeSummaryCache(userId, result);
+        return result;
+      })
+      .finally(() => {
+        summaryInflight.delete(userId);
+      });
+
+    summaryInflight.set(userId, request);
+    return request;
+  }
+
+  private static async fetchSummary(userId: string): Promise<BillingSummary> {
     const today = todayUTC();
     const period = currentPeriodUTC();
 
@@ -395,6 +452,8 @@ export abstract class BillingService {
           break;
         }
       }
+
+      BillingService.invalidateSummaryCache(userId);
     });
   }
 

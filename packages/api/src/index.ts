@@ -6,6 +6,7 @@ import { sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import { requestLogger } from './middleware/logger';
 import { rateLimiter } from './middleware/rate-limit';
+import { getSessionCached } from './middleware/session-cache';
 import { chat } from './modules/chat';
 import { assets } from './modules/assets';
 import { collections } from './modules/collections';
@@ -114,6 +115,16 @@ export const app = new Elysia({ name: 'api' })
       }),
     },
   )
+  .get('/api/auth/get-session', async ({ request, set }) => {
+    try {
+      const session = await getSessionCached(request);
+      set.headers['Cache-Control'] = 'private, no-store';
+      return session;
+    } catch {
+      set.headers['Cache-Control'] = 'private, no-store';
+      return null;
+    }
+  })
   .mount(auth().handler)
   .use(chat)
   .use(assets)

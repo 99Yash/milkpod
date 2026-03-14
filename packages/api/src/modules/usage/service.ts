@@ -5,6 +5,31 @@ import { DAILY_WORD_BUDGET } from '@milkpod/ai';
 import { serverEnv } from '@milkpod/env/server';
 import { getEntitlementsForPlan, type PlanId } from '../quota/plans';
 
+type RemainingSummary = {
+  budget: number;
+  remaining: number;
+};
+
+type UsageStats = {
+  videoCount: number;
+  totalMinutes: number;
+};
+
+type CacheEntry<T> = {
+  value: T;
+  expiresAt: number;
+};
+
+const REMAINING_CACHE_TTL_MS = 10_000;
+const STATS_CACHE_TTL_MS = 30_000;
+const MAX_USAGE_CACHE_SIZE = 2_000;
+
+const remainingCache = new Map<string, CacheEntry<RemainingSummary>>();
+const remainingInflight = new Map<string, Promise<RemainingSummary>>();
+
+const statsCache = new Map<string, CacheEntry<UsageStats>>();
+const statsInflight = new Map<string, Promise<UsageStats>>();
+
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -23,10 +48,39 @@ export function isAdminEmail(email: string): boolean {
   return list.includes(email.toLowerCase());
 }
 
-export async function getRemainingWordsSummary(userId: string): Promise<{
-  budget: number;
-  remaining: number;
-}> {
+function readCache<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null {
+  const cached = cache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    cache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function writeCache<T>(
+  cache: Map<string, CacheEntry<T>>,
+  key: string,
+  value: T,
+  ttlMs: number,
+): void {
+  if (cache.size >= MAX_USAGE_CACHE_SIZE) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey) cache.delete(oldestKey);
+  }
+
+  cache.set(key, {
+    value,
+    expiresAt: Date.now() + ttlMs,
+  });
+}
+
+function invalidateRemainingCache(userId: string): void {
+  remainingCache.delete(userId);
+  remainingInflight.delete(userId);
+}
+
+async function fetchRemainingWordsSummary(userId: string): Promise<RemainingSummary> {
   const today = todayUTC();
 
   const result = await db().execute(sql<{
@@ -64,6 +118,44 @@ export async function getRemainingWordsSummary(userId: string): Promise<{
   };
 }
 
+async function fetchUserStats(userId: string): Promise<UsageStats> {
+  const [row] = await db()
+    .select({
+      videoCount: count(mediaAssets.id),
+      totalSeconds: sum(mediaAssets.duration),
+    })
+    .from(mediaAssets)
+    .where(eq(mediaAssets.userId, userId));
+
+  return {
+    videoCount: row?.videoCount ?? 0,
+    totalMinutes: Math.round((Number(row?.totalSeconds) || 0) / 60),
+  };
+}
+
+export async function getRemainingWordsSummary(userId: string): Promise<{
+  budget: number;
+  remaining: number;
+}> {
+  const cached = readCache(remainingCache, userId);
+  if (cached) return cached;
+
+  const inflight = remainingInflight.get(userId);
+  if (inflight) return inflight;
+
+  const request = fetchRemainingWordsSummary(userId)
+    .then((result) => {
+      writeCache(remainingCache, userId, result, REMAINING_CACHE_TTL_MS);
+      return result;
+    })
+    .finally(() => {
+      remainingInflight.delete(userId);
+    });
+
+  remainingInflight.set(userId, request);
+  return request;
+}
+
 export abstract class UsageService {
   static async getRemainingWords(userId: string, dailyBudget?: number): Promise<number> {
     const today = todayUTC();
@@ -90,7 +182,7 @@ export abstract class UsageService {
     const toReserve = Math.max(0, wordCount);
     if (toReserve === 0) return 0;
 
-    return await db().transaction(async (tx) => {
+    const reserved = await db().transaction(async (tx) => {
       // Advisory lock serializes all usage operations for this user.
       // Prevents concurrent requests from double-spending the quota.
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`usage:${userId}`}))`);
@@ -121,21 +213,29 @@ export abstract class UsageService {
 
       return toAdd;
     });
+
+    invalidateRemainingCache(userId);
+    return reserved;
   }
 
   static async getUserStats(userId: string): Promise<{ videoCount: number; totalMinutes: number }> {
-    const [row] = await db()
-      .select({
-        videoCount: count(mediaAssets.id),
-        totalSeconds: sum(mediaAssets.duration),
-      })
-      .from(mediaAssets)
-      .where(eq(mediaAssets.userId, userId));
+    const cached = readCache(statsCache, userId);
+    if (cached) return cached;
 
-    return {
-      videoCount: row?.videoCount ?? 0,
-      totalMinutes: Math.round((Number(row?.totalSeconds) || 0) / 60),
-    };
+    const inflight = statsInflight.get(userId);
+    if (inflight) return inflight;
+
+    const request = fetchUserStats(userId)
+      .then((result) => {
+        writeCache(statsCache, userId, result, STATS_CACHE_TTL_MS);
+        return result;
+      })
+      .finally(() => {
+        statsInflight.delete(userId);
+      });
+
+    statsInflight.set(userId, request);
+    return request;
   }
 
   /**
@@ -158,5 +258,7 @@ export abstract class UsageService {
           AND usage_date = ${today}
       `);
     });
+
+    invalidateRemainingCache(userId);
   }
 }

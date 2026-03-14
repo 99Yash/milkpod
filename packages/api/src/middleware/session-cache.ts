@@ -34,11 +34,44 @@ const sweepTimer = setInterval(() => {
 // Don't keep the process alive just for cache cleanup (e.g. in tests)
 if (typeof sweepTimer === 'object' && 'unref' in sweepTimer) sweepTimer.unref();
 
+const SESSION_COOKIE_NAMES = new Set([
+  'better-auth.session_token',
+  '__Secure-better-auth.session_token',
+  '__Host-better-auth.session_token',
+]);
+
+function decodeCookieComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function extractSessionToken(headers: Headers): string | undefined {
   const cookie = headers.get('cookie');
   if (!cookie) return undefined;
-  const match = cookie.match(/better-auth\.session_token=([^;]+)/);
-  return match?.[1];
+
+  for (const part of cookie.split(';')) {
+    const [rawName, ...valueParts] = part.trim().split('=');
+    if (!rawName || valueParts.length === 0) continue;
+
+    const name = decodeCookieComponent(rawName.trim());
+    if (!SESSION_COOKIE_NAMES.has(name) && !name.endsWith('better-auth.session_token')) {
+      continue;
+    }
+
+    const rawValue = valueParts.join('=').trim();
+    if (!rawValue) return undefined;
+
+    const decoded = decodeCookieComponent(rawValue);
+    if (decoded.startsWith('"') && decoded.endsWith('"') && decoded.length > 1) {
+      return decoded.slice(1, -1);
+    }
+    return decoded;
+  }
+
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
