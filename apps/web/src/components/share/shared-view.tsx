@@ -166,7 +166,10 @@ function SharedAssetView({ resource }: { resource: AssetWithTranscript }) {
               {resource.segments.length} segments
             </span>
           </div>
-          <TranscriptViewer segments={resource.segments} />
+          <TranscriptViewer
+            segments={resource.segments}
+            transcriptMetadata={resource.transcript?.providerMetadata}
+          />
         </DashboardPanel>
       ) : (
         <DashboardPanel>

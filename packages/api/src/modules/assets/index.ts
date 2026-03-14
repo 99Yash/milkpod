@@ -125,6 +125,25 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     },
     { auth: true, body: AssetModel.update }
   )
+  .patch(
+    '/:id/speakers',
+    async ({ params, body, user }) => {
+      const asset = await AssetService.getById(params.id, user.id);
+      if (!asset) return status(404, { message: 'Asset not found' });
+
+      const speakerNames = await AssetService.updateSpeakerNames(
+        params.id,
+        body.speakerNames,
+      );
+
+      if (!speakerNames) {
+        return status(404, { message: 'Transcript not found' });
+      }
+
+      return { speakerNames };
+    },
+    { auth: true, body: AssetModel.speakerNamesUpdate }
+  )
   .delete('/:id', async ({ params, user }) => {
     const deleted = await AssetService.remove(params.id, user.id);
     if (!deleted) return status(404, { message: 'Asset not found' });

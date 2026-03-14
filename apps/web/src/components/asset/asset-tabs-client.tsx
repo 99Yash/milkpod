@@ -1,16 +1,23 @@
 'use client';
 
-import { useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { useAssetContext } from '~/contexts/asset-context';
 import { useAssetTabContext, type AssetTab } from './asset-tab-context';
 import { TranscriptViewer } from '~/components/asset/transcript-viewer';
 import { ChatTabContent } from '~/components/asset/tabs/chat-tab-content';
 import { MomentsTabContent } from '~/components/asset/tabs/moments-tab-content';
 import { CommentsTabContent } from '~/components/asset/tabs/comments-tab-content';
+import { updateAssetSpeakerNames } from '~/lib/api-fetchers';
+import {
+  sanitizeSpeakerNames,
+  type SpeakerNamesMap,
+} from './transcript/speaker-names';
 
 export function AssetTabsClient() {
   const { activeTab, assetId } = useAssetTabContext();
-  const { asset } = useAssetContext();
+  const { asset, setAsset } = useAssetContext();
+  const [isSavingSpeakerNames, setIsSavingSpeakerNames] = useState(false);
 
   const mountedTabsRef = useRef<Record<AssetTab, boolean>>({
     transcript: true,
@@ -20,6 +27,54 @@ export function AssetTabsClient() {
   });
   mountedTabsRef.current[activeTab] = true;
   const mounted = mountedTabsRef.current;
+
+  const handleSaveSpeakerNames = useCallback(
+    async (speakerNames: SpeakerNamesMap) => {
+      const sanitized = sanitizeSpeakerNames(speakerNames);
+
+      setIsSavingSpeakerNames(true);
+      try {
+        const updatedSpeakerNames = await updateAssetSpeakerNames(
+          assetId,
+          sanitized,
+        );
+
+        if (updatedSpeakerNames == null) {
+          toast.error('Failed to save speaker names');
+          return;
+        }
+
+        setAsset((prev) => {
+          if (!prev.transcript) return prev;
+
+          const providerMetadata =
+            prev.transcript.providerMetadata &&
+            typeof prev.transcript.providerMetadata === 'object' &&
+            !Array.isArray(prev.transcript.providerMetadata)
+              ? (prev.transcript.providerMetadata as Record<string, unknown>)
+              : {};
+
+          return {
+            ...prev,
+            transcript: {
+              ...prev.transcript,
+              providerMetadata: {
+                ...providerMetadata,
+                speakerNames: updatedSpeakerNames,
+              },
+            },
+          };
+        });
+
+        toast.success('Speaker names updated');
+      } catch {
+        toast.error('Failed to save speaker names');
+      } finally {
+        setIsSavingSpeakerNames(false);
+      }
+    },
+    [assetId, setAsset],
+  );
 
   return (
     <>
@@ -31,7 +86,13 @@ export function AssetTabsClient() {
             : 'min-h-0 flex-1 overflow-hidden rounded-b-xl border-x border-b border-border/40'
         }
       >
-        <TranscriptViewer assetId={assetId} segments={asset.segments} />
+        <TranscriptViewer
+          assetId={assetId}
+          segments={asset.segments}
+          transcriptMetadata={asset.transcript?.providerMetadata}
+          onSaveSpeakerNames={handleSaveSpeakerNames}
+          isSavingSpeakerNames={isSavingSpeakerNames}
+        />
       </div>
 
       {/* Chat — lazy mount; needs flex-col so ChatShell's flex-1 children size properly */}

@@ -33,6 +33,11 @@ export namespace AssetModel {
   });
   export type Update = typeof update.static;
 
+  export const speakerNamesUpdate = t.Object({
+    speakerNames: t.Record(t.String(), t.String()),
+  });
+  export type SpeakerNamesUpdate = typeof speakerNamesUpdate.static;
+
   export const listQuery = t.Object({
     q: t.Optional(t.String()),
     status: t.Optional(t.String()),

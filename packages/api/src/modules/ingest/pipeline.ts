@@ -1,10 +1,14 @@
-import { fetchYouTubeTranscript, resolveYouTubeAudioUrl } from './youtube';
+import {
+  fetchYouTubeTranscript,
+  resolveYouTubeAudioUrl,
+  streamYouTubeAudioViaYtDlp,
+} from './youtube';
 import { captionItemsToSegments, groupWordsIntoSegments } from './segments';
 import { IngestService } from './service';
 import { withRetry } from './retry';
 import { embedSegments } from './embed';
 import { emitAssetStatus } from '../../events/asset-events';
-import { transcribeAudio } from './assemblyai';
+import { transcribeAudio, transcribeAudioStream } from './assemblyai';
 import { extractVideoContext } from './video-context';
 import type { TranscriptionStrategy } from './model';
 import { createUploadDownloadUrl } from './upload-storage';
@@ -109,11 +113,49 @@ async function transcribeViaAudio(
   const audioUrl = await retry('resolving-audio', () =>
     resolveYouTubeAudioUrl(sourceUrl)
   );
-  const result = await retry('transcribing-audio', () =>
-    transcribeAudio(audioUrl)
-  );
-  const segments = groupWordsIntoSegments(result.words);
-  return { language: result.language_code, segments, provider: 'assemblyai' as const };
+
+  try {
+    const result = await retry('transcribing-audio', () =>
+      transcribeAudio(audioUrl)
+    );
+    const segments = groupWordsIntoSegments(result.words);
+    return { language: result.language_code, segments, provider: 'assemblyai' as const };
+  } catch (directError) {
+    const directMessage =
+      directError instanceof Error
+        ? directError.message
+        : 'Unknown direct audio transcription error';
+
+    console.warn(
+      `[ingest] Direct YouTube audio URL transcription failed, retrying via yt-dlp stream: ${directMessage}`
+    );
+
+    try {
+      const result = await retry('transcribing-audio-stream', async () => {
+        const streamHandle = await streamYouTubeAudioViaYtDlp(sourceUrl);
+
+        try {
+          const streamedResult = await transcribeAudioStream(streamHandle.stream);
+          await streamHandle.waitForExit();
+          return streamedResult;
+        } finally {
+          streamHandle.dispose();
+        }
+      });
+
+      const segments = groupWordsIntoSegments(result.words);
+      return { language: result.language_code, segments, provider: 'assemblyai' as const };
+    } catch (streamError) {
+      const streamMessage =
+        streamError instanceof Error
+          ? streamError.message
+          : 'Unknown yt-dlp stream transcription error';
+
+      throw new Error(
+        `Audio transcription failed via direct URL (${directMessage}) and yt-dlp stream (${streamMessage})`
+      );
+    }
+  }
 }
 
 async function transcribeViaCaptions(
