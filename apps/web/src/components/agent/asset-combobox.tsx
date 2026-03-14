@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { Button } from '~/components/ui/button';
@@ -34,7 +34,6 @@ interface AssetComboboxProps {
 export function AssetCombobox({ assets, value, onChange }: AssetComboboxProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const listRef = useRef<HTMLDivElement>(null);
 
   const query = useMemo(
     () => ({ status: 'ready', ...(search ? { q: search } : {}) }),
@@ -73,23 +72,6 @@ export function AssetCombobox({ assets, value, onChange }: AssetComboboxProps) {
     const fromInitial = assets.find((a) => a.id === value);
     return fromInitial?.title;
   }, [value, items, assets]);
-
-  const handleScroll = useCallback(() => {
-    const el = listRef.current;
-    if (!el || !hasNextPage || isFetchingNextPage) return;
-    const { scrollTop, scrollHeight, clientHeight } = el;
-    if (scrollHeight - scrollTop - clientHeight < 100) {
-      fetchNextPage();
-    }
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
-
-  // Attach scroll listener to the cmdk list element
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el || !open) return;
-    el.addEventListener('scroll', handleScroll);
-    return () => el.removeEventListener('scroll', handleScroll);
-  }, [open, handleScroll]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

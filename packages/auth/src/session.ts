@@ -9,13 +9,23 @@ import { z } from 'zod';
  * This avoids pulling in RESEND_API_KEY, ASSEMBLYAI_API_KEY, etc.
  * that the web app doesn't (and shouldn't) have.
  */
-const sessionEnvSchema = z.object({
-  BETTER_AUTH_SECRET: z.string().min(32),
-  BETTER_AUTH_URL: z.string().min(1),
-  CORS_ORIGIN: z.string().default('http://localhost:3000'),
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  COOKIE_DOMAIN: z.string().min(1),
-});
+const sessionEnvSchema = z
+  .object({
+    BETTER_AUTH_SECRET: z.string().min(32),
+    BETTER_AUTH_URL: z.string().min(1),
+    CORS_ORIGIN: z.string().default('http://localhost:3000'),
+    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+    COOKIE_DOMAIN: z.string().optional().default(''),
+  })
+  .superRefine((env, ctx) => {
+    if (env.NODE_ENV === 'production' && !env.COOKIE_DOMAIN) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['COOKIE_DOMAIN'],
+        message: 'COOKIE_DOMAIN is required in production',
+      });
+    }
+  });
 
 let _sessionAuth: ReturnType<typeof betterAuth> | undefined;
 
@@ -41,7 +51,7 @@ export function sessionAuth() {
         sameSite: 'lax',
         secure: env.NODE_ENV === 'production',
         httpOnly: true,
-        ...(env.NODE_ENV === 'production' ? { domain: env.COOKIE_DOMAIN } : {}),
+        ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
       },
     },
   });
