@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { fetchAssets } from '~/lib/api-fetchers';
 import { queryKeys } from '~/lib/query-keys';
@@ -11,6 +12,7 @@ import {
   DashboardPanelContent,
 } from '~/components/dashboard/dashboard-panel';
 import { Spinner } from '~/components/ui/spinner';
+import { AssetCombobox } from './asset-combobox';
 import type { Asset } from '@milkpod/api/types';
 
 interface AgentTabProps {
@@ -19,6 +21,9 @@ interface AgentTabProps {
 }
 
 export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
+  const searchParams = useSearchParams();
+  const assetParam = searchParams.get('asset');
+
   const { data: assets = [], isLoading } = useQuery({
     queryKey: queryKeys.assets.list(),
     queryFn: () => fetchAssets(),
@@ -28,7 +33,7 @@ export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
   });
 
   const [selectedId, setSelectedId] = useState<string | undefined>(
-    initialAssetId
+    initialAssetId ?? assetParam ?? undefined
   );
 
   useEffect(() => {
@@ -39,6 +44,22 @@ export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
     if (selectedId && assets.some((a) => a.id === selectedId)) return selectedId;
     return assets[0]?.id;
   }, [selectedId, assets]);
+
+  // Sync selected asset to the URL
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (effectiveSelectedId) {
+      url.searchParams.set('asset', effectiveSelectedId);
+    } else {
+      url.searchParams.delete('asset');
+    }
+    window.history.replaceState(null, '', url.toString());
+  }, [effectiveSelectedId]);
+
+  const handleAssetChange = useCallback((id: string) => {
+    setSelectedId(id);
+  }, []);
 
   const selectedAsset = useMemo(
     () => assets.find((asset) => asset.id === effectiveSelectedId),
@@ -87,17 +108,11 @@ export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
         >
           Agent
         </h2>
-        <select
-          value={effectiveSelectedId ?? ''}
-          onChange={(e) => setSelectedId(e.target.value)}
-          className="h-8 rounded-md border border-ring/20 bg-background px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-accent/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
-        >
-          {assets.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.title}
-            </option>
-          ))}
-        </select>
+        <AssetCombobox
+          assets={assets}
+          value={effectiveSelectedId}
+          onChange={handleAssetChange}
+        />
       </div>
       <DashboardPanel className="h-[600px] border border-ring/12 bg-accent/5">
         {effectiveSelectedId && selectedAsset ? (
