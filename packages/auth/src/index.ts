@@ -5,8 +5,11 @@ import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { emailOTP } from 'better-auth/plugins/email-otp';
 import { Resend } from 'resend';
+import { buildOtpEmail } from './otp-email-template';
 
 let _auth: ReturnType<typeof betterAuth<BetterAuthOptions>> | undefined;
+
+const AUTH_FROM_EMAIL = 'Milkpod <noreply@croisillies.xyz>';
 
 export function auth() {
   if (_auth) return _auth;
@@ -36,15 +39,14 @@ export function auth() {
       emailOTP({
         sendVerificationOTP: async ({ email, otp, type }) => {
           const safeOtp = String(otp).replace(/[^0-9]/g, '');
+          const template = buildOtpEmail(type, safeOtp);
           try {
             await resend.emails.send({
-              from: 'Milkpod <noreply@milkpod.app>',
+              from: AUTH_FROM_EMAIL,
               to: email,
-              subject:
-                type === 'forget-password'
-                  ? `Reset your password — ${safeOtp}`
-                  : `Your sign-in code — ${safeOtp}`,
-              html: `<p>Your verification code is: <strong>${safeOtp}</strong></p><p>This code expires in 5 minutes.</p>`,
+              subject: template.subject,
+              html: template.html,
+              text: template.text,
             });
           } catch (error) {
             console.error('Failed to send verification OTP via Resend', {
