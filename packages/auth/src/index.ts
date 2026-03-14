@@ -49,10 +49,11 @@ export function auth() {
               text: template.text,
             });
           } catch (error) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
             console.error('Failed to send verification OTP via Resend', {
-              email,
               type,
-              error,
+              errorMessage,
             });
             throw error;
           }
@@ -73,17 +74,10 @@ export function auth() {
     },
     advanced: {
       defaultCookieAttributes: {
-        sameSite:
-          env.NODE_ENV === 'production'
-            ? env.COOKIE_DOMAIN
-              ? 'lax'
-              : 'none'
-            : 'lax',
+        sameSite: 'lax',
         secure: env.NODE_ENV === 'production',
         httpOnly: true,
-        ...(env.NODE_ENV === 'production' && env.COOKIE_DOMAIN
-          ? { domain: env.COOKIE_DOMAIN }
-          : {}),
+        ...(env.NODE_ENV === 'production' ? { domain: env.COOKIE_DOMAIN } : {}),
       },
     },
   });
