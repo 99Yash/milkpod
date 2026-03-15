@@ -1,6 +1,6 @@
 import { db } from '@milkpod/db';
 import { transcripts, transcriptSegments } from '@milkpod/db/schemas';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { findRelevantSegments } from '@milkpod/ai';
 import { buildTsQuery } from './number-words';
 
@@ -41,13 +41,33 @@ export abstract class TranscriptSearchService {
     query: string,
     limit = 50
   ): Promise<TranscriptSearchResult[]> {
-    const [transcript] = await db()
+    const transcriptRows = await db()
       .select({ id: transcripts.id, language: transcripts.language })
       .from(transcripts)
       .where(eq(transcripts.assetId, assetId))
-      .limit(1);
+      .orderBy(desc(transcripts.createdAt));
 
-    if (!transcript) return [];
+    const latestTranscript = transcriptRows[0];
+    if (!latestTranscript) return [];
+
+    let transcript = latestTranscript;
+
+    if (transcriptRows.length > 1) {
+      const transcriptIds = transcriptRows.map((row) => row.id);
+      const transcriptRowsWithSegments = await db()
+        .select({ transcriptId: transcriptSegments.transcriptId })
+        .from(transcriptSegments)
+        .where(inArray(transcriptSegments.transcriptId, transcriptIds))
+        .groupBy(transcriptSegments.transcriptId);
+
+      const transcriptIdsWithSegments = new Set(
+        transcriptRowsWithSegments.map((row) => row.transcriptId),
+      );
+
+      transcript =
+        transcriptRows.find((row) => transcriptIdsWithSegments.has(row.id))
+        ?? latestTranscript;
+    }
 
     // --- Language-aware retrieval heuristic ---
     const isEnglishTranscript =
