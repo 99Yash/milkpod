@@ -63,6 +63,11 @@ async function finalizePipeline(
   retry: ReturnType<typeof makeRetry>,
   metadata?: { transcriptionMethod: TranscriptionMethod; fallbackReason?: string },
 ) {
+  // Ensure we never finalize an empty transcript
+  const source: 'audio' | 'captions' =
+    metadata?.transcriptionMethod === 'captions' ? 'captions' : 'audio';
+  assertHasSegments(segments, source);
+
   // Derive duration from the last segment
   const lastSegment = segments[segments.length - 1];
   if (lastSegment) {
