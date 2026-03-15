@@ -13,7 +13,6 @@ import { TOOL_META } from './tool-meta';
 interface ToolResultProps {
   toolName: string;
   output: ToolOutput;
-  isStreaming: boolean;
 }
 
 function getLabel(output: ToolOutput) {
@@ -87,10 +86,10 @@ function getToolIcon(output: ToolOutput) {
 /** Maximum number of timestamp pills to show before "+N more" */
 const MAX_PILLS = 8;
 
-export function ToolResult({ toolName, output, isStreaming }: ToolResultProps) {
+export function ToolResult({ toolName, output }: ToolResultProps) {
   const isLoading =
     output.status === 'searching' || output.status === 'loading';
-  const pending = isLoading || isStreaming;
+  const pending = isLoading;
   const { isClickable, handleClick, momentDialog, clearDialog } =
     useTimestampAction();
   const label = getLabel(output);

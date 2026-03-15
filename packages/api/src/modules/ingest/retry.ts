@@ -1,3 +1,5 @@
+import { toSafeErrorMessage } from './error-message';
+
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 
@@ -20,8 +22,7 @@ export async function withRetry<T>(
     try {
       return await fn();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Unknown error';
+      const message = toSafeErrorMessage(error);
       await opts.onError(opts.entityId, message);
       console.error(
         `[${opts.logPrefix}] Stage "${opts.stage}" failed for ${opts.entityId} (attempt ${attempt + 1}/${MAX_RETRIES + 1}):`,

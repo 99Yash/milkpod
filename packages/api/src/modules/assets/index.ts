@@ -5,7 +5,7 @@ import { AssetService } from './service';
 import { TranscriptSearchService } from './search-service';
 import { IngestService } from '../ingest/service';
 import { orchestratePipeline, orchestrateUploadPipeline } from '../ingest/pipeline';
-import { assetEvents, type AssetStatusEvent } from '../../events/asset-events';
+import { assetEvents, emitAssetStatus, type AssetStatusEvent } from '../../events/asset-events';
 import { deleteStoredUpload } from '../ingest/upload-storage';
 
 export const assets = new Elysia({ prefix: '/api/assets' })
@@ -22,8 +22,8 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     async ({ user, query }) => {
       if (query.paginate === 'true') {
         const limit = query.limit
-          ? Math.min(Math.max(Number(query.limit) || 24, 1), 100)
-          : 24;
+          ? Math.min(Math.max(Number(query.limit) || 12, 1), 100)
+          : 12;
 
         return AssetService.listPage(user.id, query, limit);
       }
@@ -170,6 +170,7 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     }
 
     await IngestService.resetForRetry(asset.id);
+    emitAssetStatus(user.id, asset.id, 'queued', 'Retrying...');
 
     if (asset.sourceType === 'upload') {
       orchestrateUploadPipeline(asset.id, asset.sourceUrl, user.id, asset.mediaType).catch((err) => {

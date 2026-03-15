@@ -7,6 +7,7 @@ import { openai } from '@ai-sdk/openai';
 import type { MilkpodMessage } from './types';
 
 const guardrailModel = openai('gpt-4o-mini');
+const GUARDRAIL_TIMEOUT_MS = 8_000;
 
 const CLASSIFY_PROMPT = `You are a content classifier for Milkpod, a transcript Q&A assistant. The user is already viewing a specific transcript — determine if their message is appropriate.
 
@@ -53,6 +54,7 @@ const DENY_PATTERNS = [
 ];
 
 const MAX_HEURISTIC_LENGTH = 2000;
+const FAST_PATH_MAX_LENGTH = 600;
 
 function heuristicCheck(text: string): GuardrailResult {
   if (text.length > MAX_HEURISTIC_LENGTH) {
@@ -80,19 +82,28 @@ export async function checkInput(
   const text = textParts.map((p) => p.text).join(' ');
   if (!text.trim()) return { allowed: true };
 
+  // Fast path for typical short chat prompts to minimize TTFT.
+  // We still block obvious jailbreak/prompt-injection patterns first.
+  const heuristic = heuristicCheck(text);
+  if (!heuristic.allowed) return heuristic;
+  if (text.length <= FAST_PATH_MAX_LENGTH) {
+    return { allowed: true };
+  }
+
   try {
     const result = await generateText({
       model: guardrailModel,
       system: CLASSIFY_PROMPT,
       prompt: text,
+      timeout: { totalMs: GUARDRAIL_TIMEOUT_MS },
     });
 
     const verdict = result.text.trim().toUpperCase();
     return { allowed: verdict !== 'DENY' };
   } catch (error) {
-    // Fail closed — use heuristic fallback when classification model is unavailable
+    // For long prompts, fall back to the heuristic filter on model errors/timeouts.
     console.error('[Guardrail Error]', error);
-    return heuristicCheck(text);
+    return heuristic;
   }
 }
 

@@ -14,6 +14,8 @@ import type {
   ReadTranscriptOutput,
 } from './types';
 
+const READ_TRANSCRIPT_MAX_SEGMENTS = 36;
+
 // --- Schemas ---
 
 const retrieveSegmentsInput = z.object({
@@ -152,7 +154,10 @@ export function createQAToolSet(context: ToolContext = {}) {
         return;
       }
 
-      const overview = await getTranscriptOverview(context.assetId);
+      const overview = await getTranscriptOverview(
+        context.assetId,
+        READ_TRANSCRIPT_MAX_SEGMENTS,
+      );
 
       if (!overview) {
         yield {
