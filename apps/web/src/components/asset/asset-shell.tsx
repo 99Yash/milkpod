@@ -1,37 +1,40 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
-import Link from 'next/link';
+import type { AssetStatus, AssetWithTranscript } from '@milkpod/api/types';
+import { isProcessingStatus } from '@milkpod/api/types';
 import {
   ArrowLeft,
+  BrainCircuit,
   Clock,
+  List,
+  MessageSquareText,
   Mic,
   RotateCcw,
   User,
 } from 'lucide-react';
+import Link from 'next/link';
+import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { ShareDialog } from '~/components/share/share-dialog';
-import { fetchAssetDetail } from '~/lib/api-fetchers';
-import { api, toToastErrorMessage } from '~/lib/api';
-import { formatDuration } from '~/lib/format';
-import { Badge } from '~/components/ui/badge';
-import { Spinner } from '~/components/ui/spinner';
-import { Button } from '~/components/ui/button';
+import { AssetSourceProvider } from '~/components/chat/asset-source-context';
 import {
   DashboardPanel,
   DashboardPanelContent,
 } from '~/components/dashboard/dashboard-panel';
-import { AssetTabBar } from './asset-tab-bar';
-import { AssetTabsClient } from './asset-tabs-client';
-import { AssetTabProvider } from './asset-tab-context';
-import type { AssetWithTranscript, AssetStatus } from '@milkpod/api/types';
-import { isProcessingStatus } from '@milkpod/api/types';
-import { AssetSourceProvider } from '~/components/chat/asset-source-context';
+import { ShareDialog } from '~/components/share/share-dialog';
+import { Badge } from '~/components/ui/badge';
+import { Button } from '~/components/ui/button';
+import { Spinner } from '~/components/ui/spinner';
 import { AssetProvider } from '~/contexts/asset-context';
 import {
   useAssetEvents,
   type AssetStatusEvent,
 } from '~/hooks/use-asset-events';
+import { api, toToastErrorMessage } from '~/lib/api';
+import { fetchAssetDetail } from '~/lib/api-fetchers';
+import { formatDuration } from '~/lib/format';
+import { AssetTabBar } from './asset-tab-bar';
+import { AssetTabProvider } from './asset-tab-context';
+import { AssetTabsClient } from './asset-tabs-client';
 
 interface AssetShellProps {
   assetId: string;
@@ -46,6 +49,26 @@ const statusLabels: Record<AssetStatus, string> = {
   ready: 'Ready',
   failed: 'Failed',
 };
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function readIngestMethod(providerMetadata: unknown): string | null {
+  const metadata = asRecord(providerMetadata);
+  const method = metadata?.transcriptionMethod;
+  return typeof method === 'string' ? method : null;
+}
+
+function readFallbackReason(providerMetadata: unknown): string | null {
+  const metadata = asRecord(providerMetadata);
+  const reason = metadata?.fallbackReason;
+  return typeof reason === 'string' ? reason : null;
+}
 
 export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
   const [asset, setAsset] = useState<AssetWithTranscript>(initialAsset);
@@ -76,7 +99,10 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
             : undefined;
 
         toast.error(
-          toToastErrorMessage(errValue ?? error, 'Could not start retry. Please try again.'),
+          toToastErrorMessage(
+            errValue ?? error,
+            'Could not start retry. Please try again.',
+          ),
         );
         return;
       }
@@ -119,7 +145,7 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
       },
       [assetId],
     ),
-    { onPollFallback: refreshAsset }
+    { onPollFallback: refreshAsset },
   );
 
   const isReady = asset.status === 'ready';
@@ -132,6 +158,39 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
       ),
     [asset.segments],
   );
+  const transcriptInfo = useMemo(() => {
+    if (!asset.transcript) return null;
+
+    const method = readIngestMethod(asset.transcript.providerMetadata);
+    const fallbackReason = readFallbackReason(
+      asset.transcript.providerMetadata,
+    );
+
+    const methodLabel =
+      method === 'audio'
+        ? 'Audio transcription'
+        : method === 'captions'
+          ? 'Captions transcription'
+          : method === 'audio_fallback_to_captions'
+            ? 'Captions'
+            : null;
+
+    const providerLabel =
+      asset.transcript.provider === 'assemblyai'
+        ? 'AssemblyAI'
+        : asset.transcript.provider === 'youtube'
+          ? 'YouTube'
+          : asset.transcript.provider;
+
+    return {
+      method,
+      methodLabel,
+      fallbackReason,
+      providerLabel,
+      language: asset.transcript.language,
+      totalSegments: asset.transcript.totalSegments ?? asset.segments.length,
+    };
+  }, [asset.transcript, asset.segments.length]);
 
   return (
     <AssetProvider asset={asset} assetId={assetId} setAsset={setAsset}>
@@ -171,13 +230,17 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
                     </Button>
                   )}
                   <Badge
-                    variant={asset.status === 'failed' ? 'destructive' : 'outline'}
+                    variant={
+                      asset.status === 'failed' ? 'destructive' : 'outline'
+                    }
                     className="text-xs"
                   >
                     {isProcessingStatus(asset.status) && (
                       <Spinner className="mr-1 size-3" />
                     )}
-                    {progressMessage || statusLabels[asset.status] || asset.status}
+                    {progressMessage ||
+                      statusLabels[asset.status] ||
+                      asset.status}
                   </Badge>
                   {isReady && (
                     <ShareDialog assetId={assetId} resourceName={asset.title} />
@@ -211,6 +274,45 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
                   </span>
                 )}
               </div>
+
+              {transcriptInfo && (
+                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  <Badge variant="outline" className="gap-1.5 text-[11px]">
+                    <Mic className="size-3" />
+                    {transcriptInfo.providerLabel}
+                  </Badge>
+                  {transcriptInfo.methodLabel && (
+                    <Badge
+                      variant="outline"
+                      className="gap-1.5 text-[11px]"
+                      title={transcriptInfo.fallbackReason ?? undefined}
+                    >
+                      {transcriptInfo.method ===
+                      'audio_fallback_to_captions' ? (
+                        <MessageSquareText className="size-3" />
+                      ) : (
+                        <BrainCircuit className="size-3" />
+                      )}
+                      {transcriptInfo.methodLabel}
+                    </Badge>
+                  )}
+                  {transcriptInfo.language && (
+                    <Badge variant="outline" className="text-[11px]">
+                      Lang: {transcriptInfo.language.toUpperCase()}
+                    </Badge>
+                  )}
+                  <Badge variant="outline" className="gap-1.5 text-[11px]">
+                    <List className="size-3" />
+                    {transcriptInfo.totalSegments} segments
+                  </Badge>
+                  <Badge variant="outline" className="gap-1.5 text-[11px]">
+                    <BrainCircuit className="size-3" />
+                    {speakers.size > 0
+                      ? `${speakers.size} speaker${speakers.size > 1 ? 's' : ''}`
+                      : 'No speaker labels'}
+                  </Badge>
+                </div>
+              )}
             </div>
 
             {/* Main content */}

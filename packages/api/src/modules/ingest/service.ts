@@ -21,15 +21,25 @@ export abstract class IngestService {
   static async updateStatus(
     assetId: string,
     status: AssetStatus,
-    opts?: { lastError?: string; duration?: number }
+    opts?: { lastError?: string | null; duration?: number }
   ) {
+    const values: {
+      status: AssetStatus;
+      lastError?: string | null;
+      duration?: number;
+    } = { status };
+
+    if (opts && 'lastError' in opts) {
+      values.lastError = opts.lastError ?? null;
+    }
+
+    if (opts?.duration != null) {
+      values.duration = opts.duration;
+    }
+
     await db()
       .update(mediaAssets)
-      .set({
-        status,
-        ...(opts?.lastError != null && { lastError: opts.lastError }),
-        ...(opts?.duration != null && { duration: opts.duration }),
-      })
+      .set(values)
       .where(eq(mediaAssets.id, assetId));
   }
 
