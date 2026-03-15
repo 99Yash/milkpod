@@ -1,18 +1,32 @@
 import {
-  BookOpen,
   ChevronDown,
   ChevronUp,
-  List,
   Loader2,
+  Mic,
   Search,
   X,
 } from 'lucide-react';
 import { useCallback } from 'react';
+import { Avatar, AvatarFallback } from '~/components/ui/avatar';
+import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { cn } from '~/lib/utils';
 import type { SpeakerNamesMap } from './speaker-names';
 import { SpeakerNamesPopover } from './speaker-names-popover';
-import type { ViewMode } from './types';
+
+function getSpeakerInitials(label: string): string {
+  const parts = label
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) {
+    return parts[0]!.slice(0, 2).toUpperCase();
+  }
+
+  return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
+}
 
 interface TranscriptToolbarProps {
   search: string;
@@ -21,14 +35,20 @@ interface TranscriptToolbarProps {
   activeMatchIndex: number;
   onPrevMatch: () => void;
   onNextMatch: () => void;
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
-  showViewToggle: boolean;
   isSearching?: boolean;
   speakerIds?: string[];
   speakerNames?: SpeakerNamesMap;
   onSaveSpeakerNames?: (speakerNames: SpeakerNamesMap) => Promise<void>;
   isSavingSpeakerNames?: boolean;
+  speakerFilters?: Array<{
+    id: string;
+    label: string;
+    count: number;
+    active: boolean;
+  }>;
+  isAllSpeakersActive?: boolean;
+  onToggleSpeakerFilter?: (speakerId: string) => void;
+  onSelectAllSpeakers?: () => void;
 }
 
 export function TranscriptToolbar({
@@ -38,14 +58,15 @@ export function TranscriptToolbar({
   activeMatchIndex,
   onPrevMatch,
   onNextMatch,
-  viewMode,
-  onViewModeChange,
-  showViewToggle,
   isSearching,
   speakerIds = [],
   speakerNames = {},
   onSaveSpeakerNames,
   isSavingSpeakerNames,
+  speakerFilters = [],
+  isAllSpeakersActive = true,
+  onToggleSpeakerFilter,
+  onSelectAllSpeakers,
 }: TranscriptToolbarProps) {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -62,7 +83,6 @@ export function TranscriptToolbar({
   );
 
   const hasSearch = search.length > 0;
-
   return (
     <div className="shrink-0 px-5 py-3">
       <div className="flex items-center gap-3">
@@ -130,39 +150,56 @@ export function TranscriptToolbar({
           />
         )}
 
-        {showViewToggle && (
-          <div className="flex shrink-0 items-center rounded-full border border-border/60 bg-muted/40 p-0.5">
-            <button
-              type="button"
-              onClick={() => onViewModeChange('flat')}
-              className={cn(
-                'rounded-full p-1.5 transition-colors',
-                viewMode === 'flat'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-              aria-label="List view"
-              aria-pressed={viewMode === 'flat'}
-            >
-              <List className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onViewModeChange('chapters')}
-              className={cn(
-                'rounded-full p-1.5 transition-colors',
-                viewMode === 'chapters'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-              aria-label="Chapter view"
-              aria-pressed={viewMode === 'chapters'}
-            >
-              <BookOpen className="size-4" />
-            </button>
-          </div>
-        )}
       </div>
+
+      {speakerFilters.length > 1 && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 pl-0.5">
+          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Mic className="size-3.5" />
+            Speaker focus
+          </span>
+
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onSelectAllSpeakers}
+            className={cn(
+              'h-7 rounded-full px-2 text-xs',
+              isAllSpeakersActive
+                ? 'border-ring/60 bg-accent text-foreground ring-2 ring-ring/35'
+                : 'text-muted-foreground',
+            )}
+            aria-pressed={isAllSpeakersActive}
+          >
+            All
+          </Button>
+
+          {speakerFilters.map((speaker) => (
+            <Button
+              key={speaker.id}
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => onToggleSpeakerFilter?.(speaker.id)}
+              className={cn(
+                'h-7 rounded-full px-2 text-xs',
+                speaker.active
+                  ? 'border-ring/60 bg-accent text-foreground ring-2 ring-ring/35'
+                  : 'text-muted-foreground',
+              )}
+              aria-pressed={speaker.active}
+            >
+              <Avatar className="size-4 border border-border/60">
+                <AvatarFallback className="text-[9px] font-semibold">
+                  {getSpeakerInitials(speaker.label)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="max-w-[8rem] truncate">{speaker.label}</span>
+            </Button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

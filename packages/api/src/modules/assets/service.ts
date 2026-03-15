@@ -180,7 +180,7 @@ export abstract class AssetService {
   static async listPage(
     userId: string,
     query: AssetModel.ListQuery,
-    limit = 24,
+    limit = 12,
   ): Promise<AssetPage> {
     const pageSize = Math.max(1, Math.min(limit, 100));
     const conditions = AssetService.buildSearchConditions(userId, query);
@@ -232,29 +232,78 @@ export abstract class AssetService {
     const asset = await AssetService.getById(id, userId);
     if (!asset) return null;
 
-    const [transcript] = await db()
+    const transcriptRows = await db()
       .select()
       .from(transcripts)
-      .where(eq(transcripts.assetId, id));
+      .where(eq(transcripts.assetId, id))
+      .orderBy(desc(transcripts.createdAt));
 
-    if (!transcript) return { ...asset, transcript: null, segments: [] };
+    const latestTranscript = transcriptRows[0];
+    if (!latestTranscript) return { ...asset, transcript: null, segments: [] };
 
-    const segments = await db()
+    const transcriptIds = transcriptRows.map((row) => row.id);
+    const allSegments = await db()
       .select()
       .from(transcriptSegments)
-      .where(eq(transcriptSegments.transcriptId, transcript.id))
-      .orderBy(transcriptSegments.startTime);
+      .where(inArray(transcriptSegments.transcriptId, transcriptIds))
+      .orderBy(transcriptSegments.transcriptId, transcriptSegments.startTime);
+
+    const segmentsByTranscript = Map.groupBy(
+      allSegments,
+      (segment) => segment.transcriptId,
+    );
+
+    const transcript =
+      transcriptRows.find((row) => (segmentsByTranscript.get(row.id)?.length ?? 0) > 0)
+      ?? latestTranscript;
+
+    const segments = segmentsByTranscript.get(transcript.id) ?? [];
 
     return { ...asset, transcript, segments };
   }
 
   static async getTranscriptLanguage(assetId: string): Promise<string | null> {
-    const [row] = await db()
-      .select({ language: transcripts.language })
+    const transcriptRows = await db()
+      .select({ id: transcripts.id, language: transcripts.language })
       .from(transcripts)
       .where(eq(transcripts.assetId, assetId))
+      .orderBy(desc(transcripts.createdAt));
+
+    const latestTranscript = transcriptRows[0];
+    if (!latestTranscript) return null;
+
+    const transcriptIds = transcriptRows.map((row) => row.id);
+
+    const transcriptRowsWithSegments = await db()
+      .select({ transcriptId: transcriptSegments.transcriptId })
+      .from(transcriptSegments)
+      .where(inArray(transcriptSegments.transcriptId, transcriptIds))
+      .groupBy(transcriptSegments.transcriptId);
+
+    const transcriptIdsWithSegments = new Set(
+      transcriptRowsWithSegments.map((row) => row.transcriptId),
+    );
+
+    const preferred = transcriptRows.find((row) =>
+      transcriptIdsWithSegments.has(row.id),
+    );
+
+    return preferred?.language ?? latestTranscript.language ?? null;
+  }
+
+  static async hasTranscriptSegments(assetId: string): Promise<boolean> {
+    const [row] = await db()
+      .select({ id: transcriptSegments.id })
+      .from(transcriptSegments)
+      .where(
+        inArray(
+          transcriptSegments.transcriptId,
+          db().select({ id: transcripts.id }).from(transcripts).where(eq(transcripts.assetId, assetId)),
+        ),
+      )
       .limit(1);
-    return row?.language ?? null;
+
+    return !!row;
   }
 
   static async updateSpeakerNames(

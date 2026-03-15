@@ -4,22 +4,19 @@ import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { TranscriptSegment } from '@milkpod/api/types';
 import { coalesceSegments } from './transcript/types';
-import type { ViewMode } from './transcript/types';
-import { analyzeContent, detectChapters } from './transcript/chapter-detection';
 import { TranscriptToolbar } from './transcript/transcript-toolbar';
 import { FlatView } from './transcript/flat-view';
-import { ChapteredView } from './transcript/chaptered-view';
 import { searchTranscript } from '~/lib/api-fetchers';
 import { queryKeys } from '~/lib/query-keys';
 import { buildHighlightRegex } from '~/lib/number-words';
 import {
   extractSpeakerNames,
+  resolveSpeakerLabel,
   sortSpeakerIds,
   type SpeakerNamesMap,
 } from './transcript/speaker-names';
 
 const SEARCH_DEBOUNCE_MS = 300;
-const SCROLL_TO_MATCH_DELAY_MS = 160; // Wait for accordion expansion in chaptered view
 const SERVER_SEARCH_MIN_LENGTH = 3;
 
 interface TranscriptViewerProps {
@@ -45,6 +42,7 @@ export function TranscriptViewer({
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+  const [selectedSpeakerId, setSelectedSpeakerId] = useState<string | null>(null);
 
   useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
@@ -73,27 +71,51 @@ export function TranscriptViewer({
 
     return sortSpeakerIds(Array.from(uniqueSpeakerIds));
   }, [segments]);
-  const profile = useMemo(() => analyzeContent(groups), [groups]);
-  const chapters = useMemo(() => detectChapters(groups), [groups]);
+  const speakerStats = useMemo(() => {
+    const speakerCounts = new Map<string, number>();
 
-  const [viewMode, setViewMode] = useState<ViewMode>(profile.defaultMode);
+    for (const group of groups) {
+      if (!group.speaker) continue;
+      speakerCounts.set(
+        group.speaker,
+        (speakerCounts.get(group.speaker) ?? 0) + 1,
+      );
+    }
+
+    return sortSpeakerIds(Array.from(speakerCounts.keys()))
+      .map((speakerId) => ({
+        id: speakerId,
+        label: resolveSpeakerLabel(speakerId, speakerNames) ?? speakerId,
+        count: speakerCounts.get(speakerId) ?? 0,
+      }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  }, [groups, speakerNames]);
+
+  const hasEffectiveSpeakerFilter = useMemo(() => {
+    return selectedSpeakerId != null && speakerIds.includes(selectedSpeakerId);
+  }, [selectedSpeakerId, speakerIds]);
+
+  const speakerFilteredGroups = useMemo(() => {
+    if (!hasEffectiveSpeakerFilter) return groups;
+    return groups.filter((group) => group.speaker === selectedSpeakerId);
+  }, [groups, hasEffectiveSpeakerFilter, selectedSpeakerId]);
 
   useEffect(() => {
-    setViewMode(profile.defaultMode);
-  }, [profile.defaultMode]);
-
-  const showViewToggle = groups.length > 5;
+    if (!selectedSpeakerId) return;
+    if (speakerIds.includes(selectedSpeakerId)) return;
+    setSelectedSpeakerId(null);
+  }, [selectedSpeakerId, speakerIds]);
 
   const segmentToGroupId = useMemo(() => {
     const map = new Map<string, string>();
-    for (const group of groups) {
+    for (const group of speakerFilteredGroups) {
       const groupId = group.segments[0].id;
       for (const seg of group.segments) {
         map.set(seg.id, groupId);
       }
     }
     return map;
-  }, [groups]);
+  }, [speakerFilteredGroups]);
 
   const serverMatchedGroupIds = useMemo(() => {
     if (!serverResults) return null;
@@ -114,7 +136,7 @@ export function TranscriptViewer({
 
     if (serverMatchedGroupIds) {
       const regex = buildHighlightRegex(debouncedSearch);
-      for (const group of groups) {
+      for (const group of speakerFilteredGroups) {
         const id = group.segments[0].id;
         if (!serverMatchedGroupIds.has(id)) continue;
         offsets.set(id, matchList.length);
@@ -131,7 +153,7 @@ export function TranscriptViewer({
     }
 
     const q = debouncedSearch.toLowerCase();
-    for (const group of groups) {
+    for (const group of speakerFilteredGroups) {
       const id = group.segments[0].id;
       offsets.set(id, matchList.length);
 
@@ -144,12 +166,29 @@ export function TranscriptViewer({
     }
 
     return { matches: matchList, matchOffsets: offsets };
-  }, [groups, debouncedSearch, serverMatchedGroupIds]);
+  }, [speakerFilteredGroups, debouncedSearch, serverMatchedGroupIds]);
 
   // Reset active match index when search changes
   useEffect(() => {
     setActiveMatchIndex(0);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, selectedSpeakerId]);
+
+  const speakerFilters = useMemo(
+    () =>
+      speakerStats.map((speaker) => ({
+        ...speaker,
+        active: hasEffectiveSpeakerFilter && speaker.id === selectedSpeakerId,
+      })),
+    [speakerStats, hasEffectiveSpeakerFilter, selectedSpeakerId],
+  );
+
+  const toggleSpeakerFilter = useCallback((speakerId: string) => {
+    setSelectedSpeakerId((prev) => (prev === speakerId ? null : speakerId));
+  }, []);
+
+  const clearSpeakerFilters = useCallback(() => {
+    setSelectedSpeakerId(null);
+  }, []);
 
   const activeMatchGroupId = matches[activeMatchIndex] ?? null;
 
@@ -159,25 +198,6 @@ export function TranscriptViewer({
     );
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
-
-  useEffect(() => {
-    if (activeSegmentId && viewMode !== 'flat') {
-      scrollToSegment(activeSegmentId);
-    }
-  }, [activeSegmentId, scrollToSegment, viewMode]);
-
-  // Scroll to active match when it changes (chaptered view only; FlatView handles its own)
-  useEffect(() => {
-    if (matches.length === 0 || viewMode === 'flat') return;
-
-    const timer = setTimeout(() => {
-      const el = containerRef.current?.querySelector(
-        '[data-active-match]',
-      );
-      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, SCROLL_TO_MATCH_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [activeMatchIndex, matches.length, viewMode]);
 
   const handleNextMatch = useCallback(() => {
     if (matches.length === 0) return;
@@ -208,49 +228,32 @@ export function TranscriptViewer({
         activeMatchIndex={activeMatchIndex}
         onPrevMatch={handlePrevMatch}
         onNextMatch={handleNextMatch}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        showViewToggle={showViewToggle}
         isSearching={isSearching}
         speakerIds={speakerIds}
         speakerNames={speakerNames}
         onSaveSpeakerNames={onSaveSpeakerNames}
         isSavingSpeakerNames={isSavingSpeakerNames}
+        speakerFilters={speakerFilters}
+        isAllSpeakersActive={!hasEffectiveSpeakerFilter}
+        onToggleSpeakerFilter={toggleSpeakerFilter}
+        onSelectAllSpeakers={clearSpeakerFilters}
       />
 
       <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide">
-        {viewMode === 'chapters' ? (
-          <ChapteredView
-            chapters={chapters}
-            activeSegmentId={activeSegmentId}
-            searchQuery={debouncedSearch || undefined}
-            serverMatchedGroupIds={serverMatchedGroupIds}
-            matchOffsets={matchOffsets}
-            activeMatchGlobalIndex={
-              matches.length > 0 ? activeMatchIndex : undefined
-            }
-            activeMatchGroupId={activeMatchGroupId ?? undefined}
-            onSegmentClick={onSegmentClick}
-            scrollToSegment={scrollToSegment}
-            speakerNames={speakerNames}
-          />
-        ) : (
-          <FlatView
-            groups={groups}
-            activeSegmentId={activeSegmentId}
-            searchQuery={debouncedSearch || undefined}
-            serverMatchedGroupIds={serverMatchedGroupIds}
-            matchOffsets={matchOffsets}
-            activeMatchGlobalIndex={
-              matches.length > 0 ? activeMatchIndex : undefined
-            }
-            activeMatchGroupId={activeMatchGroupId ?? undefined}
-            onSegmentClick={onSegmentClick}
-            scrollToSegment={scrollToSegment}
-            scrollContainerRef={containerRef}
-            speakerNames={speakerNames}
-          />
-        )}
+        <FlatView
+          groups={speakerFilteredGroups}
+          activeSegmentId={activeSegmentId}
+          searchQuery={debouncedSearch || undefined}
+          serverMatchedGroupIds={serverMatchedGroupIds}
+          matchOffsets={matchOffsets}
+          activeMatchGlobalIndex={
+            matches.length > 0 ? activeMatchIndex : undefined
+          }
+          activeMatchGroupId={activeMatchGroupId ?? undefined}
+          onSegmentClick={onSegmentClick}
+          scrollToSegment={scrollToSegment}
+          speakerNames={speakerNames}
+        />
       </div>
     </div>
   );

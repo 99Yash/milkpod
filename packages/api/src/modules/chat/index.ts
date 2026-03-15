@@ -52,11 +52,13 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       }
 
       // Verify ownership of referenced resources
+      let existingThreadTitle: string | null | undefined;
       if (body.threadId) {
         const thread = await ThreadService.getById(body.threadId, userId);
         if (!thread) {
           return status(403, { message: 'Access denied to thread' });
         }
+        existingThreadTitle = thread.title;
       }
 
       let assetTitle: string | undefined;
@@ -88,30 +90,43 @@ export const chat = new Elysia({ prefix: '/api/chat' })
           assetId: body.assetId,
           collectionId: body.collectionId,
         });
-        threadId = thread!.id;
+
+        if (!thread) {
+          return status(500, { message: 'Failed to create or resolve thread' });
+        }
+
+        threadId = thread.id;
         isNewThread = true;
+      }
+
+      if (!threadId) {
+        return status(500, { message: 'Failed to create or resolve thread' });
       }
 
       // Save the incoming user message (last in the array)
       const lastMessage = body.messages.at(-1);
-      let titleGenerator: (() => Promise<string>) | undefined;
 
       if (lastMessage && lastMessage.role === 'user') {
         await ChatService.saveMessages(threadId, [lastMessage]);
 
         // Prepare title generation for new/untitled threads
-        const needsTitle = isNewThread
-          || !(await ThreadService.getById(threadId, userId))?.title;
+        const needsTitle = isNewThread || !existingThreadTitle;
         if (needsTitle) {
           const textPart = lastMessage.parts?.find(
             (p) => p.type === 'text',
           );
           if (textPart && 'text' in textPart && typeof textPart.text === 'string') {
-            titleGenerator = async () => {
-              const title = await generateThreadTitle(textPart.text);
-              await ThreadService.update(threadId, userId, { title });
-              return title;
-            };
+            void (async () => {
+              try {
+                const title = await generateThreadTitle(textPart.text);
+                await ThreadService.update(threadId, userId, { title });
+              } catch (err) {
+                console.error(
+                  `[chat] Title generation failed for thread ${threadId}:`,
+                  err instanceof Error ? err.message : String(err)
+                );
+              }
+            })();
           }
         }
       }
@@ -125,11 +140,10 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         modelId: body.modelId,
         wordLimit: reserved,
         transcriptLanguage,
-        generateTitle: titleGenerator,
         headers: { 'X-Thread-Id': threadId },
         onFinish: async ({ responseMessage, wordCount }) => {
           try {
-            await ChatService.saveMessages(threadId!, [responseMessage]);
+            await ChatService.saveMessages(threadId, [responseMessage]);
           } catch (err) {
             console.error(`[chat] Failed to save assistant message for thread ${threadId}:`, err instanceof Error ? err.message : String(err));
           }

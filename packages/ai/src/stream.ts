@@ -3,8 +3,6 @@ import {
   convertToModelMessages,
   stepCountIs,
   validateUIMessages,
-  createUIMessageStream,
-  createUIMessageStreamResponse,
   RetryError,
   generateId,
 } from 'ai';
@@ -47,8 +45,6 @@ export interface ChatRequest {
   wordLimit?: number | null;
   transcriptLanguage?: string | null;
   onFinish?: (params: { responseMessage: MilkpodMessage; wordCount: number }) => Promise<void>;
-  /** When provided, title is generated concurrently and streamed as a data part. */
-  generateTitle?: () => Promise<string>;
   headers?: Record<string, string>;
 }
 
@@ -175,74 +171,20 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
     },
   });
 
-  // When no title generation is needed, use the simpler direct response path
-  if (!req.generateTitle) {
-    return result.toUIMessageStreamResponse<MilkpodMessage>({
-      headers: req.headers,
-      sendReasoning: true,
-      originalMessages: validatedMessages,
-      messageMetadata: ({ part }) => {
-        if (part.type !== 'finish') return undefined;
-        return {
-          threadId: req.threadId,
-          assetId: req.assetId,
-          collectionId: req.collectionId,
-          durationMs: Date.now() - startTime,
-          finishReason: part.finishReason,
-        };
-      },
-      onError: formatStreamError,
-    });
-  }
-
-  // Use createUIMessageStream so we can write the title as a data part
-  // concurrently alongside the LLM stream.
-  const stream = createUIMessageStream<MilkpodMessage>({
-    execute: async ({ writer }) => {
-      const titleDone = req.generateTitle!()
-        .then((title) => {
-          if (title && req.threadId) {
-            writer.write({
-              type: 'data-threadTitle',
-              data: { threadId: req.threadId, title },
-            });
-          }
-        })
-        .catch((err) => {
-          console.error(
-            '[chat] Title generation failed:',
-            err instanceof Error ? err.message : String(err),
-          );
-        });
-
-      writer.merge(
-        result.toUIMessageStream<MilkpodMessage>({
-          sendReasoning: true,
-          sendStart: false,
-          sendFinish: false,
-          onError: formatStreamError,
-        }),
-      );
-
-      // Wait for title so it's written before the stream closes
-      await titleDone;
-
-      // Write message metadata after LLM generation completes
-      const finishReason = await result.finishReason;
-      writer.write({
-        type: 'message-metadata',
-        messageMetadata: {
-          threadId: req.threadId,
-          assetId: req.assetId,
-          collectionId: req.collectionId,
-          durationMs: Date.now() - startTime,
-          finishReason,
-        },
-      });
-    },
+  return result.toUIMessageStreamResponse<MilkpodMessage>({
+    headers: req.headers,
+    sendReasoning: true,
     originalMessages: validatedMessages,
+    messageMetadata: ({ part }) => {
+      if (part.type !== 'finish') return undefined;
+      return {
+        threadId: req.threadId,
+        assetId: req.assetId,
+        collectionId: req.collectionId,
+        durationMs: Date.now() - startTime,
+        finishReason: part.finishReason,
+      };
+    },
     onError: formatStreamError,
   });
-
-  return createUIMessageStreamResponse({ stream, headers: req.headers });
 }

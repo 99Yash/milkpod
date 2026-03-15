@@ -165,6 +165,16 @@ export function ChapteredView({
     }, ACCORDION_EXPAND_DELAY_MS);
   }, []);
 
+  if (chapters.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+        {searchQuery
+          ? 'No results found.'
+          : 'No transcript lines for the selected speakers.'}
+      </div>
+    );
+  }
+
   return (
     <div>
       <ChapterProgressBar

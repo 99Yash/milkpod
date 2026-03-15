@@ -14,11 +14,15 @@ export function NewThreadChat({ assetId }: { assetId: string }) {
   const { setThreads } = useThreadList();
 
   const handleThreadCreated = useCallback(
-    (threadId: string) => {
+    (threadId: string, title?: string | null) => {
       setThreads((prev) => {
         if (prev.some((t) => t.id === threadId)) return prev;
         return [
-          { id: threadId, title: null, createdAt: new Date().toISOString() },
+          {
+            id: threadId,
+            title: title?.trim() ? title : null,
+            createdAt: new Date().toISOString(),
+          },
           ...prev,
         ];
       });
