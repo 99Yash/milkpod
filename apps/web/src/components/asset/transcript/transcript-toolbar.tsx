@@ -1,9 +1,18 @@
+import {
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
+  List,
+  Loader2,
+  Search,
+  X,
+} from 'lucide-react';
 import { useCallback } from 'react';
-import { Search, X, List, BookOpen, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
+import { Input } from '~/components/ui/input';
 import { cn } from '~/lib/utils';
-import type { ViewMode } from './types';
 import type { SpeakerNamesMap } from './speaker-names';
 import { SpeakerNamesPopover } from './speaker-names-popover';
+import type { ViewMode } from './types';
 
 interface TranscriptToolbarProps {
   search: string;
@@ -59,7 +68,7 @@ export function TranscriptToolbar({
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input
+          <Input
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={handleKeyDown}
