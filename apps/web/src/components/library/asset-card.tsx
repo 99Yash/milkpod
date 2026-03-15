@@ -21,7 +21,7 @@ import { AddToCollectionDialog } from './add-to-collection-dialog';
 interface AssetCardProps {
   asset: Asset;
   onSelect?: (assetId: string) => void;
-  onRetry?: () => void;
+  onRetry?: (assetId: string) => void;
   /** Real-time progress (0–100) from SSE, if available */
   progress?: number;
   /** Human-readable progress message from SSE */
@@ -46,6 +46,13 @@ const statusProgressFallback: Record<AssetStatus, number> = {
   ready: 100,
   failed: 0,
 };
+
+function formatRetryErrorMessage(message: string): string {
+  const normalized = message.replace(/https?:\/\/\S+/gi, '[link]').replace(/\s+/g, ' ').trim();
+  if (!normalized) return 'Could not start retry. Please try again.';
+  if (normalized.length <= 140) return normalized;
+  return `${normalized.slice(0, 137)}...`;
+}
 
 /**
  * Maps SSE sub-stage progress (0-100 within a stage) to overall progress.
@@ -98,14 +105,21 @@ export function AssetCard({
     try {
       const { error } = await api.api.assets({ id: asset.id }).retry.post();
       if (error) {
+        const errValue =
+          typeof error === 'object' && error !== null && 'value' in error
+            ? (error as { value?: unknown }).value
+            : undefined;
         const msg =
-          typeof error === 'object' && error !== null && 'message' in error
-            ? String((error as { message: string }).message)
-            : 'Retry failed';
+          typeof errValue === 'object' && errValue !== null && 'message' in errValue
+            ? formatRetryErrorMessage(String((errValue as { message: string }).message))
+            : 'Could not start retry. Please try again.';
         toast.error(msg);
         return;
       }
-      onRetry?.();
+      toast.success('Retry started');
+      onRetry?.(asset.id);
+    } catch {
+      toast.error('Could not start retry. Please try again.');
     } finally {
       setRetrying(false);
     }

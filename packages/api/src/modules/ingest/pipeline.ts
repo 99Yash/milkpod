@@ -13,6 +13,7 @@ import { extractVideoContext } from './video-context';
 import type { TranscriptionStrategy } from './model';
 import { createUploadDownloadUrl } from './upload-storage';
 import { QuotaService } from '../quota/service';
+import { toSafeErrorMessage } from './error-message';
 
 type TranscriptionMethod = 'audio' | 'captions' | 'audio_fallback_to_captions';
 
@@ -97,8 +98,7 @@ function triggerVisualExtraction(
 }
 
 async function handlePipelineError(assetId: string, userId: string, error: unknown) {
-  const message =
-    error instanceof Error ? error.message : 'Unknown pipeline error';
+  const message = toSafeErrorMessage(error);
   console.error(`[ingest] Pipeline failed for asset ${assetId}:`, message);
   await IngestService.updateStatus(assetId, 'failed', {
     lastError: message,
@@ -116,15 +116,14 @@ async function transcribeViaAudio(
 
   try {
     const result = await retry('transcribing-audio', () =>
-      transcribeAudio(audioUrl)
+      transcribeAudio(audioUrl, {
+        allowRemoteFetchFallback: true,
+      })
     );
     const segments = groupWordsIntoSegments(result.words);
     return { language: result.language_code, segments, provider: 'assemblyai' as const };
   } catch (directError) {
-    const directMessage =
-      directError instanceof Error
-        ? directError.message
-        : 'Unknown direct audio transcription error';
+    const directMessage = toSafeErrorMessage(directError);
 
     console.warn(
       `[ingest] Direct YouTube audio URL transcription failed, retrying via yt-dlp stream: ${directMessage}`
@@ -147,9 +146,7 @@ async function transcribeViaAudio(
       return { language: result.language_code, segments, provider: 'assemblyai' as const };
     } catch (streamError) {
       const streamMessage =
-        streamError instanceof Error
-          ? streamError.message
-          : 'Unknown yt-dlp stream transcription error';
+        toSafeErrorMessage(streamError);
 
       throw new Error(
         `Audio transcription failed via direct URL (${directMessage}) and yt-dlp stream (${streamMessage})`
@@ -201,7 +198,7 @@ export async function orchestratePipeline(
       triggerVisualExtraction(assetId, sourceUrl, userId, segments);
       return;
     } catch (err) {
-      audioError = err instanceof Error ? err.message : 'Unknown audio transcription error';
+      audioError = toSafeErrorMessage(err);
       console.warn(
         `[ingest] Audio transcription failed for asset ${assetId}, falling back to captions: ${audioError}`
       );

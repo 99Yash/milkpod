@@ -180,7 +180,7 @@ export abstract class AssetService {
   static async listPage(
     userId: string,
     query: AssetModel.ListQuery,
-    limit = 24,
+    limit = 12,
   ): Promise<AssetPage> {
     const pageSize = Math.max(1, Math.min(limit, 100));
     const conditions = AssetService.buildSearchConditions(userId, query);

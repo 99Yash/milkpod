@@ -59,6 +59,14 @@ interface ActivityStepsProps {
   hasTextContent: boolean;
 }
 
+function isOutputPending(output: ToolOutput): boolean {
+  if (output.tool === 'retrieve') {
+    return output.status === 'searching';
+  }
+
+  return output.status === 'loading';
+}
+
 export function ActivitySteps({
   parts,
   isStreaming,
@@ -69,6 +77,16 @@ export function ActivitySteps({
   );
 
   const stepCount = activityParts.length;
+
+  const hasPendingToolPart = activityParts.some((part) => {
+    if (!isToolUIPart(part)) return false;
+
+    if (part.state !== 'output-available' || !isToolOutput(part.output)) {
+      return true;
+    }
+
+    return isOutputPending(part.output);
+  });
 
   // Start open; auto-collapse once text content appears
   const [isOpen, setIsOpen] = useState(!hasTextContent);
@@ -83,7 +101,7 @@ export function ActivitySteps({
 
   if (stepCount === 0) return null;
 
-  const isComplete = !isStreaming || hasTextContent;
+  const isComplete = !isStreaming || hasTextContent || !hasPendingToolPart;
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -138,7 +156,6 @@ export function ActivitySteps({
 
             if (isToolUIPart(part)) {
               const hasOutput = part.state === 'output-available';
-              const toolStreaming = hasOutput && part.preliminary === true;
               const output =
                 hasOutput && isToolOutput(part.output)
                   ? part.output
@@ -154,7 +171,6 @@ export function ActivitySteps({
                   <ToolResult
                     toolName={part.type}
                     output={output}
-                    isStreaming={toolStreaming}
                   />
                 </div>
               );
