@@ -93,7 +93,7 @@ export function LandingNav() {
 
   return (
     <nav className="fixed left-1/2 top-5 z-50 -translate-x-1/2">
-      <div className="flex items-center gap-1 rounded-full border border-landing-glass-border bg-landing-glass px-1.5 py-1 shadow-lg shadow-black/10 backdrop-blur-xl">
+      <div className="animate-hero flex items-center gap-1 rounded-full border border-landing-glass-border bg-landing-glass px-1.5 py-1 shadow-lg shadow-black/10 backdrop-blur-xl">
         <Link href="/" className="flex items-center gap-2 px-3 py-1.5">
           <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[color:var(--milkpod-ocean)] text-[8px] font-bold uppercase tracking-wider text-white">
             M
