@@ -26,7 +26,7 @@ interface AssetProgress {
   message?: string;
 }
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 12;
 
 export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps) {
   const queryClient = useQueryClient();
@@ -126,6 +126,57 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
     }
   );
 
+  const handleRetry = useCallback(
+    (assetId: string) => {
+      const statusFilter = (query.status ?? '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+
+      const shouldKeepInCurrentList =
+        statusFilter.length === 0 ||
+        statusFilter.includes('queued') ||
+        statusFilter.includes('fetching') ||
+        statusFilter.includes('transcribing') ||
+        statusFilter.includes('embedding');
+
+      setProgressMap((prev) => ({
+        ...prev,
+        [assetId]: {
+          progress: 0,
+          message: 'Retrying...',
+        },
+      }));
+
+      queryClient.setQueryData<InfiniteData<AssetPageResult>>(
+        queryKeys.assets.page(query),
+        (prev) => {
+          if (!prev) return prev;
+
+          return {
+            ...prev,
+            pages: prev.pages.map((page) => ({
+              ...page,
+              items: shouldKeepInCurrentList
+                ? page.items.map((item) =>
+                    item.id === assetId
+                      ? {
+                          ...item,
+                          status: 'queued',
+                          attempts: 0,
+                          lastError: null,
+                        }
+                      : item,
+                  )
+                : page.items.filter((item) => item.id !== assetId),
+            })),
+          };
+        },
+      );
+    },
+    [query.status, query, queryClient],
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -154,7 +205,7 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
             <AssetCard
               asset={asset}
               onSelect={onSelectAsset}
-              onRetry={() => queryClient.invalidateQueries({ queryKey: queryKeys.assets.all })}
+              onRetry={handleRetry}
               progress={progressMap[asset.id]?.progress}
               progressMessage={progressMap[asset.id]?.message}
             />

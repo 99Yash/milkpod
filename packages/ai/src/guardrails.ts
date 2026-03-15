@@ -7,6 +7,7 @@ import { openai } from '@ai-sdk/openai';
 import type { MilkpodMessage } from './types';
 
 const guardrailModel = openai('gpt-4o-mini');
+const GUARDRAIL_TIMEOUT_MS = 8_000;
 
 const CLASSIFY_PROMPT = `You are a content classifier for Milkpod, a transcript Q&A assistant. The user is already viewing a specific transcript — determine if their message is appropriate.
 
@@ -53,6 +54,11 @@ const DENY_PATTERNS = [
 ];
 
 const MAX_HEURISTIC_LENGTH = 2000;
+const FAST_PATH_MAX_LENGTH = 120;
+const FAST_PATH_ALLOW_PATTERNS = [
+  /^\s*(hi|hello|hey|thanks|thank you|thx|ty|ok|okay|cool|great|awesome|got it|sounds good)\s*[!.?]*\s*$/i,
+  /^\s*(help|can you help|what can you do)\s*[?.!]*\s*$/i,
+];
 
 function heuristicCheck(text: string): GuardrailResult {
   if (text.length > MAX_HEURISTIC_LENGTH) {
@@ -68,6 +74,13 @@ function heuristicCheck(text: string): GuardrailResult {
   return { allowed: true };
 }
 
+function isFastPathAllow(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized || normalized.length > FAST_PATH_MAX_LENGTH) return false;
+
+  return FAST_PATH_ALLOW_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 export async function checkInput(
   messages: MilkpodMessage[]
 ): Promise<GuardrailResult> {
@@ -80,19 +93,28 @@ export async function checkInput(
   const text = textParts.map((p) => p.text).join(' ');
   if (!text.trim()) return { allowed: true };
 
+  // Fast path for a narrow allow-list of benign short prompts to minimize TTFT.
+  // Everything else still goes through model classification.
+  const heuristic = heuristicCheck(text);
+  if (!heuristic.allowed) return heuristic;
+  if (isFastPathAllow(text)) {
+    return { allowed: true };
+  }
+
   try {
     const result = await generateText({
       model: guardrailModel,
       system: CLASSIFY_PROMPT,
       prompt: text,
+      timeout: { totalMs: GUARDRAIL_TIMEOUT_MS },
     });
 
     const verdict = result.text.trim().toUpperCase();
     return { allowed: verdict !== 'DENY' };
   } catch (error) {
-    // Fail closed — use heuristic fallback when classification model is unavailable
-    console.error('[Guardrail Error]', error);
-    return heuristicCheck(text);
+    // Fall back to the heuristic filter on model errors/timeouts.
+    console.error('[Guardrail Error]', error instanceof Error ? error.message : String(error));
+    return heuristic;
   }
 }
 

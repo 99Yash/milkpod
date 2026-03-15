@@ -1,5 +1,4 @@
 import { useMemo, useEffect } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import type { TranscriptSegment } from '@milkpod/api/types';
 import type { CoalescedGroup } from './types';
 import { GroupRow } from './group-row';
@@ -15,7 +14,6 @@ interface FlatViewProps {
   activeMatchGroupId?: string;
   onSegmentClick?: (segment: TranscriptSegment) => void;
   scrollToSegment: (segmentId: string) => void;
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   speakerNames: SpeakerNamesMap;
 }
 
@@ -29,7 +27,6 @@ export function FlatView({
   activeMatchGroupId,
   onSegmentClick,
   scrollToSegment,
-  scrollContainerRef,
   speakerNames,
 }: FlatViewProps) {
   const filteredGroups = useMemo(() => {
@@ -50,26 +47,13 @@ export function FlatView({
     );
   }, [filteredGroups, activeSegmentId]);
 
-  const virtualizer = useVirtualizer({
-    count: filteredGroups.length,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 80,
-    overscan: 5,
-    paddingStart: 8,
-    paddingEnd: 8,
-  });
-
-  // Scroll to active segment via virtualizer (parent DOM query won't reach off-screen items)
   useEffect(() => {
     if (activeGroupIndex >= 0) {
-      virtualizer.scrollToIndex(activeGroupIndex, {
-        align: 'center',
-        behavior: 'smooth',
-      });
+      const id = filteredGroups[activeGroupIndex]?.segments[0]?.id;
+      if (id) scrollToSegment(id);
     }
-  }, [activeSegmentId, activeGroupIndex, virtualizer]);
+  }, [activeSegmentId, activeGroupIndex, filteredGroups, scrollToSegment]);
 
-  // Scroll to active search match via virtualizer
   const activeMatchRowIndex = useMemo(() => {
     if (!activeMatchGroupId) return -1;
     return filteredGroups.findIndex(
@@ -79,59 +63,37 @@ export function FlatView({
 
   useEffect(() => {
     if (activeMatchRowIndex >= 0) {
-      virtualizer.scrollToIndex(activeMatchRowIndex, {
-        align: 'center',
-        behavior: 'smooth',
-      });
+      const id = filteredGroups[activeMatchRowIndex]?.segments[0]?.id;
+      if (id) scrollToSegment(id);
     }
-  }, [activeMatchGroupId, activeMatchRowIndex, virtualizer]);
+  }, [activeMatchGroupId, activeMatchRowIndex, filteredGroups, scrollToSegment]);
 
-  if (filteredGroups.length === 0 && searchQuery) {
+  if (filteredGroups.length === 0) {
     return (
       <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-        No results found.
+        {searchQuery
+          ? 'No results found.'
+          : 'No transcript lines for the selected speakers.'}
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        height: `${virtualizer.getTotalSize()}px`,
-        width: '100%',
-        position: 'relative',
-      }}
-    >
-      {virtualizer.getVirtualItems().map((virtualRow) => {
-        const group = filteredGroups[virtualRow.index];
-        return (
-          <div
-            key={group.segments[0].id}
-            data-index={virtualRow.index}
-            ref={virtualizer.measureElement}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              transform: `translateY(${virtualRow.start}px)`,
-            }}
-            className="px-5"
-          >
-            <GroupRow
-              group={group}
-              isActive={virtualRow.index === activeGroupIndex}
-              searchQuery={searchQuery}
-              isServerMatch={serverMatchedGroupIds?.has(group.segments[0].id) ?? false}
-              matchGlobalOffset={matchOffsets.get(group.segments[0].id)}
-              activeMatchGlobalIndex={activeMatchGlobalIndex}
-              onSegmentClick={onSegmentClick}
-              scrollToSegment={scrollToSegment}
-              speakerNames={speakerNames}
-            />
-          </div>
-        );
-      })}
+    <div className="space-y-1.5 px-5 py-2">
+      {filteredGroups.map((group, index) => (
+        <GroupRow
+          key={group.segments[0].id}
+          group={group}
+          isActive={index === activeGroupIndex}
+          searchQuery={searchQuery}
+          isServerMatch={serverMatchedGroupIds?.has(group.segments[0].id) ?? false}
+          matchGlobalOffset={matchOffsets.get(group.segments[0].id)}
+          activeMatchGlobalIndex={activeMatchGlobalIndex}
+          onSegmentClick={onSegmentClick}
+          scrollToSegment={scrollToSegment}
+          speakerNames={speakerNames}
+        />
+      ))}
     </div>
   );
 }

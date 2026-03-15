@@ -19,6 +19,7 @@ import type { MilkpodMessage } from '@milkpod/ai/types';
 import {
   fetchChatMessages,
   fetchLatestThreadForAsset,
+  fetchThreadsForAsset,
   getCachedChatMessages,
   primeChatMessagesCache,
 } from '~/lib/api-fetchers';
@@ -73,6 +74,28 @@ function resolveThreadMessages(
     .finally(() => {
       if (!cancelled()) onLoaded();
     });
+}
+
+function deriveTitleFromMessages(messages: MilkpodMessage[]): string | null {
+  const firstUserText = messages
+    .find((message) => message.role === 'user')
+    ?.parts.find((part) => part.type === 'text' && part.text.trim().length > 0);
+
+  if (!firstUserText || firstUserText.type !== 'text') {
+    return null;
+  }
+
+  const cleaned = firstUserText.text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/["'`]/g, '')
+    .replace(/[.!?]+$/, '');
+
+  if (!cleaned) return null;
+
+  const words = cleaned.split(' ').slice(0, 4);
+  const title = words.join(' ').trim();
+  return title.length > 0 ? title : null;
 }
 
 function useRestoredThread(
@@ -140,7 +163,7 @@ interface ChatPanelProps {
   /** When provided, the panel renders immediately (no client-side fetch). */
   initialMessages?: MilkpodMessage[];
   /** Called when a draft thread is created on the backend. */
-  onThreadCreated?: (threadId: string) => void;
+  onThreadCreated?: (threadId: string, title?: string | null) => void;
 }
 
 const SUGGESTIONS = ['Summarize', 'Key points', 'Action items'] as const;
@@ -225,7 +248,7 @@ function ChatPanelContent({
   assetId?: string;
   collectionId?: string;
   initialMessages?: MilkpodMessage[];
-  onThreadCreated?: (threadId: string) => void;
+  onThreadCreated?: (threadId: string, title?: string | null) => void;
 }) {
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -246,11 +269,13 @@ function ChatPanelContent({
   // Notify parent when a draft thread is created (threadId was undefined, now has a value)
   const notifiedRef = useRef(false);
   useEffect(() => {
-    if (chatThreadId && !threadId && !notifiedRef.current) {
+    const requestSettled = status !== 'submitted' && status !== 'streaming';
+
+    if (chatThreadId && !threadId && !notifiedRef.current && requestSettled) {
       notifiedRef.current = true;
-      onThreadCreated?.(chatThreadId);
+      onThreadCreated?.(chatThreadId, deriveTitleFromMessages(messages));
     }
-  }, [chatThreadId, threadId, onThreadCreated]);
+  }, [chatThreadId, threadId, onThreadCreated, status, messages]);
 
   useEffect(() => {
     if (error) {
@@ -282,6 +307,56 @@ function ChatPanelContent({
       }
     }
   }, [messages, threadListCtx]);
+
+  // Fallback title sync: after a response settles, refresh thread list a few times
+  // so async server-side title generation is reflected without page refresh.
+  const titleSyncInFlightRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!threadListCtx || !chatThreadId) return;
+
+    const requestSettled = status !== 'submitted' && status !== 'streaming';
+    if (!requestSettled) return;
+
+    const targetThread = threadListCtx.threads.find((t) => t.id === chatThreadId);
+    if (!targetThread || targetThread.title) return;
+    if (titleSyncInFlightRef.current.has(chatThreadId)) return;
+
+    titleSyncInFlightRef.current.add(chatThreadId);
+    let cancelled = false;
+
+    void (async () => {
+      const MAX_ATTEMPTS = 4;
+
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        if (cancelled) break;
+
+        try {
+          const updated = await fetchThreadsForAsset(threadListCtx.assetId);
+          if (cancelled) break;
+
+          threadListCtx.setThreads(updated);
+          const refreshed = updated.find((thread) => thread.id === chatThreadId);
+          if (refreshed?.title) {
+            break;
+          }
+        } catch {
+          // ignore transient refresh failures
+        }
+
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1200 * (attempt + 1)),
+          );
+        }
+      }
+
+      titleSyncInFlightRef.current.delete(chatThreadId);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatThreadId, status, threadListCtx]);
 
   useEffect(() => {
     textareaRef.current?.focus();

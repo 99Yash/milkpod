@@ -77,11 +77,15 @@ function ChatTabPanel({
   const { setThreads } = useThreadList();
 
   const handleThreadCreated = useCallback(
-    (newThreadId: string) => {
+    (newThreadId: string, title?: string | null) => {
       setThreads((prev) => {
         if (prev.some((t) => t.id === newThreadId)) return prev;
         return [
-          { id: newThreadId, title: null, createdAt: new Date().toISOString() },
+          {
+            id: newThreadId,
+            title: title?.trim() ? title : null,
+            createdAt: new Date().toISOString(),
+          },
           ...prev,
         ];
       });

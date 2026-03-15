@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect } from 'react';
 import { Loader2, Users } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import {
@@ -7,6 +7,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '~/components/ui/popover';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '~/components/ui/tooltip';
 import {
   formatSpeakerId,
   sanitizeSpeakerNames,
@@ -27,7 +32,9 @@ export function SpeakerNamesPopover({
   isSavingSpeakerNames,
 }: SpeakerNamesPopoverProps) {
   const [open, setOpen] = useState(false);
-  const [draftSpeakerNames, setDraftSpeakerNames] = useState<SpeakerNamesMap>({});
+  const [draftSpeakerNames, setDraftSpeakerNames] = useState<SpeakerNamesMap>(
+    {},
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -55,23 +62,26 @@ export function SpeakerNamesPopover({
         <Button
           type="button"
           variant="outline"
-          size="sm"
-          className="h-9 gap-1.5 rounded-lg"
+          size="icon-sm"
+          className="size-9 rounded-lg"
+          aria-label="Name speakers"
         >
-          <Users className="size-3.5" />
-          <span className="hidden sm:inline">Know these people?</span>
-          <span className="sm:hidden">Speakers</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex items-center justify-center">
+                <Users className="size-4" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Know these people?</TooltipContent>
+          </Tooltip>
         </Button>
       </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        sideOffset={8}
-        className="w-[22rem] space-y-3 p-3"
-      >
+      <PopoverContent align="end" sideOffset={8} className="w-88 space-y-3 p-3">
         <div className="space-y-1">
           <h3 className="text-sm font-medium text-foreground">Name speakers</h3>
           <p className="text-xs text-muted-foreground">
-            Add names for diarized speakers. Leave blank to keep the generic label.
+            Add names for diarized speakers. Leave blank to keep the generic
+            label.
           </p>
         </div>
 

@@ -1,4 +1,4 @@
-import { and, asc, cosineDistance, count, desc, eq, gt, ne, sql } from 'drizzle-orm';
+import { and, asc, cosineDistance, count, desc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '@milkpod/db';
 import {
   embeddings,
@@ -188,14 +188,34 @@ export async function getTranscriptOverview(
   assetId: string,
   maxSegments = 60
 ): Promise<TranscriptOverview | null> {
-  // Find the transcript for this asset
-  const [transcript] = await db()
+  const transcriptRows = await db()
     .select({ id: transcripts.id })
     .from(transcripts)
     .where(eq(transcripts.assetId, assetId))
-    .limit(1);
+    .orderBy(desc(transcripts.createdAt))
+    .limit(10);
 
-  if (!transcript) return null;
+  const latestTranscript = transcriptRows[0];
+  if (!latestTranscript) return null;
+
+  let transcript = latestTranscript;
+
+  if (transcriptRows.length > 1) {
+    const transcriptIds = transcriptRows.map((row) => row.id);
+    const transcriptRowsWithSegments = await db()
+      .select({ transcriptId: transcriptSegments.transcriptId })
+      .from(transcriptSegments)
+      .where(inArray(transcriptSegments.transcriptId, transcriptIds))
+      .groupBy(transcriptSegments.transcriptId);
+
+    const transcriptIdsWithSegments = new Set(
+      transcriptRowsWithSegments.map((row) => row.transcriptId),
+    );
+
+    transcript =
+      transcriptRows.find((row) => transcriptIdsWithSegments.has(row.id))
+      ?? latestTranscript;
+  }
 
   // Get total count
   const countResult = await db()
