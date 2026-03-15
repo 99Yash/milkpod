@@ -12,7 +12,7 @@ import {
 import { toast } from 'sonner';
 import { ShareDialog } from '~/components/share/share-dialog';
 import { fetchAssetDetail } from '~/lib/api-fetchers';
-import { api } from '~/lib/api';
+import { api, toToastErrorMessage } from '~/lib/api';
 import { formatDuration } from '~/lib/format';
 import { Badge } from '~/components/ui/badge';
 import { Spinner } from '~/components/ui/spinner';
@@ -75,12 +75,9 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
             ? (error as { value?: unknown }).value
             : undefined;
 
-        const message =
-          typeof errValue === 'object' && errValue !== null && 'message' in errValue
-            ? String((errValue as { message: string }).message)
-            : 'Could not start retry. Please try again.';
-
-        toast.error(message);
+        toast.error(
+          toToastErrorMessage(errValue ?? error, 'Could not start retry. Please try again.'),
+        );
         return;
       }
 

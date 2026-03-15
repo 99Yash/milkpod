@@ -162,7 +162,7 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
                     item.id === assetId
                       ? {
                           ...item,
-                          status: 'transcribing',
+                          status: 'queued',
                           attempts: 0,
                           lastError: null,
                         }

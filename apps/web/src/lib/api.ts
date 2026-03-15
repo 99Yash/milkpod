@@ -7,14 +7,21 @@ import { toast } from 'sonner';
 const URL_PATTERN = /https?:\/\/\S+/gi;
 const MAX_TOAST_ERROR_LENGTH = 160;
 
-function toToastErrorMessage(error: unknown): string {
+export function toToastErrorMessage(
+  error: unknown,
+  fallback = 'Request failed. Please try again.',
+): string {
   const raw =
     error instanceof Error && error.message
       ? error.message
-      : 'Request failed. Please try again.';
+      : typeof error === 'string' && error
+        ? error
+        : typeof error === 'object' && error !== null && 'message' in error
+          ? String((error as { message?: unknown }).message ?? '')
+          : fallback;
 
   const normalized = raw.replace(URL_PATTERN, '[link]').replace(/\s+/g, ' ').trim();
-  if (!normalized) return 'Request failed. Please try again.';
+  if (!normalized) return fallback;
 
   if (normalized.length <= MAX_TOAST_ERROR_LENGTH) {
     return normalized;

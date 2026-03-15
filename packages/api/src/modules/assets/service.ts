@@ -273,7 +273,6 @@ export abstract class AssetService {
     if (!latestTranscript) return null;
 
     const transcriptIds = transcriptRows.map((row) => row.id);
-    if (transcriptIds.length === 0) return latestTranscript.language ?? null;
 
     const transcriptRowsWithSegments = await db()
       .select({ transcriptId: transcriptSegments.transcriptId })
