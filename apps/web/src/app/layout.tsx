@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono, Inter } from 'next/font/google';
 import localFont from 'next/font/local';
+import 'streamdown/styles.css';
 import { MainLayout } from '~/components/layouts/main';
 import { Providers } from '~/components/layouts/providers';
 import { siteConfig } from '~/lib/site';
-import 'streamdown/styles.css';
 import './globals.css';
 
 const geistSans = Geist({
@@ -73,6 +73,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${openRunde.variable} antialiased`}
       >
+        <head>
+          <script
+            defer
+            src="https://cloud.umami.is/script.js"
+            data-website-id="4f45abff-ace9-4440-b2fe-8e72a6151bd6"
+          ></script>
+        </head>
         <Providers>
           <MainLayout>{children}</MainLayout>
         </Providers>
