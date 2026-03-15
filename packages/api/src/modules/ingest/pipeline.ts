@@ -92,7 +92,9 @@ async function finalizePipeline(
   });
 
   // Mark as ready
-  await IngestService.updateStatus(assetId, 'ready');
+  await IngestService.updateStatus(assetId, 'ready', {
+    lastError: null,
+  });
   emitAssetStatus(userId, assetId, 'ready');
 
   // Increment video minutes quota counter
@@ -161,28 +163,35 @@ async function transcribeViaAudio(
   } catch (directError) {
     const directMessage = toSafeErrorMessage(directError);
 
-    if (isNonRetryableDirectAudioError(directError, directMessage)) {
-      throw new Error(
-        `Direct YouTube audio URL is inaccessible, skipping stream retry (${directMessage})`,
-      );
-    }
+    const directIsNonRetryable = isNonRetryableDirectAudioError(
+      directError,
+      directMessage,
+    );
 
     console.warn(
-      `[ingest] Direct YouTube audio URL transcription failed, retrying via yt-dlp stream: ${directMessage}`
+      directIsNonRetryable
+        ? `[ingest] Direct YouTube audio URL is inaccessible, trying yt-dlp stream fallback: ${directMessage}`
+        : `[ingest] Direct YouTube audio URL transcription failed, retrying via yt-dlp stream: ${directMessage}`,
     );
 
     try {
-      const result = await retry('transcribing-audio-stream', async () => {
-        const streamHandle = await streamYouTubeAudioViaYtDlp(sourceUrl);
+      const result = await retry(
+        'transcribing-audio-stream',
+        async () => {
+          const streamHandle = await streamYouTubeAudioViaYtDlp(sourceUrl);
 
-        try {
-          const streamedResult = await transcribeAudioStream(streamHandle.stream);
-          await streamHandle.waitForExit();
-          return streamedResult;
-        } finally {
-          streamHandle.dispose();
-        }
-      });
+          try {
+            const streamedResult = await transcribeAudioStream(streamHandle.stream);
+            await streamHandle.waitForExit();
+            return streamedResult;
+          } finally {
+            streamHandle.dispose();
+          }
+        },
+        directIsNonRetryable
+          ? { maxRetries: 0 }
+          : undefined,
+      );
 
       const segments = groupWordsIntoSegments(result.words);
       assertHasSegments(segments, 'audio');
