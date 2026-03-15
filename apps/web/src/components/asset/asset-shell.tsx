@@ -6,14 +6,17 @@ import {
   ArrowLeft,
   Clock,
   Mic,
+  RotateCcw,
   User,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ShareDialog } from '~/components/share/share-dialog';
 import { fetchAssetDetail } from '~/lib/api-fetchers';
+import { api } from '~/lib/api';
 import { formatDuration } from '~/lib/format';
 import { Badge } from '~/components/ui/badge';
 import { Spinner } from '~/components/ui/spinner';
+import { Button } from '~/components/ui/button';
 import {
   DashboardPanel,
   DashboardPanelContent,
@@ -47,6 +50,7 @@ const statusLabels: Record<AssetStatus, string> = {
 export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
   const [asset, setAsset] = useState<AssetWithTranscript>(initialAsset);
   const [progressMessage, setProgressMessage] = useState<string | undefined>();
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const refreshAsset = useCallback(() => {
     fetchAssetDetail(assetId)
@@ -57,6 +61,44 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
         // silent — polling failures are not actionable
       });
   }, [assetId]);
+
+  const handleRetry = useCallback(async () => {
+    if (isRetrying) return;
+
+    setIsRetrying(true);
+    try {
+      const { error } = await api.api.assets({ id: assetId }).retry.post();
+
+      if (error) {
+        const errValue =
+          typeof error === 'object' && error !== null && 'value' in error
+            ? (error as { value?: unknown }).value
+            : undefined;
+
+        const message =
+          typeof errValue === 'object' && errValue !== null && 'message' in errValue
+            ? String((errValue as { message: string }).message)
+            : 'Could not start retry. Please try again.';
+
+        toast.error(message);
+        return;
+      }
+
+      setAsset((prev) => ({
+        ...prev,
+        status: 'queued',
+        attempts: 0,
+        lastError: null,
+      }));
+      setProgressMessage('Retrying...');
+      toast.success('Retry started');
+      refreshAsset();
+    } catch {
+      toast.error('Could not start retry. Please try again.');
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [assetId, isRetrying, refreshAsset]);
 
   useAssetEvents(
     useCallback(
@@ -116,6 +158,21 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
                   <span className="sr-only sm:not-sr-only">Library</span>
                 </Link>
                 <div className="flex items-center gap-2">
+                  {asset.status === 'failed' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleRetry}
+                      disabled={isRetrying}
+                    >
+                      {isRetrying ? (
+                        <Spinner className="mr-1 size-3" />
+                      ) : (
+                        <RotateCcw className="mr-1 size-3" />
+                      )}
+                      Retry
+                    </Button>
+                  )}
                   <Badge
                     variant={asset.status === 'failed' ? 'destructive' : 'outline'}
                     className="text-xs"
@@ -183,10 +240,25 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
                     )}
                     <p className="text-sm text-muted-foreground">
                       {asset.status === 'failed'
-                        ? 'Processing failed. You can retry from the library.'
+                        ? 'Processing failed. Retry from here or from the library.'
                         : progressMessage ||
                           'Transcript will appear here once processing completes.'}
                     </p>
+                    {asset.status === 'failed' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleRetry}
+                        disabled={isRetrying}
+                      >
+                        {isRetrying ? (
+                          <Spinner className="mr-1 size-3" />
+                        ) : (
+                          <RotateCcw className="mr-1 size-3" />
+                        )}
+                        Retry
+                      </Button>
+                    )}
                   </div>
                 </DashboardPanelContent>
               </DashboardPanel>

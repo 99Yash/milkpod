@@ -37,9 +37,7 @@ export async function getAssetWithTranscript(
   id: string,
   userId: string
 ): Promise<AssetWithTranscript | null> {
-  // All 3 queries fire in parallel — segments uses a subquery instead of
-  // waiting for the transcript row, eliminating a sequential round trip.
-  const [assetRows, transcriptRows, segments] = await Promise.all([
+  const [assetRows, transcriptRows] = await Promise.all([
     db()
       .select()
       .from(mediaAssets)
@@ -47,25 +45,34 @@ export async function getAssetWithTranscript(
     db()
       .select()
       .from(transcripts)
-      .where(eq(transcripts.assetId, id)),
-    db()
-      .select()
-      .from(transcriptSegments)
-      .where(
-        inArray(
-          transcriptSegments.transcriptId,
-          db().select({ id: transcripts.id }).from(transcripts).where(eq(transcripts.assetId, id)),
-        ),
-      )
-      .orderBy(transcriptSegments.startTime),
+      .where(eq(transcripts.assetId, id))
+      .orderBy(desc(transcripts.createdAt)),
   ]);
 
   const asset = assetRows[0];
   if (!asset) return null;
 
   const safe = sanitizeAsset(asset);
-  const transcript = transcriptRows[0];
-  if (!transcript) return { ...safe, transcript: null, segments: [] };
+  const latestTranscript = transcriptRows[0];
+  if (!latestTranscript) return { ...safe, transcript: null, segments: [] };
+
+  const transcriptIds = transcriptRows.map((row) => row.id);
+  const allSegments = await db()
+    .select()
+    .from(transcriptSegments)
+    .where(inArray(transcriptSegments.transcriptId, transcriptIds))
+    .orderBy(transcriptSegments.transcriptId, transcriptSegments.startTime);
+
+  const segmentsByTranscript = Map.groupBy(
+    allSegments,
+    (segment) => segment.transcriptId,
+  );
+
+  const transcript =
+    transcriptRows.find((row) => (segmentsByTranscript.get(row.id)?.length ?? 0) > 0)
+    ?? latestTranscript;
+
+  const segments = segmentsByTranscript.get(transcript.id) ?? [];
 
   return { ...safe, transcript, segments };
 }

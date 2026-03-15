@@ -48,6 +48,26 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
         userId
       );
       if (existing) {
+        if (existing.status === 'ready' && existing.sourceUrl) {
+          const hasTranscript = await AssetService.hasTranscriptSegments(existing.id);
+
+          if (!hasTranscript) {
+            await IngestService.resetForRetry(existing.id);
+
+            const strategy = body.transcriptionStrategy ?? 'audio-first';
+            orchestratePipeline(existing.id, body.url, userId, strategy).catch((err) => {
+              console.error(`Pipeline failed for asset ${existing.id}:`, err);
+            });
+
+            return {
+              ...existing,
+              status: 'queued',
+              attempts: 0,
+              lastError: null,
+            };
+          }
+        }
+
         return existing;
       }
 

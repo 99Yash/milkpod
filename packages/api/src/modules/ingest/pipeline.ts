@@ -5,7 +5,7 @@ import {
 } from './youtube';
 import { captionItemsToSegments, groupWordsIntoSegments } from './segments';
 import { IngestService } from './service';
-import { withRetry } from './retry';
+import { withRetry, type RetryControl } from './retry';
 import { embedSegments } from './embed';
 import { emitAssetStatus } from '../../events/asset-events';
 import { transcribeAudio, transcribeAudioStream } from './assemblyai';
@@ -17,12 +17,41 @@ import { toSafeErrorMessage } from './error-message';
 
 type TranscriptionMethod = 'audio' | 'captions' | 'audio_fallback_to_captions';
 
+function assertHasSegments(
+  segments: { text: string }[],
+  source: 'audio' | 'captions',
+): void {
+  if (segments.length > 0) return;
+
+  throw new Error(
+    source === 'audio'
+      ? 'Audio transcription produced no transcript segments'
+      : 'Caption transcription produced no transcript segments',
+  );
+}
+
 function makeRetry(assetId: string) {
-  return <T>(stage: string, fn: () => Promise<T>) =>
+  return <T>(stage: string, fn: () => Promise<T>, control?: RetryControl) =>
     withRetry(
-      { stage, entityId: assetId, logPrefix: 'ingest', onError: IngestService.incrementAttempts },
+      {
+        stage,
+        entityId: assetId,
+        logPrefix: 'ingest',
+        onError: IngestService.incrementAttempts,
+        ...control,
+      },
       fn
     );
+}
+
+function isNonRetryableDirectAudioError(error: unknown, safeMessage: string): boolean {
+  const raw = error instanceof Error ? error.message : '';
+  const merged = `${raw} ${safeMessage}`.toLowerCase();
+
+  return (
+    /failed to download remote audio \(4\d{2}\)/.test(merged)
+    || merged.includes('source audio could not be accessed from the origin url')
+  );
 }
 
 async function finalizePipeline(
@@ -115,15 +144,28 @@ async function transcribeViaAudio(
   );
 
   try {
-    const result = await retry('transcribing-audio', () =>
-      transcribeAudio(audioUrl, {
-        allowRemoteFetchFallback: true,
-      })
+    const result = await retry(
+      'transcribing-audio',
+      () =>
+        transcribeAudio(audioUrl, {
+          allowRemoteFetchFallback: true,
+        }),
+      {
+        shouldRetry: (error, message) =>
+          !isNonRetryableDirectAudioError(error, message),
+      },
     );
     const segments = groupWordsIntoSegments(result.words);
+    assertHasSegments(segments, 'audio');
     return { language: result.language_code, segments, provider: 'assemblyai' as const };
   } catch (directError) {
     const directMessage = toSafeErrorMessage(directError);
+
+    if (isNonRetryableDirectAudioError(directError, directMessage)) {
+      throw new Error(
+        `Direct YouTube audio URL is inaccessible, skipping stream retry (${directMessage})`,
+      );
+    }
 
     console.warn(
       `[ingest] Direct YouTube audio URL transcription failed, retrying via yt-dlp stream: ${directMessage}`
@@ -143,6 +185,7 @@ async function transcribeViaAudio(
       });
 
       const segments = groupWordsIntoSegments(result.words);
+      assertHasSegments(segments, 'audio');
       return { language: result.language_code, segments, provider: 'assemblyai' as const };
     } catch (streamError) {
       const streamMessage =
@@ -163,6 +206,7 @@ async function transcribeViaCaptions(
     fetchYouTubeTranscript(sourceUrl)
   );
   const segments = captionItemsToSegments(result.items);
+  assertHasSegments(segments, 'captions');
   return { language: result.language, segments, provider: 'youtube' as const };
 }
 
@@ -202,6 +246,7 @@ export async function orchestratePipeline(
       console.warn(
         `[ingest] Audio transcription failed for asset ${assetId}, falling back to captions: ${audioError}`
       );
+      emitAssetStatus(userId, assetId, 'transcribing', 'Falling back to captions...');
     }
 
     // Fallback to captions
