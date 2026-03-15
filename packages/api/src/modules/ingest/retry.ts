@@ -18,6 +18,13 @@ function delayWithJitter(attempt: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, exponential + jitter));
 }
 
+function normalizeMaxRetries(maxRetries?: number): number {
+  if (maxRetries === undefined) return MAX_RETRIES;
+  if (!Number.isFinite(maxRetries)) return MAX_RETRIES;
+
+  return Math.max(0, Math.floor(maxRetries));
+}
+
 export async function withRetry<T>(
   opts: {
     stage: string;
@@ -27,7 +34,7 @@ export async function withRetry<T>(
   } & RetryControl,
   fn: () => Promise<T>
 ): Promise<T> {
-  const maxRetries = opts.maxRetries ?? MAX_RETRIES;
+  const maxRetries = normalizeMaxRetries(opts.maxRetries);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {

@@ -90,7 +90,12 @@ export const chat = new Elysia({ prefix: '/api/chat' })
           assetId: body.assetId,
           collectionId: body.collectionId,
         });
-        threadId = thread!.id;
+
+        if (!thread) {
+          return status(500, { message: 'Failed to create or resolve thread' });
+        }
+
+        threadId = thread.id;
         isNewThread = true;
       }
 
@@ -138,7 +143,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         headers: { 'X-Thread-Id': threadId },
         onFinish: async ({ responseMessage, wordCount }) => {
           try {
-            await ChatService.saveMessages(threadId!, [responseMessage]);
+            await ChatService.saveMessages(threadId, [responseMessage]);
           } catch (err) {
             console.error(`[chat] Failed to save assistant message for thread ${threadId}:`, err instanceof Error ? err.message : String(err));
           }
