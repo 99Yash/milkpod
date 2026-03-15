@@ -11,7 +11,7 @@ export const transcripts = pgTable(
     assetId: text('asset_id')
       .notNull()
       .references(() => mediaAssets.id, { onDelete: 'cascade' }),
-    provider: text('provider').default('elevenlabs').notNull(),
+    provider: text('provider').default('assemblyai').notNull(),
     providerJobId: text('provider_job_id'),
     language: text('language'),
     totalSegments: integer('total_segments'),

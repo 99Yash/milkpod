@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import type { TranscriptSegment } from '@milkpod/api/types';
 import type { CoalescedGroup } from './types';
 import { GroupRow } from './group-row';
+import type { SpeakerNamesMap } from './speaker-names';
 
 interface FlatViewProps {
   groups: CoalescedGroup[];
@@ -15,6 +16,7 @@ interface FlatViewProps {
   onSegmentClick?: (segment: TranscriptSegment) => void;
   scrollToSegment: (segmentId: string) => void;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  speakerNames: SpeakerNamesMap;
 }
 
 export function FlatView({
@@ -28,6 +30,7 @@ export function FlatView({
   onSegmentClick,
   scrollToSegment,
   scrollContainerRef,
+  speakerNames,
 }: FlatViewProps) {
   const filteredGroups = useMemo(() => {
     if (!searchQuery) return groups;
@@ -124,6 +127,7 @@ export function FlatView({
               activeMatchGlobalIndex={activeMatchGlobalIndex}
               onSegmentClick={onSegmentClick}
               scrollToSegment={scrollToSegment}
+              speakerNames={speakerNames}
             />
           </div>
         );

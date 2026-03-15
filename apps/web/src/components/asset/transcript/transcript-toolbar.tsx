@@ -1,6 +1,17 @@
+import {
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
+  List,
+  Loader2,
+  Search,
+  X,
+} from 'lucide-react';
 import { useCallback } from 'react';
-import { Search, X, List, BookOpen, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
+import { Input } from '~/components/ui/input';
 import { cn } from '~/lib/utils';
+import type { SpeakerNamesMap } from './speaker-names';
+import { SpeakerNamesPopover } from './speaker-names-popover';
 import type { ViewMode } from './types';
 
 interface TranscriptToolbarProps {
@@ -14,6 +25,10 @@ interface TranscriptToolbarProps {
   onViewModeChange: (mode: ViewMode) => void;
   showViewToggle: boolean;
   isSearching?: boolean;
+  speakerIds?: string[];
+  speakerNames?: SpeakerNamesMap;
+  onSaveSpeakerNames?: (speakerNames: SpeakerNamesMap) => Promise<void>;
+  isSavingSpeakerNames?: boolean;
 }
 
 export function TranscriptToolbar({
@@ -27,6 +42,10 @@ export function TranscriptToolbar({
   onViewModeChange,
   showViewToggle,
   isSearching,
+  speakerIds = [],
+  speakerNames = {},
+  onSaveSpeakerNames,
+  isSavingSpeakerNames,
 }: TranscriptToolbarProps) {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -49,7 +68,7 @@ export function TranscriptToolbar({
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input
+          <Input
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -101,6 +120,15 @@ export function TranscriptToolbar({
             </div>
           )}
         </div>
+
+        {onSaveSpeakerNames && speakerIds.length > 0 && (
+          <SpeakerNamesPopover
+            speakerIds={speakerIds}
+            speakerNames={speakerNames}
+            onSaveSpeakerNames={onSaveSpeakerNames}
+            isSavingSpeakerNames={isSavingSpeakerNames}
+          />
+        )}
 
         {showViewToggle && (
           <div className="flex shrink-0 items-center rounded-full border border-border/60 bg-muted/40 p-0.5">

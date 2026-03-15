@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process';
+import { Readable } from 'node:stream';
 import { z } from 'zod';
 
 export type YouTubeMetadata = {
@@ -12,6 +14,12 @@ export type CaptionItem = {
   text: string;
   offset: number;
   duration: number;
+};
+
+export type YouTubeAudioStreamHandle = {
+  stream: ReadableStream<Uint8Array>;
+  waitForExit: () => Promise<void>;
+  dispose: () => void;
 };
 
 type CaptionTrack = {
@@ -64,6 +72,8 @@ const CAPTION_RE = /<p t="(\d+)" d="(\d+)"[^>]*>([\s\S]*?)<\/p>/g;
 const ANDROID_USER_AGENT =
   'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip';
 const ANDROID_CLIENT_VERSION = '20.10.38';
+const YT_DLP_TIMEOUT_MS = 30 * 60_000;
+const YT_DLP_STDERR_LIMIT = 2_000;
 
 export function extractVideoId(url: string): string {
   const match = url.match(VIDEO_ID_RE);
@@ -190,6 +200,139 @@ export async function resolveYouTubeAudioUrl(url: string): Promise<string> {
   }
 
   return audioFormats[0]!.url!;
+}
+
+function formatYtDlpError(stderr: string): string {
+  const trimmed = stderr.trim();
+  if (!trimmed) return 'Unknown yt-dlp error';
+  return trimmed.slice(-YT_DLP_STDERR_LIMIT);
+}
+
+export async function streamYouTubeAudioViaYtDlp(
+  url: string
+): Promise<YouTubeAudioStreamHandle> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      'yt-dlp',
+      [
+        '--no-playlist',
+        '--no-progress',
+        '--quiet',
+        '--no-warnings',
+        '-f',
+        'bestaudio/best',
+        '-o',
+        '-',
+        url,
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] }
+    );
+
+    let settled = false;
+    let stderr = '';
+
+    const settleResolve = (value: YouTubeAudioStreamHandle) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    const settleReject = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    const timeout = setTimeout(() => {
+      if (child.exitCode == null) {
+        child.kill('SIGKILL');
+      }
+    }, YT_DLP_TIMEOUT_MS);
+
+    const clearTimer = () => {
+      clearTimeout(timeout);
+    };
+
+    if (!child.stderr) {
+      clearTimer();
+      settleReject(new Error('yt-dlp did not expose stderr stream'));
+      return;
+    }
+
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => {
+      stderr = `${stderr}${chunk}`;
+      if (stderr.length > YT_DLP_STDERR_LIMIT) {
+        stderr = stderr.slice(-YT_DLP_STDERR_LIMIT);
+      }
+    });
+
+    const exitPromise = new Promise<void>((resolveExit, rejectExit) => {
+      child.once('error', (error) => {
+        clearTimer();
+        const enoent = (error as NodeJS.ErrnoException).code === 'ENOENT';
+        if (enoent) {
+          rejectExit(
+            new Error(
+              'yt-dlp is not installed on the server. Install yt-dlp to enable resilient YouTube audio streaming.'
+            )
+          );
+          return;
+        }
+
+        rejectExit(new Error(`yt-dlp failed to start: ${error.message}`));
+      });
+
+      child.once('exit', (code, signal) => {
+        clearTimer();
+
+        if (code === 0) {
+          resolveExit();
+          return;
+        }
+
+        if (signal === 'SIGKILL') {
+          rejectExit(
+            new Error(
+              `yt-dlp timed out after ${Math.floor(YT_DLP_TIMEOUT_MS / 1000)} seconds`
+            )
+          );
+          return;
+        }
+
+        const detail = formatYtDlpError(stderr);
+        rejectExit(
+          new Error(
+            `yt-dlp exited with code ${code ?? 'unknown'}${signal ? ` (signal ${signal})` : ''}: ${detail}`
+          )
+        );
+      });
+    });
+
+    child.once('spawn', () => {
+      if (!child.stdout) {
+        child.kill('SIGKILL');
+        settleReject(new Error('yt-dlp did not expose stdout stream'));
+        return;
+      }
+
+      settleResolve({
+        stream: Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
+        waitForExit: () => exitPromise,
+        dispose: () => {
+          if (child.exitCode == null) {
+            child.kill('SIGTERM');
+          }
+        },
+      });
+    });
+
+    exitPromise.catch((error) => {
+      if (!settled) {
+        settleReject(error instanceof Error ? error : new Error('yt-dlp failed'));
+      }
+    });
+  });
 }
 
 /**

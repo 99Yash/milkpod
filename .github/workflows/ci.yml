@@ -19,8 +19,11 @@ jobs:
       BETTER_AUTH_URL: ${{ secrets.BETTER_AUTH_URL }}
       GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      COOKIE_DOMAIN: ${{ secrets.COOKIE_DOMAIN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,15 +39,6 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Write web env
-        run: |
-          echo "DATABASE_URL=$DATABASE_URL" >> apps/web/.env
-          echo "BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET" >> apps/web/.env
-          echo "BETTER_AUTH_URL=$BETTER_AUTH_URL" >> apps/web/.env
-          echo "GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID" >> apps/web/.env
-          echo "GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET" >> apps/web/.env
-          echo "CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}" >> apps/web/.env
-          echo "RESEND_API_KEY=$RESEND_API_KEY" >> apps/web/.env
       - name: Typecheck
         run: pnpm check-types
       - name: Build

@@ -212,12 +212,12 @@ function DashboardHome() {
               data-tab-target="agent"
               role="button"
               tabIndex={0}
-              className="group flex flex-wrap items-center gap-2 rounded-xl border border-ring/20 bg-background px-4 py-1 shadow-xs transition-[border-color,background-color,box-shadow] hover:border-ring/30 hover:bg-accent/16 focus-visible:border-ring/35 focus-visible:shadow-sm focus-visible:ring-2 focus-visible:ring-ring/30"
+              className="group flex flex-wrap items-center gap-2 rounded-xl border border-ring/20 bg-background px-4 py-1 shadow-xs transition-[border-color,background-color,box-shadow] hover:border-ring/35 hover:bg-accent/16 focus:border-ring/45 focus:shadow-sm focus:ring-[3px] focus:ring-ring/35 focus-visible:border-ring/45 focus-visible:shadow-sm focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-within:border-ring/45 focus-within:shadow-sm focus-within:outline-1 focus-within:outline-ring/60 focus-within:ring-[3px] focus-within:ring-ring/35"
             >
               <Input
                 placeholder="Ask about a transcript, summarize key points, or find a quote."
                 aria-label="Ask the agent"
-                className="pointer-events-none h-8 flex-1 border-0 px-0 text-sm text-foreground placeholder:text-muted-foreground/80 shadow-none focus-visible:ring-0 bg-transparent!"
+                className="pointer-events-none h-8 flex-1 border-0 bg-transparent! px-0 text-sm text-foreground placeholder:text-muted-foreground/80 shadow-none focus-visible:ring-0 focus-visible:outline-none"
                 readOnly
               />
               <Button

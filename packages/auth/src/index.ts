@@ -5,6 +5,7 @@ import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { emailOTP } from 'better-auth/plugins/email-otp';
 import { Resend } from 'resend';
+import { buildOtpEmail } from './otp-email-template';
 
 let _auth: ReturnType<typeof betterAuth<BetterAuthOptions>> | undefined;
 
@@ -36,21 +37,21 @@ export function auth() {
       emailOTP({
         sendVerificationOTP: async ({ email, otp, type }) => {
           const safeOtp = String(otp).replace(/[^0-9]/g, '');
+          const template = buildOtpEmail(type, safeOtp);
           try {
             await resend.emails.send({
-              from: 'Milkpod <noreply@milkpod.app>',
+              from: env.AUTH_FROM_EMAIL,
               to: email,
-              subject:
-                type === 'forget-password'
-                  ? `Reset your password — ${safeOtp}`
-                  : `Your sign-in code — ${safeOtp}`,
-              html: `<p>Your verification code is: <strong>${safeOtp}</strong></p><p>This code expires in 5 minutes.</p>`,
+              subject: template.subject,
+              html: template.html,
+              text: template.text,
             });
           } catch (error) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
             console.error('Failed to send verification OTP via Resend', {
-              email,
               type,
-              error,
+              errorMessage,
             });
             throw error;
           }
@@ -71,17 +72,10 @@ export function auth() {
     },
     advanced: {
       defaultCookieAttributes: {
-        sameSite:
-          env.NODE_ENV === 'production'
-            ? env.COOKIE_DOMAIN
-              ? 'lax'
-              : 'none'
-            : 'lax',
+        sameSite: 'lax',
         secure: env.NODE_ENV === 'production',
         httpOnly: true,
-        ...(env.NODE_ENV === 'production' && env.COOKIE_DOMAIN
-          ? { domain: env.COOKIE_DOMAIN }
-          : {}),
+        ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
       },
     },
   });

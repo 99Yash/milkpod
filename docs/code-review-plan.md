@@ -40,7 +40,7 @@ Files:
 - packages/api/src/modules/ingest/youtube.ts
 - packages/api/src/modules/ingest/video-context.ts
 - packages/api/src/modules/ingest/upload-storage.ts
-- packages/api/src/modules/ingest/elevenlabs.ts
+- packages/api/src/modules/ingest/assemblyai.ts
 - packages/api/src/modules/ingest/service.ts
 - packages/api/src/modules/ingest/model.ts
 - packages/api/src/modules/ingest/index.ts
@@ -50,7 +50,7 @@ Checklist:
 - Input validation on route handlers
 - Auth checks on every endpoint
 - Proper error handling; no sensitive info in error responses
-- Timeouts on external API calls (ElevenLabs, YouTube, Gemini)
+- Timeouts on external API calls (AssemblyAI, YouTube, Gemini)
 - Transactions for atomic multi-step operations
 - Idempotency for retryable operations
 - No hardcoded secrets/URLs; use env vars
