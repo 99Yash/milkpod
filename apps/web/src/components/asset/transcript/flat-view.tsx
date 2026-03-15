@@ -14,7 +14,6 @@ interface FlatViewProps {
   activeMatchGroupId?: string;
   onSegmentClick?: (segment: TranscriptSegment) => void;
   scrollToSegment: (segmentId: string) => void;
-  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   speakerNames: SpeakerNamesMap;
 }
 
@@ -28,7 +27,6 @@ export function FlatView({
   activeMatchGroupId,
   onSegmentClick,
   scrollToSegment,
-  scrollContainerRef,
   speakerNames,
 }: FlatViewProps) {
   const filteredGroups = useMemo(() => {
