@@ -246,11 +246,13 @@ function ChatPanelContent({
   // Notify parent when a draft thread is created (threadId was undefined, now has a value)
   const notifiedRef = useRef(false);
   useEffect(() => {
-    if (chatThreadId && !threadId && !notifiedRef.current) {
+    const requestSettled = status !== 'submitted' && status !== 'streaming';
+
+    if (chatThreadId && !threadId && !notifiedRef.current && requestSettled) {
       notifiedRef.current = true;
       onThreadCreated?.(chatThreadId);
     }
-  }, [chatThreadId, threadId, onThreadCreated]);
+  }, [chatThreadId, threadId, onThreadCreated, status]);
 
   useEffect(() => {
     if (error) {
