@@ -46,8 +46,9 @@ interface TranscriptToolbarProps {
     count: number;
     active: boolean;
   }>;
+  isAllSpeakersActive?: boolean;
   onToggleSpeakerFilter?: (speakerId: string) => void;
-  onClearSpeakerFilters?: () => void;
+  onSelectAllSpeakers?: () => void;
 }
 
 export function TranscriptToolbar({
@@ -63,8 +64,9 @@ export function TranscriptToolbar({
   onSaveSpeakerNames,
   isSavingSpeakerNames,
   speakerFilters = [],
+  isAllSpeakersActive = true,
   onToggleSpeakerFilter,
-  onClearSpeakerFilters,
+  onSelectAllSpeakers,
 }: TranscriptToolbarProps) {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -81,8 +83,6 @@ export function TranscriptToolbar({
   );
 
   const hasSearch = search.length > 0;
-  const activeSpeakerFilterCount = speakerFilters.filter((filter) => filter.active).length;
-
   return (
     <div className="shrink-0 px-5 py-3">
       <div className="flex items-center gap-3">
@@ -158,6 +158,23 @@ export function TranscriptToolbar({
             <Mic className="size-3.5" />
             Speaker focus
           </span>
+
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onSelectAllSpeakers}
+            className={cn(
+              'h-7 rounded-full px-2 text-xs',
+              isAllSpeakersActive
+                ? 'border-ring/60 bg-accent text-foreground ring-2 ring-ring/35'
+                : 'text-muted-foreground',
+            )}
+            aria-pressed={isAllSpeakersActive}
+          >
+            All
+          </Button>
+
           {speakerFilters.map((speaker) => (
             <Button
               key={speaker.id}
@@ -181,18 +198,6 @@ export function TranscriptToolbar({
               <span className="max-w-[8rem] truncate">{speaker.label}</span>
             </Button>
           ))}
-          {activeSpeakerFilterCount > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onClearSpeakerFilters}
-              className="h-7 rounded-full px-2 text-xs"
-            >
-              <X className="size-3" />
-              Clear
-            </Button>
-          )}
         </div>
       )}
     </div>

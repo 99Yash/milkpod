@@ -234,8 +234,9 @@ export function TranscriptViewer({
         onSaveSpeakerNames={onSaveSpeakerNames}
         isSavingSpeakerNames={isSavingSpeakerNames}
         speakerFilters={speakerFilters}
+        isAllSpeakersActive={!hasEffectiveSpeakerFilter}
         onToggleSpeakerFilter={toggleSpeakerFilter}
-        onClearSpeakerFilters={clearSpeakerFilters}
+        onSelectAllSpeakers={clearSpeakerFilters}
       />
 
       <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-hide">
@@ -251,7 +252,6 @@ export function TranscriptViewer({
           activeMatchGroupId={activeMatchGroupId ?? undefined}
           onSegmentClick={onSegmentClick}
           scrollToSegment={scrollToSegment}
-          scrollContainerRef={containerRef}
           speakerNames={speakerNames}
         />
       </div>
