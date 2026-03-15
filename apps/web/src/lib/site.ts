@@ -1,7 +1,7 @@
 export const siteConfig = {
   name: 'Milkpod',
   url: 'https://milkpod.ai',
-  ogImage: 'https://milkpod.ai/og.png',
+  ogImage: 'https://milkpod.ai/opengraph-image',
   description:
     'Milkpod is an AI video transcription and Q&A workspace that turns meetings, lectures, and interviews into searchable transcripts, highlights, and timestamped answers.',
   links: {

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono, Inter } from 'next/font/google';
 import localFont from 'next/font/local';
+import Script from 'next/script';
 import 'streamdown/styles.css';
 import { MainLayout } from '~/components/layouts/main';
 import { Providers } from '~/components/layouts/providers';
@@ -43,6 +44,13 @@ export const metadata: Metadata = {
   title: siteConfig.name,
   description: siteConfig.description,
   metadataBase: new URL(siteConfig.url),
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icon', type: 'image/svg+xml', sizes: '64x64' },
+    ],
+    apple: '/apple-icon',
+  },
   openGraph: {
     title: siteConfig.name,
     description: siteConfig.description,
@@ -73,13 +81,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${inter.variable} ${openRunde.variable} antialiased`}
       >
-        <head>
-          <script
-            defer
-            src="https://cloud.umami.is/script.js"
-            data-website-id="4f45abff-ace9-4440-b2fe-8e72a6151bd6"
-          ></script>
-        </head>
+        <Script
+          defer
+          src="https://cloud.umami.is/script.js"
+          data-website-id="4f45abff-ace9-4440-b2fe-8e72a6151bd6"
+          strategy="afterInteractive"
+        />
         <Providers>
           <MainLayout>{children}</MainLayout>
         </Providers>
