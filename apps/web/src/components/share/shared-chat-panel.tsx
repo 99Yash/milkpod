@@ -103,14 +103,17 @@ export function SharedChatPanel({ token }: SharedChatPanelProps) {
             remaining this hour
           </p>
         )}
-        <form onSubmit={handleSubmit}>
-          <div className="flex gap-2">
+        <form
+          onSubmit={handleSubmit}
+          className="overflow-hidden rounded-xl border border-ring/15 bg-background shadow-xs transition-[box-shadow,border-color,background-color] duration-200 focus-within:border-ring/45 focus-within:bg-accent/12 focus-within:outline-1 focus-within:outline-ring/60 focus-within:ring-[3px] focus-within:ring-ring/35"
+        >
+          <div className="flex gap-2 p-2">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask about this content..."
-              className="min-h-[44px] max-h-[120px] resize-none"
+              className="min-h-[44px] max-h-[120px] resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:outline-none"
               rows={1}
               disabled={isLoading}
             />

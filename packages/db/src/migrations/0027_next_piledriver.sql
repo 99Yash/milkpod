@@ -1,0 +1,1 @@
+ALTER TABLE "transcript" ALTER COLUMN "provider" SET DEFAULT 'assemblyai';

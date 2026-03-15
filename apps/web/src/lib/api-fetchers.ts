@@ -147,6 +147,19 @@ export async function fetchAssetDetail(
   return data as AssetWithTranscript;
 }
 
+export async function updateAssetSpeakerNames(
+  assetId: string,
+  speakerNames: Record<string, string>,
+): Promise<Record<string, string> | null> {
+  const { data, error } = await api.api
+    .assets({ id: assetId })
+    .speakers.patch({ speakerNames });
+
+  if (error || !data || !('speakerNames' in data)) return null;
+
+  return (data as { speakerNames: Record<string, string> }).speakerNames;
+}
+
 export interface TranscriptSearchResult {
   segmentId: string;
   text: string;

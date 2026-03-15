@@ -1,6 +1,9 @@
 import { t } from 'elysia';
 
 export namespace AssetModel {
+  const speakerId = t.String({ minLength: 1, maxLength: 64 });
+  const speakerDisplayName = t.String({ minLength: 1, maxLength: 80 });
+
   export const create = t.Object({
     title: t.String(),
     sourceUrl: t.Optional(t.String()),
@@ -32,6 +35,13 @@ export namespace AssetModel {
     ),
   });
   export type Update = typeof update.static;
+
+  export const speakerNamesUpdate = t.Object({
+    speakerNames: t.Record(speakerId, speakerDisplayName, {
+      maxProperties: 50,
+    }),
+  });
+  export type SpeakerNamesUpdate = typeof speakerNamesUpdate.static;
 
   export const listQuery = t.Object({
     q: t.Optional(t.String()),

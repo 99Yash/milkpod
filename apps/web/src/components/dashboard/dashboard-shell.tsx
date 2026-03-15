@@ -3,19 +3,12 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Bell,
-  ChevronDown,
-  ChevronRight,
-  CreditCard,
   FolderPlus,
   Gauge,
   Home,
   Library,
-  LifeBuoy,
   LogOut,
-  Settings,
   Sparkles,
-  User,
-  Video,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -35,16 +28,7 @@ import {
 } from '~/components/dashboard/dashboard-panel';
 import { DashboardSidebarToggle } from '~/components/dashboard/sidebar-toggle';
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar';
-import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '~/components/ui/dropdown-menu';
 import {
   Sheet,
   SheetContent,
@@ -60,7 +44,6 @@ import { cn, getErrorMessage } from '~/lib/utils';
 import {
   fetchBillingSummary,
   fetchUsageRemaining,
-  fetchUsageStats,
 } from '~/lib/sidebar-data';
 
 export type DashboardTab = 'home' | 'library' | 'agent';
@@ -76,19 +59,6 @@ const navItems: NavItem[] = [
   { id: 'library', label: 'Library', icon: Library },
   { id: 'agent', label: 'Agent', icon: Sparkles },
 ];
-
-type UserStat = {
-  id: string;
-  label: string;
-  value: string;
-  icon: LucideIcon;
-};
-
-type DailyUsage = {
-  remaining: number;
-  budget: number;
-  isAdmin: boolean;
-};
 
 type DashboardShellProps = {
   initialTab?: DashboardTab;
@@ -154,11 +124,13 @@ export function DashboardShell({
         if (nextTab === 'library') {
           url.searchParams.set('tab', 'library');
           url.searchParams.delete('session');
+          url.searchParams.delete('asset');
         } else if (nextTab === 'agent') {
           url.searchParams.set('tab', 'agent');
         } else {
           url.searchParams.delete('tab');
           url.searchParams.delete('session');
+          url.searchParams.delete('asset');
         }
         url.hash = '';
         window.history.replaceState(null, '', url.toString());
@@ -239,7 +211,7 @@ export function DashboardShell({
               <SheetDescription>Access your dashboard sections.</SheetDescription>
             </SheetHeader>
             <div className="flex items-center justify-between">
-              <SidebarUserMenu collapsed={false} />
+              <SidebarUserSummary collapsed={false} />
             </div>
             <div className="mt-6 flex h-full flex-col">
               <SidebarSections collapsed={false} activeNav={activeTab} />
@@ -253,15 +225,12 @@ export function DashboardShell({
 
 function SidebarBrand({
   collapsed,
-  children,
 }: {
   collapsed: boolean;
-  children?: ReactNode;
 }) {
   return (
     <div className="flex w-full items-center justify-between gap-3">
-      <SidebarUserMenu collapsed={collapsed} />
-      {children}
+      <SidebarUserSummary collapsed={collapsed} />
     </div>
   );
 }
@@ -314,6 +283,10 @@ function SidebarSections({
           </DashboardPanel>
 
           <SidebarPlanUsage />
+        </div>
+
+        <div className="border-t border-border/60 pt-2">
+          <SidebarSignOutButton collapsed={collapsed} />
         </div>
       </div>
     </div>
@@ -436,57 +409,42 @@ function SidebarPlanUsage() {
   );
 }
 
-function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
-  const router = useRouter();
-  const [isSigningOut, setIsSigningOut] = useState(false);
+function SidebarUserSummary({ collapsed }: { collapsed: boolean }) {
   const { data: session } = authClient.useSession();
   const user = session?.user;
-  const [planLabel, setPlanLabel] = useState('Free');
-  const [dailyUsage, setDailyUsage] = useState<DailyUsage | null>(null);
-
-  const [userStats, setUserStats] = useState<UserStat[]>([
-    { id: 'videos', label: 'Videos', value: '–', icon: Video },
-    { id: 'minutes', label: 'Minutes', value: '–', icon: Sparkles },
-  ]);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchUsageStats().then((data) => {
-      if (!cancelled && data) {
-        setUserStats([
-          { id: 'videos', label: 'Videos', value: String(data.videoCount), icon: Video },
-          { id: 'minutes', label: 'Minutes', value: String(data.totalMinutes), icon: Sparkles },
-        ]);
-      }
-    });
-    fetchUsageRemaining().then((data) => {
-      if (!cancelled && data) setDailyUsage(data);
-    });
-    fetchBillingSummary().then((data) => {
-      if (!cancelled && data) setPlanLabel(PLAN_LABELS[data.plan] ?? 'Free');
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
   const displayName =
     user?.name?.trim() || user?.email?.split('@')[0] || 'New member';
   const emailLabel = user?.email ?? 'Connect your email';
   const initials = getUserInitials(user?.name ?? user?.email ?? 'Milkpod');
-  const wordsRemainingLabel =
-    dailyUsage && !dailyUsage.isAdmin
-      ? `${dailyUsage.remaining.toLocaleString()} words left today`
-      : null;
-  const wordsRemainingRatio =
-    dailyUsage && !dailyUsage.isAdmin && dailyUsage.budget > 0
-      ? dailyUsage.remaining / dailyUsage.budget
-      : null;
-  const wordsStatusDotClass =
-    wordsRemainingRatio === null
-      ? null
-      : wordsRemainingRatio <= 0.2
-        ? 'bg-destructive'
-        : 'bg-emerald-500';
+
+  return (
+    <div
+      className={cn(
+        'flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-border/70 bg-card/90 px-3 py-2.5 shadow-sm',
+        collapsed && 'size-10 justify-center rounded-xl p-0',
+      )}
+      aria-label={collapsed ? displayName : undefined}
+      title={collapsed ? displayName : undefined}
+    >
+      <Avatar className="size-8 rounded-full border border-border/70 bg-card">
+        {user?.image ? <AvatarImage src={user.image} alt={displayName} /> : null}
+        <AvatarFallback className="text-xs font-semibold text-muted-foreground">
+          {initials}
+        </AvatarFallback>
+      </Avatar>
+      <div className={cn('min-w-0', collapsed && 'sr-only')}>
+        <p className="truncate text-sm font-semibold leading-tight text-foreground">
+          {displayName}
+        </p>
+        <p className="truncate text-xs text-muted-foreground">{emailLabel}</p>
+      </div>
+    </div>
+  );
+}
+
+function SidebarSignOutButton({ collapsed }: { collapsed: boolean }) {
+  const router = useRouter();
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const handleSignOut = async () => {
     if (isSigningOut) {
@@ -509,299 +467,24 @@ function SidebarUserMenu({ collapsed }: { collapsed: boolean }) {
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            'group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-border/70 bg-card/90 px-3 py-2.5 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-border hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
-            collapsed && 'size-10 justify-center rounded-xl p-0'
-          )}
-          aria-label={collapsed ? `${displayName} menu` : undefined}
-          title={collapsed ? displayName : undefined}
-        >
-          <span
-            className={cn(
-              'pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/12 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100',
-              collapsed && 'hidden'
-            )}
-          />
-          <WordsRemainingAvatar
-            size="sm"
-            image={user?.image}
-            displayName={displayName}
-            initials={initials}
-            usage={dailyUsage}
-          />
-          <div className={cn('relative min-w-0', collapsed && 'sr-only')}>
-            <p className="truncate text-sm font-semibold leading-tight text-foreground">
-              {displayName}
-            </p>
-            {wordsRemainingLabel ? (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className={cn('size-1.5 rounded-full', wordsStatusDotClass)} />
-                <p className="truncate">{wordsRemainingLabel}</p>
-              </div>
-            ) : null}
-          </div>
-          <ChevronDown
-            className={cn(
-              'relative ml-auto size-4 text-muted-foreground transition group-data-[state=open]:rotate-180',
-              collapsed && 'hidden'
-            )}
-          />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align={collapsed ? 'center' : 'start'}
-        sideOffset={8}
-        className="w-80 overflow-hidden rounded-2xl border border-border/65 bg-card/95 p-0 shadow-2xl"
-      >
-        <div className="border-b border-border/60 bg-background/70 px-4 py-3.5">
-          <div className="flex items-center gap-3">
-            <WordsRemainingAvatar
-              size="md"
-              image={user?.image}
-              displayName={displayName}
-              initials={initials}
-              usage={dailyUsage}
-            />
-            <div className="min-w-0 space-y-1">
-              <div className="flex items-center gap-2">
-                <p className="truncate text-sm font-semibold text-foreground">
-                  {displayName}
-                </p>
-                <Badge
-                  variant="outline"
-                  className="h-5 rounded-md border-border/70 bg-muted/35 px-1.5 text-[10px] font-medium text-muted-foreground"
-                >
-                  {planLabel}
-                </Badge>
-              </div>
-              <p className="truncate text-xs text-muted-foreground">
-                {emailLabel}
-              </p>
-              {wordsRemainingLabel ? (
-                <p className="truncate text-[11px] text-muted-foreground">
-                  {wordsRemainingLabel}
-                </p>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 px-4 py-3">
-          {userStats.map((stat) => (
-            <div
-              key={stat.id}
-              className="rounded-lg border border-border/60 bg-background/55 px-3 py-2"
-            >
-              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <stat.icon className="size-3.5 text-muted-foreground/90" />
-                <p>
-                  {stat.label}
-                </p>
-              </div>
-              <p className="mt-1 text-xl font-semibold leading-none text-foreground">
-                {stat.value}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        <div className="px-2 pb-2">
-          <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
-            Workspace
-          </p>
-          <DropdownMenuGroup>
-            <DropdownMenuItem
-              className="rounded-lg px-2.5 py-2"
-              onSelect={() => router.push(route('/dashboard/billing'))}
-            >
-              <CreditCard className="size-4" />
-              <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                <span className="truncate font-medium">Billing</span>
-                <ChevronRight className="size-4 text-muted-foreground/70" />
-              </div>
-            </DropdownMenuItem>
-
-            <DropdownMenuItem
-              disabled
-              className="rounded-lg px-2.5 py-2 data-[disabled]:opacity-70"
-            >
-              <User className="size-4" />
-              <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                <span className="truncate font-medium">Profile</span>
-                <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  Soon
-                </span>
-              </div>
-            </DropdownMenuItem>
-
-            <DropdownMenuItem
-              disabled
-              className="rounded-lg px-2.5 py-2 data-[disabled]:opacity-70"
-            >
-              <Settings className="size-4" />
-              <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                <span className="truncate font-medium">Settings</span>
-                <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  Soon
-                </span>
-              </div>
-            </DropdownMenuItem>
-
-            <DropdownMenuItem
-              disabled
-              className="rounded-lg px-2.5 py-2 data-[disabled]:opacity-70"
-            >
-              <LifeBuoy className="size-4" />
-              <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                <span className="truncate font-medium">Support</span>
-                <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  Soon
-                </span>
-              </div>
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-        </div>
-
-        <DropdownMenuSeparator className="my-0" />
-        <div className="p-2">
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={isSigningOut}
-            onSelect={() => void handleSignOut()}
-            className="rounded-lg px-2.5 py-2"
-          >
-            <LogOut className="size-4" />
-            <span className="font-medium">
-              {isSigningOut ? 'Signing out...' : 'Log out'}
-            </span>
-          </DropdownMenuItem>
-        </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-type WordsRemainingAvatarProps = {
-  size: 'sm' | 'md';
-  image?: string | null;
-  displayName: string;
-  initials: string;
-  usage: DailyUsage | null;
-};
-
-function WordsRemainingAvatar({
-  size,
-  image,
-  displayName,
-  initials,
-  usage,
-}: WordsRemainingAvatarProps) {
-  const radius = 44;
-  const remainingPercentage = usage?.isAdmin
-    ? 100
-    : usage
-      ? Math.max(0, Math.min(100, (usage.remaining / Math.max(usage.budget, 1)) * 100))
-      : 0;
-  const roundedPercentage = Math.round(remainingPercentage);
-  const ringStrokeClass =
-    usage && !usage.isAdmin && roundedPercentage <= 20
-      ? 'stroke-destructive/70'
-      : 'stroke-foreground/45';
-  const hasPartialSegments = remainingPercentage > 0 && remainingPercentage < 100;
-  const segmentGap = hasPartialSegments
-    ? Math.min(3, remainingPercentage, 100 - remainingPercentage)
-    : 0;
-  const remainingArcLength = hasPartialSegments
-    ? Math.max(0, remainingPercentage - segmentGap)
-    : remainingPercentage;
-  const spentArcLength = hasPartialSegments
-    ? Math.max(0, 100 - remainingPercentage - segmentGap)
-    : 100 - remainingPercentage;
-  const shouldRenderSpentArc = spentArcLength > 0;
-  const shouldRenderRemainingArc = remainingArcLength > 0;
-  const ringLineCap: 'butt' | 'round' = hasPartialSegments ? 'round' : 'butt';
-  const finiteUsage = usage && !usage.isAdmin ? usage : null;
-  const containerClass = size === 'sm' ? 'size-10' : 'size-12';
-  const insetClass = size === 'sm' ? 'inset-[4px]' : 'inset-[5px]';
-  const percentageClass = size === 'sm' ? 'text-[10px]' : 'text-xs';
-  const label = finiteUsage
-    ? `${finiteUsage.remaining.toLocaleString()} of ${finiteUsage.budget.toLocaleString()} words remaining today`
-    : 'Account avatar';
-  const hoverLabel = finiteUsage ? `${roundedPercentage}% remaining today` : undefined;
-  const hoverText = usage?.isAdmin ? '∞' : usage ? `${roundedPercentage}%` : '--';
-
-  return (
-    <div
-      className={cn('group/quota relative shrink-0', containerClass)}
-      aria-label={label}
-      title={hoverLabel}
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      disabled={isSigningOut}
+      onClick={() => void handleSignOut()}
+      className={cn(
+        'w-full justify-start gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive',
+        collapsed && 'w-10 justify-center px-0',
+      )}
+      title={collapsed ? 'Log out' : undefined}
+      aria-label={collapsed ? 'Log out' : undefined}
     >
-      <svg
-        viewBox="0 0 100 100"
-        className="absolute inset-0"
-        aria-hidden="true"
-      >
-        {shouldRenderSpentArc ? (
-          <circle
-            cx="50"
-            cy="50"
-            r={radius}
-            transform="rotate(-90 50 50)"
-            className="fill-none stroke-border/70 transition-all duration-300"
-            strokeWidth="8"
-            strokeLinecap={ringLineCap}
-            pathLength={100}
-            strokeDasharray={`${spentArcLength} 100`}
-            strokeDashoffset={
-              hasPartialSegments ? -(remainingPercentage + segmentGap / 2) : -remainingPercentage
-            }
-          />
-        ) : null}
-        {shouldRenderRemainingArc ? (
-          <circle
-            cx="50"
-            cy="50"
-            r={radius}
-            transform="rotate(-90 50 50)"
-            className={cn('fill-none transition-all duration-300', ringStrokeClass)}
-            strokeWidth="8"
-            strokeLinecap={ringLineCap}
-            pathLength={100}
-            strokeDasharray={`${remainingArcLength} 100`}
-            strokeDashoffset={hasPartialSegments ? -(segmentGap / 2) : 0}
-          />
-        ) : null}
-      </svg>
-
-      <div className={cn('absolute', insetClass)}>
-        <Avatar className="size-full rounded-full border border-border/70 bg-card shadow-sm transition-opacity duration-200 group-hover/quota:opacity-0">
-          {image ? <AvatarImage src={image} alt={displayName} /> : null}
-          <AvatarFallback
-            className={cn(
-              'font-semibold text-muted-foreground',
-              size === 'sm' ? 'text-xs' : 'text-sm',
-            )}
-          >
-            {initials}
-          </AvatarFallback>
-        </Avatar>
-      </div>
-
-      <div
-        className={cn(
-          'absolute flex items-center justify-center rounded-full bg-card text-foreground opacity-0 transition-opacity duration-200 group-hover/quota:opacity-100',
-          insetClass,
-        )}
-      >
-        <span className={cn('font-semibold tabular-nums', percentageClass)}>
-          {hoverText}
-        </span>
-      </div>
-    </div>
+      <LogOut className="size-4" />
+      <span className={cn('font-medium', collapsed && 'sr-only')}>
+        {isSigningOut ? 'Signing out...' : 'Log out'}
+      </span>
+    </Button>
   );
 }
 

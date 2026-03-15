@@ -12,6 +12,9 @@ import type { AssetModel } from './model';
 
 const VALID_STATUSES = new Set<string>(assetStatusEnum.enumValues);
 const VALID_SOURCE_TYPES = new Set<string>(sourceTypeEnum.enumValues);
+const MAX_SPEAKER_NAME_ENTRIES = 50;
+const MAX_SPEAKER_ID_LENGTH = 64;
+const MAX_SPEAKER_NAME_LENGTH = 80;
 
 export type AssetPage = {
   items: Asset[];
@@ -20,6 +23,47 @@ export type AssetPage = {
 };
 
 export abstract class AssetService {
+  private static asRecord(value: unknown): Record<string, unknown> | null {
+    if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    return value as Record<string, unknown>;
+  }
+
+  private static sanitizeSpeakerNames(
+    speakerNames: Record<string, string>,
+  ): Record<string, string> {
+    const sanitized: Record<string, string> = {};
+    let totalEntries = 0;
+
+    for (const [speakerId, displayName] of Object.entries(speakerNames)) {
+      const id = speakerId.trim();
+      const name = displayName.trim();
+
+      if (
+        id.length === 0 ||
+        name.length === 0 ||
+        id.length > MAX_SPEAKER_ID_LENGTH ||
+        name.length > MAX_SPEAKER_NAME_LENGTH
+      ) {
+        continue;
+      }
+
+      const seen = Object.prototype.hasOwnProperty.call(sanitized, id);
+      if (!seen && totalEntries >= MAX_SPEAKER_NAME_ENTRIES) {
+        break;
+      }
+
+      sanitized[id] = name;
+
+      if (!seen) {
+        totalEntries += 1;
+      }
+    }
+
+    return sanitized;
+  }
+
   /**
    * Null out internal error details so they never reach the client.
    * The raw values remain in the DB for debugging via Drizzle Studio.
@@ -211,6 +255,36 @@ export abstract class AssetService {
       .where(eq(transcripts.assetId, assetId))
       .limit(1);
     return row?.language ?? null;
+  }
+
+  static async updateSpeakerNames(
+    assetId: string,
+    speakerNames: Record<string, string>,
+  ): Promise<Record<string, string> | null> {
+    const [transcript] = await db()
+      .select({ id: transcripts.id, providerMetadata: transcripts.providerMetadata })
+      .from(transcripts)
+      .where(eq(transcripts.assetId, assetId))
+      .orderBy(desc(transcripts.createdAt))
+      .limit(1);
+
+    if (!transcript) return null;
+
+    const sanitizedNames = AssetService.sanitizeSpeakerNames(speakerNames);
+    const existingMetadata =
+      AssetService.asRecord(transcript.providerMetadata) ?? {};
+
+    await db()
+      .update(transcripts)
+      .set({
+        providerMetadata: {
+          ...existingMetadata,
+          speakerNames: sanitizedNames,
+        },
+      })
+      .where(eq(transcripts.id, transcript.id));
+
+    return sanitizedNames;
   }
 
   static async update(id: string, userId: string, data: AssetModel.Update): Promise<Asset | null> {

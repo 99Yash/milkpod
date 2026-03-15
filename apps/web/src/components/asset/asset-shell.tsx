@@ -102,7 +102,8 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
         sourceId={asset.sourceId}
       >
         <AssetTabProvider assetId={assetId}>
-          <div className="flex flex-col lg:h-[calc(100svh-7rem-4px)]">
+          <div className="relative isolate flex flex-col lg:h-[calc(100svh-7rem-4px)]">
+            <div className="pointer-events-none absolute inset-x-0 top-[-120px] h-[220px] rounded-full bg-[radial-gradient(circle_at_center,oklch(0.95_0.03_238/0.4)_0%,transparent_70%)] blur-3xl dark:bg-[radial-gradient(circle_at_center,oklch(0.36_0.06_245)_0%,transparent_70%)] dark:opacity-50" />
             {/* Header */}
             <div className="shrink-0 space-y-3 pb-4 pt-1">
               {/* Row 1: back + actions */}

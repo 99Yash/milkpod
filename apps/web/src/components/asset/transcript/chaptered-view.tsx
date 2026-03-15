@@ -11,6 +11,7 @@ import type { Chapter } from './types';
 import { formatTime } from './types';
 import { GroupRow } from './group-row';
 import { ChapterProgressBar } from './chapter-progress-bar';
+import type { SpeakerNamesMap } from './speaker-names';
 
 const ACCORDION_EXPAND_DELAY_MS = 150;
 
@@ -24,6 +25,7 @@ interface ChapteredViewProps {
   activeMatchGroupId?: string;
   onSegmentClick?: (segment: TranscriptSegment) => void;
   scrollToSegment: (segmentId: string) => void;
+  speakerNames: SpeakerNamesMap;
 }
 
 function getMatchCount(chapter: Chapter, query: string): number {
@@ -85,6 +87,7 @@ export function ChapteredView({
   activeMatchGroupId,
   onSegmentClick,
   scrollToSegment,
+  speakerNames,
 }: ChapteredViewProps) {
   const [expandedChapters, setExpandedChapters] = useState<string[]>(
     [chapters[0]?.id].filter(Boolean),
@@ -207,7 +210,7 @@ export function ChapteredView({
                       {formatTime(chapter.endTime)}
                     </span>
                     {searchQuery && matchCount > 0 && (
-                      <span className="shrink-0 rounded-full bg-yellow-200/60 px-1.5 py-0.5 text-[11px] font-medium tabular-nums dark:bg-yellow-500/30">
+                      <span className="shrink-0 rounded-full bg-sky-200/60 px-1.5 py-0.5 text-[11px] font-medium tabular-nums dark:bg-sky-500/30">
                         {matchCount}
                       </span>
                     )}
@@ -236,6 +239,7 @@ export function ChapteredView({
                         activeMatchGlobalIndex={activeMatchGlobalIndex}
                         onSegmentClick={onSegmentClick}
                         scrollToSegment={scrollToSegment}
+                        speakerNames={speakerNames}
                       />
                     );
                   })}

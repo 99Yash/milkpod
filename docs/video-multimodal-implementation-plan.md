@@ -17,7 +17,7 @@ These decisions remove the main blockers and define v1 scope:
 
 1. **YouTube transcription backend**
    - Resolve YouTube audio stream URL from Innertube Android player response.
-   - Transcribe with existing ElevenLabs `scribe_v2` (`cloud_storage_url`).
+   - Transcribe with AssemblyAI STT and speaker diarization.
    - Captions remain fallback only.
 
 2. **Default transcription strategy**
@@ -57,7 +57,7 @@ Make YouTube ingestion robust without relying on caption availability.
   - `captions-first`
 - ~~Add YouTube audio URL resolver from Innertube `streamingData.adaptiveFormats`.~~ ✅
 - ~~Add fallback chain:~~ ✅
-  1. audio transcription (ElevenLabs)
+  1. audio transcription (AssemblyAI)
   2. captions fallback
 - ~~Persist transcript metadata:~~ ✅
   - method used

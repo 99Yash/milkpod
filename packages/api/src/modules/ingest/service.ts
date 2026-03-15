@@ -65,7 +65,7 @@ export abstract class IngestService {
     assetId: string,
     language: string,
     segments: Segment[],
-    provider = 'elevenlabs',
+    provider = 'assemblyai',
     providerMetadata?: Record<string, unknown>
   ) {
     return db().transaction(async (tx) => {
