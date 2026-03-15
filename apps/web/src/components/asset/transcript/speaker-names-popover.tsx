@@ -58,22 +58,24 @@ export function SpeakerNamesPopover({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-sm"
-              className="size-9 rounded-lg"
-              aria-label="Name speakers"
-            >
-              <Users className="size-4" />
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Know these people?</TooltipContent>
-      </Tooltip>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          className="size-9 rounded-lg"
+          aria-label="Name speakers"
+        >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex items-center justify-center">
+                <Users className="size-4" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Know these people?</TooltipContent>
+          </Tooltip>
+        </Button>
+      </PopoverTrigger>
       <PopoverContent align="end" sideOffset={8} className="w-88 space-y-3 p-3">
         <div className="space-y-1">
           <h3 className="text-sm font-medium text-foreground">Name speakers</h3>
