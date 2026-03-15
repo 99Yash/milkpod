@@ -179,9 +179,19 @@
     transition: background-color 0.2s ease;
   }
 
+  .dark ::-webkit-scrollbar-thumb {
+    background: oklch(1 0 0 / 8%);
+    background-clip: padding-box;
+  }
+
   @media (hover: hover) and (pointer: fine) {
     ::-webkit-scrollbar-thumb:hover {
       background: var(--ring);
+      background-clip: padding-box;
+    }
+
+    .dark ::-webkit-scrollbar-thumb:hover {
+      background: oklch(1 0 0 / 20%);
       background-clip: padding-box;
     }
   }
@@ -192,9 +202,17 @@
     scrollbar-width: thin;
   }
 
+  .dark * {
+    scrollbar-color: oklch(1 0 0 / 8%) transparent;
+  }
+
   @media (hover: hover) and (pointer: fine) {
     *:hover {
       scrollbar-color: var(--ring) transparent;
+    }
+
+    .dark *:hover {
+      scrollbar-color: oklch(1 0 0 / 20%) transparent;
     }
   }
 
