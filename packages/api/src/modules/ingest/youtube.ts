@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { z } from 'zod';
+import { fetchSafeExternalResponse } from './url-safety';
 
 export type YouTubeMetadata = {
   id: string;
@@ -606,6 +607,7 @@ async function fetchYtDlpInfo(url: string): Promise<YtDlpInfo> {
     let settled = false;
     let stdout = '';
     let stderr = '';
+    let stdoutLimitExceeded = false;
 
     const settleResolve = (value: YtDlpInfo) => {
       if (settled) return;
@@ -637,10 +639,19 @@ async function fetchYtDlpInfo(url: string): Promise<YtDlpInfo> {
 
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => {
-      stdout = `${stdout}${chunk}`;
-      if (stdout.length > YT_DLP_STDOUT_LIMIT) {
-        stdout = stdout.slice(-YT_DLP_STDOUT_LIMIT);
+      if (stdoutLimitExceeded) {
+        return;
       }
+
+      if (stdout.length + chunk.length > YT_DLP_STDOUT_LIMIT) {
+        stdoutLimitExceeded = true;
+        if (child.exitCode == null) {
+          child.kill('SIGKILL');
+        }
+        return;
+      }
+
+      stdout = `${stdout}${chunk}`;
     });
 
     child.stderr.setEncoding('utf8');
@@ -668,6 +679,15 @@ async function fetchYtDlpInfo(url: string): Promise<YtDlpInfo> {
 
     child.once('exit', (code, signal) => {
       clearTimer();
+
+      if (stdoutLimitExceeded) {
+        settleReject(
+          new Error(
+            `yt-dlp metadata output exceeded ${YT_DLP_STDOUT_LIMIT} bytes`
+          )
+        );
+        return;
+      }
 
       if (signal === 'SIGKILL') {
         settleReject(
@@ -768,7 +788,7 @@ function collectYtDlpCaptionTracks(info: YtDlpInfo): YtDlpCaptionTrack[] {
 }
 
 async function fetchCaptionTrackText(trackUrl: string): Promise<string> {
-  const res = await fetch(trackUrl, {
+  const res = await fetchSafeExternalResponse(trackUrl, {
     headers: {
       'User-Agent': ANDROID_USER_AGENT,
     },

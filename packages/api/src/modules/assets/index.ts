@@ -169,6 +169,11 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     if (asset.status !== 'failed') {
       return status(409, { message: 'Only failed assets can be retried' });
     }
+    if (asset.sourceType === 'podcast') {
+      return status(409, {
+        message: 'Podcast assets must be retried from the podcast episode ingest flow.',
+      });
+    }
     if (!asset.sourceUrl) {
       return status(422, { message: 'Asset has no source URL to retry' });
     }

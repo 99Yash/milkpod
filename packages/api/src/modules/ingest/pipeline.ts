@@ -4,7 +4,7 @@ import {
   resolveYouTubeAudioUrl,
   streamAudioViaYtDlp,
 } from './youtube';
-import { assertSafeExternalSourceUrl } from './url-source';
+import { assertSafeExternalSourceUrl } from './url-safety';
 import { captionItemsToSegments, groupWordsIntoSegments } from './segments';
 import { IngestService } from './service';
 import { withRetry, type RetryControl } from './retry';
@@ -232,9 +232,7 @@ async function transcribeViaExternalAudio(
 ) {
   try {
     const result = await retry('transcribing-external-url', () =>
-      transcribeAudio(sourceUrl, {
-        allowRemoteFetchFallback: true,
-      })
+      transcribeAudio(sourceUrl)
     );
 
     const segments = groupWordsIntoSegments(result.words);
