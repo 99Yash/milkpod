@@ -34,10 +34,11 @@ function detectExternalEmbed(
   sourceId: string | null,
   seconds: number,
 ): EmbedResult {
+  let parsed: URL;
   let hostname: string;
   let pathname: string;
   try {
-    const parsed = new URL(sourceUrl);
+    parsed = new URL(sourceUrl);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
     hostname = parsed.hostname;
     pathname = parsed.pathname;
@@ -48,7 +49,13 @@ function detectExternalEmbed(
   const sec = Math.floor(seconds);
 
   if (hostname === 'vimeo.com' || hostname.endsWith('.vimeo.com')) {
-    const id = sourceId ?? pathname.split('/').filter(Boolean).pop();
+    const idFromSource = sourceId && /^\d+$/.test(sourceId) ? sourceId : null;
+    const idFromPath = pathname
+      .split('/')
+      .filter(Boolean)
+      .reverse()
+      .find((segment) => /^\d+$/.test(segment));
+    const id = idFromSource ?? idFromPath;
     if (id) {
       return {
         type: 'embed',
@@ -58,7 +65,12 @@ function detectExternalEmbed(
   }
 
   if (hostname === 'dailymotion.com' || hostname.endsWith('.dailymotion.com') || hostname === 'dai.ly') {
-    const id = sourceId ?? pathname.split('/').filter(Boolean).pop();
+    const idFromSource = sourceId && /^[a-zA-Z0-9]+$/.test(sourceId) ? sourceId : null;
+    const idFromPath =
+      pathname.match(/\/video\/([^/?_]+)/i)?.[1]
+      ?? pathname.split('/').filter(Boolean).pop()?.split('_')[0]
+      ?? null;
+    const id = idFromSource ?? idFromPath;
     if (id) {
       return {
         type: 'embed',
@@ -68,7 +80,11 @@ function detectExternalEmbed(
   }
 
   if (hostname === 'twitch.tv' || hostname.endsWith('.twitch.tv')) {
-    const id = sourceId ?? pathname.split('/').filter(Boolean).pop();
+    const idFromSource = sourceId && /^v?\d+$/i.test(sourceId) ? sourceId : null;
+    const videoQuery = parsed.searchParams.get('video');
+    const idFromQuery = videoQuery && /^v?\d+$/i.test(videoQuery) ? videoQuery : null;
+    const idFromPath = pathname.match(/\/videos\/(\d+)/i)?.[1] ?? null;
+    const id = idFromSource ?? idFromQuery ?? idFromPath;
     if (id) {
       const h = Math.floor(sec / 3600);
       const m = Math.floor((sec % 3600) / 60);

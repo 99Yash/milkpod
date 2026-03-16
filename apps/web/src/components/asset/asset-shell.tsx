@@ -180,6 +180,8 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
         ? 'AssemblyAI'
         : asset.transcript.provider === 'youtube'
           ? 'YouTube'
+          : asset.transcript.provider === 'yt-dlp-captions'
+            ? 'Captions'
           : asset.transcript.provider;
 
     return {

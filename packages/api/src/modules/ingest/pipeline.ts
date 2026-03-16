@@ -1,8 +1,10 @@
 import {
+  fetchCaptionsViaYtDlp,
   fetchYouTubeTranscript,
   resolveYouTubeAudioUrl,
-  streamYouTubeAudioViaYtDlp,
+  streamAudioViaYtDlp,
 } from './youtube';
+import { assertSafeExternalSourceUrl } from './url-source';
 import { captionItemsToSegments, groupWordsIntoSegments } from './segments';
 import { IngestService } from './service';
 import { withRetry, type RetryControl } from './retry';
@@ -183,7 +185,7 @@ async function transcribeViaAudio(
       const result = await retry(
         'transcribing-audio-stream',
         async () => {
-          const streamHandle = await streamYouTubeAudioViaYtDlp(sourceUrl);
+          const streamHandle = await streamAudioViaYtDlp(sourceUrl);
 
           try {
             const streamedResult = await transcribeAudioStream(streamHandle.stream);
@@ -222,6 +224,80 @@ async function transcribeViaCaptions(
   const segments = captionItemsToSegments(result.items);
   assertHasSegments(segments, 'captions');
   return { language: result.language, segments, provider: 'youtube' as const };
+}
+
+async function transcribeViaExternalAudio(
+  sourceUrl: string,
+  retry: ReturnType<typeof makeRetry>,
+) {
+  try {
+    const result = await retry('transcribing-external-url', () =>
+      transcribeAudio(sourceUrl, {
+        allowRemoteFetchFallback: true,
+      })
+    );
+
+    const segments = groupWordsIntoSegments(result.words);
+    assertHasSegments(segments, 'audio');
+
+    return {
+      language: result.language_code,
+      segments,
+      provider: 'assemblyai' as const,
+    };
+  } catch (directError) {
+    const directMessage = toSafeErrorMessage(directError);
+    console.warn(
+      `[ingest] Direct URL transcription failed, retrying via yt-dlp stream: ${directMessage}`
+    );
+
+    try {
+      const result = await retry('transcribing-external-stream', async () => {
+        const streamHandle = await streamAudioViaYtDlp(sourceUrl);
+
+        try {
+          const streamedResult = await transcribeAudioStream(streamHandle.stream);
+          await streamHandle.waitForExit();
+          return streamedResult;
+        } finally {
+          streamHandle.dispose();
+        }
+      });
+
+      const segments = groupWordsIntoSegments(result.words);
+      assertHasSegments(segments, 'audio');
+
+      return {
+        language: result.language_code,
+        segments,
+        provider: 'assemblyai' as const,
+      };
+    } catch (streamError) {
+      const streamMessage = toSafeErrorMessage(streamError);
+
+      throw new Error(
+        `Audio extraction failed via direct URL (${directMessage}) and yt-dlp stream (${streamMessage})`
+      );
+    }
+  }
+}
+
+async function transcribeViaExternalCaptions(
+  sourceUrl: string,
+  retry: ReturnType<typeof makeRetry>,
+) {
+  const result = await retry('transcribing-external-captions', () =>
+    fetchCaptionsViaYtDlp(sourceUrl)
+  );
+
+  const segments = captionItemsToSegments(result.items);
+  assertHasSegments(segments, 'captions');
+
+  return {
+    language: result.language,
+    segments,
+    provider: 'yt-dlp-captions' as const,
+  };
 }
 
 export async function orchestratePipeline(
@@ -270,6 +346,87 @@ export async function orchestratePipeline(
       fallbackReason: audioError,
     });
     triggerVisualExtraction(assetId, sourceUrl, userId, segments);
+  } catch (error) {
+    await handlePipelineError(assetId, userId, error);
+  }
+}
+
+export async function orchestrateExternalPipeline(
+  assetId: string,
+  sourceUrl: string,
+  userId: string,
+  mediaType: 'audio' | 'video',
+  strategy: TranscriptionStrategy = 'audio-first',
+): Promise<void> {
+  const retry = makeRetry(assetId);
+
+  try {
+    await IngestService.updateStatus(assetId, 'transcribing');
+    emitAssetStatus(userId, assetId, 'transcribing');
+    await assertSafeExternalSourceUrl(sourceUrl);
+
+    if (strategy === 'captions-first') {
+      const { language, segments, provider } = await transcribeViaExternalCaptions(
+        sourceUrl,
+        retry,
+      );
+
+      await finalizePipeline(assetId, userId, language, segments, provider, retry, {
+        transcriptionMethod: 'captions',
+      });
+
+      if (mediaType === 'video') {
+        triggerVisualExtraction(assetId, sourceUrl, userId, segments);
+      }
+
+      return;
+    }
+
+    let audioError: string | undefined;
+
+    try {
+      const { language, segments, provider } = await transcribeViaExternalAudio(
+        sourceUrl,
+        retry,
+      );
+
+      await finalizePipeline(assetId, userId, language, segments, provider, retry, {
+        transcriptionMethod: 'audio',
+      });
+
+      if (mediaType === 'video') {
+        triggerVisualExtraction(assetId, sourceUrl, userId, segments);
+      }
+
+      return;
+    } catch (error) {
+      audioError = toSafeErrorMessage(error);
+      console.warn(
+        `[ingest] Audio transcription failed for external asset ${assetId}, falling back to captions: ${audioError}`
+      );
+      emitAssetStatus(userId, assetId, 'transcribing', 'Falling back to captions...');
+    }
+
+    try {
+      const { language, segments, provider } = await transcribeViaExternalCaptions(
+        sourceUrl,
+        retry,
+      );
+
+      await finalizePipeline(assetId, userId, language, segments, provider, retry, {
+        transcriptionMethod: 'audio_fallback_to_captions',
+        fallbackReason: audioError,
+      });
+
+      if (mediaType === 'video') {
+        triggerVisualExtraction(assetId, sourceUrl, userId, segments);
+      }
+    } catch (captionError) {
+      const captionMessage = toSafeErrorMessage(captionError);
+      throw new Error(
+        `Audio transcription failed (${audioError ?? 'unknown reason'}) and captions fallback failed (${captionMessage})`
+      );
+    }
   } catch (error) {
     await handlePipelineError(assetId, userId, error);
   }

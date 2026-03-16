@@ -3,11 +3,16 @@ import { authMacro } from '../../middleware/auth';
 import { IngestModel } from './model';
 import { IngestService } from './service';
 import { AssetService } from '../assets/service';
-import { resolveYouTubeMetadata } from './youtube';
-import { orchestratePipeline, orchestrateUploadPipeline } from './pipeline';
+import { resolveUrlSource } from './url-source';
+import {
+  orchestrateExternalPipeline,
+  orchestratePipeline,
+  orchestrateUploadPipeline,
+} from './pipeline';
 import { isUploadStorageConfigured, storeUploadedMedia } from './upload-storage';
 import { QuotaService } from '../quota/service';
 import { isAdminEmail } from '../usage/service';
+import { toSafeErrorMessage } from './error-message';
 
 /** 2 GB */
 const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024;
@@ -27,6 +32,33 @@ async function checkVideoQuota(userId: string, email: string) {
   });
 }
 
+function startUrlIngestPipeline(
+  assetId: string,
+  sourceType: 'youtube' | 'external',
+  sourceUrl: string,
+  userId: string,
+  strategy: IngestModel.Ingest['transcriptionStrategy'],
+  mediaType: 'audio' | 'video',
+) {
+  if (sourceType === 'youtube') {
+    const nextStrategy = strategy ?? 'audio-first';
+    orchestratePipeline(assetId, sourceUrl, userId, nextStrategy).catch((err) => {
+      console.error(`Pipeline failed for asset ${assetId}:`, toSafeErrorMessage(err));
+    });
+    return;
+  }
+
+  orchestrateExternalPipeline(
+    assetId,
+    sourceUrl,
+    userId,
+    mediaType,
+    strategy ?? 'audio-first'
+  ).catch((err) => {
+    console.error(`Pipeline failed for asset ${assetId}:`, toSafeErrorMessage(err));
+  });
+}
+
 export const ingest = new Elysia({ prefix: '/api/ingest' })
   .use(authMacro)
   .post(
@@ -35,16 +67,18 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       const userId = user.id;
 
       // Resolve metadata synchronously — fail fast on bad URLs
-      let metadata;
+      let metadata: Awaited<ReturnType<typeof resolveUrlSource>>;
       try {
-        metadata = await resolveYouTubeMetadata(body.url);
-      } catch {
-        return status(422, { message: 'Could not resolve video metadata. Check the URL.' });
+        metadata = await resolveUrlSource(body.url);
+      } catch (error) {
+        return status(422, {
+          message: toSafeErrorMessage(error) || 'Could not resolve media metadata. Check the URL.',
+        });
       }
 
       // Idempotency: check if this video was already ingested
       const existing = await IngestService.findBySourceId(
-        metadata.id,
+        metadata.sourceId,
         userId
       );
       if (existing) {
@@ -54,10 +88,14 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
           if (!hasTranscript) {
             await IngestService.resetForRetry(existing.id);
 
-            const strategy = body.transcriptionStrategy ?? 'audio-first';
-            orchestratePipeline(existing.id, body.url, userId, strategy).catch((err) => {
-              console.error(`Pipeline failed for asset ${existing.id}:`, err);
-            });
+            startUrlIngestPipeline(
+              existing.id,
+              existing.sourceType === 'youtube' ? 'youtube' : 'external',
+              existing.sourceUrl ?? metadata.sourceUrl,
+              userId,
+              body.transcriptionStrategy,
+              existing.mediaType,
+            );
 
             return {
               ...existing,
@@ -77,12 +115,12 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       // Create asset
       const asset = await AssetService.create(userId, {
         title: metadata.title,
-        sourceUrl: metadata.webpage_url,
-        sourceType: 'youtube',
-        mediaType: 'video',
-        channelName: metadata.channel,
-        thumbnailUrl: metadata.thumbnail,
-        sourceId: metadata.id,
+        sourceUrl: metadata.sourceUrl,
+        sourceType: metadata.sourceType,
+        mediaType: metadata.mediaType,
+        channelName: metadata.channelName,
+        thumbnailUrl: metadata.thumbnailUrl,
+        sourceId: metadata.sourceId,
       });
 
       if (!asset) {
@@ -90,10 +128,14 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       }
 
       // Fire-and-forget pipeline
-      const strategy = body.transcriptionStrategy ?? 'audio-first';
-      orchestratePipeline(asset.id, body.url, userId, strategy).catch((err) => {
-        console.error(`Pipeline failed for asset ${asset.id}:`, err);
-      });
+      startUrlIngestPipeline(
+        asset.id,
+        metadata.sourceType,
+        metadata.sourceUrl,
+        userId,
+        body.transcriptionStrategy,
+        metadata.mediaType,
+      );
 
       return asset;
     },
@@ -135,7 +177,7 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       try {
         storedUpload = await storeUploadedMedia({ file, userId });
       } catch (error) {
-        console.error('[ingest] Failed to persist upload before pipeline start:', error);
+        console.error('[ingest] Failed to persist upload before pipeline start:', toSafeErrorMessage(error));
         return status(500, { message: 'Failed to store uploaded file' });
       }
 
@@ -153,7 +195,7 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
 
       // Fire-and-forget pipeline
       orchestrateUploadPipeline(asset.id, storedUpload.canonicalUrl, userId, mediaType).catch((err) => {
-        console.error(`Upload pipeline failed for asset ${asset.id}:`, err);
+        console.error(`Upload pipeline failed for asset ${asset.id}:`, toSafeErrorMessage(err));
       });
 
       return asset;
