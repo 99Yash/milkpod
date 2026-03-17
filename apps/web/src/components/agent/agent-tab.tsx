@@ -114,7 +114,7 @@ export function AgentTab({ initialAssetId, initialAssets }: AgentTabProps) {
           onChange={handleAssetChange}
         />
       </div>
-      <DashboardPanel className="h-[600px] border border-ring/12 bg-accent/5">
+      <DashboardPanel className="h-[calc(100svh-17rem)] min-h-[400px] border border-ring/12 bg-accent/5">
         {effectiveSelectedId && selectedAsset ? (
           <AssetSourceProvider
             sourceUrl={selectedAsset.sourceUrl}
