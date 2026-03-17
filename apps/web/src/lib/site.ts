@@ -10,6 +10,6 @@ export const siteConfig = {
     githubAccount: 'https://github.com/milkpod',
     web: 'https://www.croisillies.xyz',
     linkedin: 'https://www.linkedin.com/company/milkpod',
-    mail: 'iamdevyash@gmail.com',
+    mail: 'hello@milkpod.ai',
   },
 } as const;

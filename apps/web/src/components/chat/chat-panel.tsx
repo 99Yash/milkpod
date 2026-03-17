@@ -515,7 +515,7 @@ function ChatPanelContent({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about the video..."
-            className="min-h-0 max-h-[140px] resize-none border-0 bg-transparent! px-4 pt-3 pb-2 text-[15px] leading-snug shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:outline-none md:text-[15px]"
+            className="min-h-0 max-h-[140px] resize-none border-0 !bg-transparent px-4 pt-3 pb-2 text-[15px] leading-snug shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:outline-none md:text-[15px]"
             rows={1}
           />
           <div className="flex items-center gap-1.5 px-3 pb-3">

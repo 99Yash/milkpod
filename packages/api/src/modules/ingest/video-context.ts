@@ -32,8 +32,13 @@ function inferVideoMediaType(sourceUrl: string): string {
       ?? parsed.searchParams.get('content-type')
       ?? parsed.searchParams.get('mime');
 
-    if (explicitContentType?.toLowerCase().startsWith('video/')) {
-      return explicitContentType;
+    const normalizedContentType = explicitContentType
+      ?.split(';')[0]
+      ?.trim()
+      ?.toLowerCase();
+
+    if (normalizedContentType?.startsWith('video/')) {
+      return normalizedContentType;
     }
 
     const extension = parsed.pathname.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
