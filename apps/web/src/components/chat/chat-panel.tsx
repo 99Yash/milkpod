@@ -399,16 +399,20 @@ function ChatPanelContent({
     <div className="flex h-full flex-col font-open-runde">
       {/* Scrollable message area */}
       <div className="relative min-h-0 flex-1">
+        {/* Top fade mask */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-card to-transparent" />
+        {/* Bottom fade mask */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-card to-transparent" />
         <div
           ref={scrollRef}
-          className="absolute inset-0 overflow-y-auto overscroll-y-contain px-4"
+          className="absolute inset-0 overflow-y-auto overscroll-y-contain px-5 lg:px-6"
           onScroll={scrollHandlers.onScroll}
           onWheel={scrollHandlers.onWheel}
           onPointerDown={scrollHandlers.onPointerDown}
           onPointerUp={scrollHandlers.onPointerUp}
         >
           <div
-            className="mx-auto max-w-3xl"
+            className="mx-auto max-w-4xl"
             onClickCapture={scrollHandlers.onClickCapture}
           >
             {messages.length === 0 ? (
@@ -503,7 +507,7 @@ function ChatPanelContent({
         <form
           ref={composerRef}
           onSubmit={handleSubmit}
-          className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-ring/15 bg-background/95 shadow-sm transition-[box-shadow,border-color] duration-200 focus-within:border-ring/45 focus-within:outline-1 focus-within:outline-ring/60 focus-within:ring-[3px] focus-within:ring-ring/35 focus-within:shadow-md"
+          className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-ring/15 bg-background/95 shadow-sm transition-[box-shadow,border-color] duration-200 focus-within:border-ring/45 focus-within:outline-1 focus-within:outline-ring/60 focus-within:ring-[3px] focus-within:ring-ring/35 focus-within:shadow-md"
         >
           <Textarea
             ref={textareaRef}
