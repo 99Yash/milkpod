@@ -19,6 +19,17 @@ import { toSafeErrorMessage } from './error-message';
 
 type TranscriptionMethod = 'audio' | 'captions' | 'audio_fallback_to_captions';
 
+const DIRECT_VIDEO_EXTENSIONS = new Set([
+  'avi',
+  'm4v',
+  'mkv',
+  'mov',
+  'mp4',
+  'mpeg',
+  'mpg',
+  'webm',
+]);
+
 function assertHasSegments(
   segments: { text: string }[],
   source: 'audio' | 'captions',
@@ -53,7 +64,29 @@ function isNonRetryableDirectAudioError(error: unknown, safeMessage: string): bo
   return (
     /failed to download remote audio \(4\d{2}\)/.test(merged)
     || merged.includes('source audio could not be accessed from the origin url')
+    || merged.includes('file does not appear to contain audio')
+    || merged.includes('file type is text/html')
   );
+}
+
+function isDirectVideoFileUrl(sourceUrl: string): boolean {
+  try {
+    const parsed = new URL(sourceUrl);
+    const extension = parsed.pathname.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+
+    if (extension && DIRECT_VIDEO_EXTENSIONS.has(extension)) {
+      return true;
+    }
+
+    const explicitContentType =
+      parsed.searchParams.get('response-content-type')
+      ?? parsed.searchParams.get('content-type')
+      ?? parsed.searchParams.get('mime');
+
+    return explicitContentType?.toLowerCase().startsWith('video/') ?? false;
+  } catch {
+    return false;
+  }
 }
 
 async function finalizePipeline(
@@ -119,10 +152,18 @@ function triggerVisualExtraction(
   sourceUrl: string,
   userId: string,
   segments: { endTime: number }[],
+  opts?: { requiresDirectVideoUrl?: boolean },
 ) {
   const lastSeg = segments[segments.length - 1];
   const duration = lastSeg ? Math.ceil(lastSeg.endTime) : 0;
   if (duration <= 0) return;
+
+  if (opts?.requiresDirectVideoUrl && !isDirectVideoFileUrl(sourceUrl)) {
+    console.info(
+      `[ingest] Skipping visual context extraction for ${assetId}: external source URL is not a direct video file`
+    );
+    return;
+  }
 
   // Set initial pending status synchronously before fire-and-forget
   IngestService.updateVisualStatus(assetId, 'pending').catch(() => {});
@@ -231,8 +272,13 @@ async function transcribeViaExternalAudio(
   retry: ReturnType<typeof makeRetry>,
 ) {
   try {
-    const result = await retry('transcribing-external-url', () =>
-      transcribeAudio(sourceUrl)
+    const result = await retry(
+      'transcribing-external-url',
+      () => transcribeAudio(sourceUrl),
+      {
+        shouldRetry: (error, message) =>
+          !isNonRetryableDirectAudioError(error, message),
+      },
     );
 
     const segments = groupWordsIntoSegments(result.words);
@@ -245,8 +291,15 @@ async function transcribeViaExternalAudio(
     };
   } catch (directError) {
     const directMessage = toSafeErrorMessage(directError);
+    const directIsNonRetryable = isNonRetryableDirectAudioError(
+      directError,
+      directMessage,
+    );
+
     console.warn(
-      `[ingest] Direct URL transcription failed, retrying via yt-dlp stream: ${directMessage}`
+      directIsNonRetryable
+        ? `[ingest] Direct external URL is not a usable media file, trying yt-dlp stream fallback: ${directMessage}`
+        : `[ingest] Direct URL transcription failed, retrying via yt-dlp stream: ${directMessage}`
     );
 
     try {
@@ -374,7 +427,9 @@ export async function orchestrateExternalPipeline(
       });
 
       if (mediaType === 'video') {
-        triggerVisualExtraction(assetId, sourceUrl, userId, segments);
+        triggerVisualExtraction(assetId, sourceUrl, userId, segments, {
+          requiresDirectVideoUrl: true,
+        });
       }
 
       return;
@@ -393,7 +448,9 @@ export async function orchestrateExternalPipeline(
       });
 
       if (mediaType === 'video') {
-        triggerVisualExtraction(assetId, sourceUrl, userId, segments);
+        triggerVisualExtraction(assetId, sourceUrl, userId, segments, {
+          requiresDirectVideoUrl: true,
+        });
       }
 
       return;
@@ -417,7 +474,9 @@ export async function orchestrateExternalPipeline(
       });
 
       if (mediaType === 'video') {
-        triggerVisualExtraction(assetId, sourceUrl, userId, segments);
+        triggerVisualExtraction(assetId, sourceUrl, userId, segments, {
+          requiresDirectVideoUrl: true,
+        });
       }
     } catch (captionError) {
       const captionMessage = toSafeErrorMessage(captionError);

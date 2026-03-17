@@ -24,6 +24,43 @@ const visualSegmentSchema = z.object({
 
 export type VisualSegment = z.infer<typeof visualSegmentSchema>;
 
+function inferVideoMediaType(sourceUrl: string): string {
+  try {
+    const parsed = new URL(sourceUrl);
+    const explicitContentType =
+      parsed.searchParams.get('response-content-type')
+      ?? parsed.searchParams.get('content-type')
+      ?? parsed.searchParams.get('mime');
+
+    if (explicitContentType?.toLowerCase().startsWith('video/')) {
+      return explicitContentType;
+    }
+
+    const extension = parsed.pathname.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+
+    switch (extension) {
+      case 'avi':
+        return 'video/x-msvideo';
+      case 'm4v':
+      case 'mp4':
+        return 'video/mp4';
+      case 'mkv':
+        return 'video/x-matroska';
+      case 'mov':
+        return 'video/quicktime';
+      case 'mpeg':
+      case 'mpg':
+        return 'video/mpeg';
+      case 'webm':
+        return 'video/webm';
+      default:
+        return 'video/mp4';
+    }
+  } catch {
+    return 'video/mp4';
+  }
+}
+
 function buildExtractionPrompt(duration: number): string {
   const maxSegments = Math.min(MAX_SEGMENTS_PER_ASSET, Math.ceil(duration / 20));
   return `You are a visual context extractor for video analysis. Analyze the video and identify visually meaningful segments.
@@ -67,6 +104,7 @@ export async function extractVideoContext(
   userId: string,
   duration: number,
 ): Promise<void> {
+  const mediaType = inferVideoMediaType(sourceUrl);
   const retry = <T>(stage: string, fn: () => Promise<T>) =>
     withRetry(
       {
@@ -96,7 +134,7 @@ export async function extractVideoContext(
               {
                 type: 'file',
                 data: new URL(sourceUrl),
-                mediaType: 'video/mp4',
+                mediaType,
               },
               {
                 type: 'text',
