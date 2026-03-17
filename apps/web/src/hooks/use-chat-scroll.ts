@@ -49,7 +49,7 @@ export function useChatScroll({ scrollRef, composerRef }: ChatScrollOptions) {
   // ---- Core scroll functions ----
 
   const scrollToBottom = useCallback(
-    (behavior: ScrollBehavior = 'instant') => {
+    (behavior: ScrollBehavior = 'auto') => {
       const el = scrollRef.current;
       if (!el) return;
       el.scrollTo({ top: el.scrollHeight, behavior });

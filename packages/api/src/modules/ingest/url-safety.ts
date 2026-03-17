@@ -96,6 +96,10 @@ async function lookupAddresses(hostname: string): Promise<string[]> {
   });
 }
 
+function cancelResponseBody(response: Response): Promise<void> {
+  return response.body?.cancel().catch(() => undefined) ?? Promise.resolve();
+}
+
 export async function assertSafeExternalParsedUrl(parsedUrl: URL): Promise<void> {
   if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
     throw new Error('Only HTTP(S) URLs are supported');
@@ -170,17 +174,22 @@ export async function fetchSafeExternalResponse(
       return response;
     }
 
-    if (redirectCount === MAX_REDIRECTS) {
-      throw new Error('Too many redirects while fetching external URL.');
-    }
+    try {
+      if (redirectCount === MAX_REDIRECTS) {
+        throw new Error('Too many redirects while fetching external URL.');
+      }
 
-    const location = response.headers.get('location');
-    if (!location) {
-      throw new Error('External URL redirect did not include a location.');
-    }
+      const location = response.headers.get('location');
+      if (!location) {
+        throw new Error('External URL redirect did not include a location.');
+      }
 
-    currentUrl = new URL(location, currentUrl);
-    await assertSafeExternalParsedUrl(currentUrl);
+      const nextUrl = new URL(location, currentUrl);
+      await assertSafeExternalParsedUrl(nextUrl);
+      currentUrl = nextUrl;
+    } finally {
+      await cancelResponseBody(response);
+    }
   }
 
   throw new Error('Too many redirects while fetching external URL.');
