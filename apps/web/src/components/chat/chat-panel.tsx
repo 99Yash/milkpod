@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { BrainCircuit, MessageSquareText, SendHorizonal, Sparkles } from 'lucide-react';
+import { ArrowUp, BrainCircuit, MessageSquareText, Sparkles } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
 import { ScrollArea } from '~/components/ui/scroll-area';
@@ -466,7 +466,7 @@ function ChatPanelContent({
       <div className="shrink-0 px-3 pb-3 pt-2">
         <form
           onSubmit={handleSubmit}
-          className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-ring/15 bg-background/95 shadow-sm transition-[box-shadow,border-color,background-color] duration-200 focus-within:border-ring/45 focus-within:bg-accent/16 focus-within:outline-1 focus-within:outline-ring/60 focus-within:ring-[3px] focus-within:ring-ring/35 focus-within:shadow-md"
+          className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-ring/15 bg-background/95 shadow-sm transition-[box-shadow,border-color] duration-200 focus-within:border-ring/45 focus-within:outline-1 focus-within:outline-ring/60 focus-within:ring-[3px] focus-within:ring-ring/35 focus-within:shadow-md"
         >
           <Textarea
             ref={textareaRef}
@@ -474,11 +474,11 @@ function ChatPanelContent({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about the video..."
-            className="min-h-[44px] max-h-[140px] resize-none border-0 bg-transparent px-4 pt-3.5 pb-2 text-[15px] shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:outline-none md:text-[15px]"
+            className="min-h-0 max-h-[140px] resize-none border-0 bg-transparent! px-4 pt-3 pb-2 text-[15px] leading-snug shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:outline-none md:text-[15px]"
             rows={1}
             disabled={isLoading}
           />
-          <div className="flex items-center gap-1.5 px-2.5 pb-2.5">
+          <div className="flex items-center gap-1.5 px-3 pb-3">
             <ModelPicker value={modelId} onChange={setModelId} />
             <WordLimitPicker value={wordLimit} onChange={setWordLimit} />
             <div className="ml-auto flex items-center gap-2">
@@ -488,10 +488,10 @@ function ChatPanelContent({
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Send message"
-                className="rounded-xl bg-accent/35 text-foreground hover:bg-accent/50 disabled:bg-muted-foreground/8 disabled:text-muted-foreground"
+                className="shrink-0 rounded-xl bg-accent/35 text-foreground hover:bg-accent/50 disabled:bg-muted-foreground/8 disabled:text-muted-foreground"
                 disabled={isLoading || !input.trim()}
               >
-                <SendHorizonal className="size-4 translate-x-px" />
+                <ArrowUp className="size-4" />
               </Button>
             </div>
           </div>
