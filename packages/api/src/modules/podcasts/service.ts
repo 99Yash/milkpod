@@ -4,10 +4,15 @@ import {
   podcastFeeds,
   podcastEpisodes,
 } from '@milkpod/db/schemas';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, lt, or, sql, type SQL } from 'drizzle-orm';
+import { decodeCursor, buildPage } from '../../utils';
 import { parseFeed, type FeedEpisode } from './rss';
+import type { PodcastModel } from './model';
 
 type EpisodeStatus = (typeof episodeStatusEnum.enumValues)[number];
+
+/** Transaction handle type extracted from db().transaction() callback. */
+type DbTx = Parameters<Parameters<ReturnType<typeof db>['transaction']>[0]>[0];
 
 export abstract class PodcastService {
   // ---------------------------------------------------------------------------
@@ -16,32 +21,37 @@ export abstract class PodcastService {
 
   /** Add a new podcast feed and discover its episodes. */
   static async addFeed(userId: string, feedUrl: string) {
+    // Parse RSS feed outside the transaction — it's a network call that
+    // shouldn't hold a DB connection open.
     const parsed = await parseFeed(feedUrl);
 
-    const [feed] = await db()
-      .insert(podcastFeeds)
-      .values({
-        userId,
-        feedUrl,
-        title: parsed.meta.title,
-        description: parsed.meta.description,
-        imageUrl: parsed.meta.imageUrl,
-        author: parsed.meta.author,
-        language: parsed.meta.language,
-        totalEpisodes: parsed.episodes.length,
-        lastFetchedAt: new Date(),
-      })
-      .returning();
+    return db().transaction(async (tx) => {
+      const [feed] = await tx
+        .insert(podcastFeeds)
+        .values({
+          userId,
+          feedUrl,
+          title: parsed.meta.title,
+          description: parsed.meta.description,
+          imageUrl: parsed.meta.imageUrl,
+          author: parsed.meta.author,
+          language: parsed.meta.language,
+          totalEpisodes: parsed.episodes.length,
+          lastFetchedAt: new Date(),
+        })
+        .returning();
 
-    if (!feed) throw new Error('Failed to insert podcast feed');
+      if (!feed) throw new Error('Failed to insert podcast feed');
 
-    // Discover episodes (insert new GUIDs only)
-    const newEpisodes = await PodcastService.upsertEpisodes(
-      feed.id,
-      parsed.episodes
-    );
+      // Discover episodes (insert new GUIDs only)
+      const newEpisodes = await PodcastService.upsertEpisodes(
+        tx,
+        feed.id,
+        parsed.episodes
+      );
 
-    return { feed, newEpisodes };
+      return { feed, newEpisodes };
+    });
   }
 
   /** List all feeds for a user. */
@@ -51,6 +61,38 @@ export abstract class PodcastService {
       .from(podcastFeeds)
       .where(eq(podcastFeeds.userId, userId))
       .orderBy(podcastFeeds.createdAt);
+  }
+
+  /** List feeds for a user with cursor-based pagination. */
+  static async listFeedsPage(
+    userId: string,
+    query: PodcastModel.ListFeedsQuery,
+    limit = 50,
+  ) {
+    const pageSize = Math.max(1, Math.min(limit, 100));
+    const conditions: SQL[] = [eq(podcastFeeds.userId, userId)];
+
+    const cursor = decodeCursor(query.cursor);
+    if (cursor) {
+      conditions.push(
+        or(
+          lt(podcastFeeds.createdAt, cursor.createdAt),
+          and(
+            eq(podcastFeeds.createdAt, cursor.createdAt),
+            lt(podcastFeeds.id, cursor.id),
+          ),
+        )!,
+      );
+    }
+
+    const rows = await db()
+      .select()
+      .from(podcastFeeds)
+      .where(and(...conditions))
+      .orderBy(desc(podcastFeeds.createdAt), desc(podcastFeeds.id))
+      .limit(pageSize + 1);
+
+    return buildPage(rows, pageSize);
   }
 
   /** Get a single feed by ID, scoped to user. */
@@ -100,26 +142,27 @@ export abstract class PodcastService {
     const feed = await PodcastService.getFeed(feedId, userId);
     if (!feed) return null;
 
+    // Parse RSS feed outside the transaction — network call shouldn't
+    // hold a DB connection open.
     const parsed = await parseFeed(feed.feedUrl);
 
-    // Update feed metadata
-    await db()
-      .update(podcastFeeds)
-      .set({
-        title: parsed.meta.title,
-        description: parsed.meta.description,
-        imageUrl: parsed.meta.imageUrl,
-        author: parsed.meta.author,
-        language: parsed.meta.language,
-        totalEpisodes: parsed.episodes.length,
-        lastFetchedAt: new Date(),
-      })
-      .where(eq(podcastFeeds.id, feedId));
+    const newEpisodes = await db().transaction(async (tx) => {
+      // Update feed metadata
+      await tx
+        .update(podcastFeeds)
+        .set({
+          title: parsed.meta.title,
+          description: parsed.meta.description,
+          imageUrl: parsed.meta.imageUrl,
+          author: parsed.meta.author,
+          language: parsed.meta.language,
+          totalEpisodes: parsed.episodes.length,
+          lastFetchedAt: new Date(),
+        })
+        .where(eq(podcastFeeds.id, feedId));
 
-    const newEpisodes = await PodcastService.upsertEpisodes(
-      feedId,
-      parsed.episodes
-    );
+      return PodcastService.upsertEpisodes(tx, feedId, parsed.episodes);
+    });
 
     return { feed: { ...feed, ...parsed.meta }, newEpisodes };
   }
@@ -130,13 +173,14 @@ export abstract class PodcastService {
 
   /** Insert new episodes that don't already exist (by guid+feedId). */
   private static async upsertEpisodes(
+    tx: DbTx,
     feedId: string,
     episodes: FeedEpisode[]
   ) {
     if (episodes.length === 0) return [];
 
     // Get existing GUIDs for this feed
-    const existing = await db()
+    const existing = await tx
       .select({ guid: podcastEpisodes.guid })
       .from(podcastEpisodes)
       .where(eq(podcastEpisodes.feedId, feedId));
@@ -146,7 +190,7 @@ export abstract class PodcastService {
 
     if (newItems.length === 0) return [];
 
-    const inserted = await db()
+    const inserted = await tx
       .insert(podcastEpisodes)
       .values(
         newItems.map((ep) => ({
@@ -175,6 +219,43 @@ export abstract class PodcastService {
       .from(podcastEpisodes)
       .where(eq(podcastEpisodes.feedId, feedId))
       .orderBy(podcastEpisodes.createdAt);
+  }
+
+  /** List episodes for a feed with cursor-based pagination. */
+  static async listEpisodesPage(
+    feedId: string,
+    userId: string,
+    query: PodcastModel.ListEpisodesQuery,
+    limit = 50,
+  ) {
+    // Verify feed ownership
+    const feed = await PodcastService.getFeed(feedId, userId);
+    if (!feed) return null;
+
+    const pageSize = Math.max(1, Math.min(limit, 100));
+    const conditions: SQL[] = [eq(podcastEpisodes.feedId, feedId)];
+
+    const cursor = decodeCursor(query.cursor);
+    if (cursor) {
+      conditions.push(
+        or(
+          lt(podcastEpisodes.createdAt, cursor.createdAt),
+          and(
+            eq(podcastEpisodes.createdAt, cursor.createdAt),
+            lt(podcastEpisodes.id, cursor.id),
+          ),
+        )!,
+      );
+    }
+
+    const rows = await db()
+      .select()
+      .from(podcastEpisodes)
+      .where(and(...conditions))
+      .orderBy(desc(podcastEpisodes.createdAt), desc(podcastEpisodes.id))
+      .limit(pageSize + 1);
+
+    return buildPage(rows, pageSize);
   }
 
   /** Get a single episode, verifying feed ownership. */

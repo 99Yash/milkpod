@@ -1,5 +1,5 @@
 import { Elysia, status, t } from 'elysia';
-import { createChatStream, generateThreadTitle, HARD_WORD_CAP } from '@milkpod/ai';
+import { createChatStream, generateThreadTitle, streamTranslation, HARD_WORD_CAP } from '@milkpod/ai';
 import { authMacro } from '../../middleware/auth';
 import { ChatModel } from './model';
 import { ChatService } from './service';
@@ -17,11 +17,48 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       const userId = user.id;
       const admin = isAdminEmail(user.email);
 
-      // Resolve plan entitlements for model gating and word budget
-      const plan = await resolveUserPlan(userId);
-      const entitlements = getEntitlementsForPlan(plan);
+      // Phase 1: Run all independent lookups in parallel.
+      // Each of these is a separate DB round-trip (~225ms cross-region).
+      // Running them concurrently cuts total wait from ~1350ms to ~450ms.
+      const [plan, thread, assetResult, collection] = await Promise.all([
+        resolveUserPlan(userId),
+        body.threadId
+          ? ThreadService.getById(body.threadId, userId)
+          : null,
+        body.assetId
+          ? Promise.all([
+              AssetService.getById(body.assetId, userId),
+              AssetService.getTranscriptLanguage(body.assetId),
+            ])
+          : null,
+        body.collectionId
+          ? CollectionService.getById(body.collectionId, userId)
+          : null,
+      ]);
+
+      // Validate ownership of referenced resources
+      if (body.threadId && !thread) {
+        return status(403, { message: 'Access denied to thread' });
+      }
+      const existingThreadTitle = thread?.title;
+
+      let assetTitle: string | undefined;
+      let transcriptLanguage: string | null = null;
+      if (body.assetId) {
+        const [asset, language] = assetResult!;
+        if (!asset) {
+          return status(403, { message: 'Access denied to asset' });
+        }
+        assetTitle = asset.title ?? undefined;
+        transcriptLanguage = language;
+      }
+
+      if (body.collectionId && !collection) {
+        return status(403, { message: 'Access denied to collection' });
+      }
 
       // Model gating: reject requests for models not in the user's plan
+      const entitlements = getEntitlementsForPlan(plan);
       if (body.modelId && !admin && !entitlements.allowedModelIds.includes(body.modelId)) {
         return new Response(
           JSON.stringify({
@@ -33,10 +70,8 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         );
       }
 
+      // Phase 2: Reserve words (depends on plan from Phase 1).
       const requestedLimit = Math.min(body.wordLimit ?? HARD_WORD_CAP, HARD_WORD_CAP);
-
-      // Atomically reserve words from the plan-aware daily budget.
-      // Admins bypass quota entirely.
       let reserved: number;
       if (admin) {
         reserved = requestedLimit;
@@ -51,55 +86,39 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         }
       }
 
-      // Verify ownership of referenced resources
-      let existingThreadTitle: string | null | undefined;
-      if (body.threadId) {
-        const thread = await ThreadService.getById(body.threadId, userId);
-        if (!thread) {
-          return status(403, { message: 'Access denied to thread' });
+      // Auto-create thread if none provided.
+      // Wrapped in try/catch so reserved words are released on failure —
+      // without this, a failed thread creation leaks the quota permanently.
+      const releaseReserved = async () => {
+        if (!admin && reserved > 0) {
+          await UsageService.releaseWords(userId, reserved).catch(() => {});
         }
-        existingThreadTitle = thread.title;
-      }
+      };
 
-      let assetTitle: string | undefined;
-      let transcriptLanguage: string | null = null;
-      if (body.assetId) {
-        const asset = await AssetService.getById(body.assetId, userId);
-        if (!asset) {
-          return status(403, { message: 'Access denied to asset' });
-        }
-        assetTitle = asset.title ?? undefined;
-        transcriptLanguage = await AssetService.getTranscriptLanguage(body.assetId);
-      }
-
-      if (body.collectionId) {
-        const collection = await CollectionService.getById(
-          body.collectionId,
-          userId
-        );
-        if (!collection) {
-          return status(403, { message: 'Access denied to collection' });
-        }
-      }
-
-      // Auto-create thread if none provided
       let threadId = body.threadId;
       let isNewThread = false;
-      if (!threadId) {
-        const thread = await ThreadService.create(userId, {
-          assetId: body.assetId,
-          collectionId: body.collectionId,
-        });
+      try {
+        if (!threadId) {
+          const newThread = await ThreadService.create(userId, {
+            assetId: body.assetId,
+            collectionId: body.collectionId,
+          });
 
-        if (!thread) {
-          return status(500, { message: 'Failed to create or resolve thread' });
+          if (!newThread) {
+            await releaseReserved();
+            return status(500, { message: 'Failed to create or resolve thread' });
+          }
+
+          threadId = newThread.id;
+          isNewThread = true;
         }
-
-        threadId = thread.id;
-        isNewThread = true;
+      } catch (err) {
+        await releaseReserved();
+        throw err;
       }
 
       if (!threadId) {
+        await releaseReserved();
         return status(500, { message: 'Failed to create or resolve thread' });
       }
 
@@ -173,6 +192,59 @@ export const chat = new Elysia({ prefix: '/api/chat' })
     },
     { auth: true, body: ChatModel.send }
   )
+  .post(
+    '/translate',
+    async ({ body, user }) => {
+      // Verify message ownership before persisting anything
+      if (body.messageId) {
+        const owns = await ChatService.verifyMessageOwnership(body.messageId, user.id);
+        if (!owns) return status(403, { message: 'Access denied to message' });
+      }
+
+      // Lightweight quota check — translations count against the daily word budget
+      const admin = isAdminEmail(user.email);
+      if (!admin) {
+        const plan = await resolveUserPlan(user.id);
+        const entitlements = getEntitlementsForPlan(plan);
+        const wordEstimate = Math.ceil(body.text.split(/\s+/).length * 1.5);
+        const reserved = await UsageService.reserveWords(user.id, wordEstimate, entitlements.aiWordsDaily);
+        if (reserved <= 0) {
+          return status(429, {
+            message: 'Daily word limit reached. Resets at midnight UTC.',
+            code: 'WORD_BUDGET_EXHAUSTED',
+          });
+        }
+      }
+
+      const { response, text } = streamTranslation(body.text, body.targetLanguage);
+
+      // Fire-and-forget: persist translation when stream completes
+      if (body.messageId && body.partIndex != null) {
+        const { messageId, partIndex } = body;
+        Promise.resolve(text)
+          .then((translatedText: string) =>
+            ChatService.saveTranslation(messageId, partIndex, translatedText),
+          )
+          .catch((err: unknown) =>
+            console.error(
+              '[chat] Failed to save translation:',
+              err instanceof Error ? err.message : String(err),
+            ),
+          );
+      }
+
+      return response;
+    },
+    {
+      auth: true,
+      body: t.Object({
+        text: t.String({ minLength: 1, maxLength: 10000 }),
+        targetLanguage: t.Optional(t.String({ maxLength: 100 })),
+        messageId: t.Optional(t.String({ maxLength: 100 })),
+        partIndex: t.Optional(t.Integer({ minimum: 0 })),
+      }),
+    }
+  )
   .get(
     '/:threadId',
     async ({ params, user }) => {
@@ -182,9 +254,12 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       );
       if (!thread) return status(404, { message: 'Thread not found' });
 
-      const messages = await ChatService.getMessages(params.threadId);
+      const [messages, translations] = await Promise.all([
+        ChatService.getMessages(params.threadId),
+        ChatService.getTranslations(params.threadId),
+      ]);
 
-      return { threadId: thread.id, messages };
+      return { threadId: thread.id, messages, translations };
     },
-    { auth: true, params: t.Object({ threadId: t.String() }) }
+    { auth: true, params: t.Object({ threadId: t.String({ maxLength: 100 }) }) }
   );

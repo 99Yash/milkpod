@@ -19,9 +19,9 @@ import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Asset, AssetWithTranscript, Collection, CollectionWithItems, Comment, Moment } from '@milkpod/api/types';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 
-/** Null out internal error details before they reach the client. */
-function sanitizeAsset<T extends { lastError?: unknown; visualLastError?: unknown }>(row: T): T {
-  return { ...row, lastError: null, visualLastError: null };
+/** Strip internal-only fields. `lastError` is kept (already sanitized at write time). */
+function sanitizeAsset<T extends { visualLastError?: unknown }>(row: T): T {
+  return { ...row, visualLastError: null };
 }
 
 export async function getAssets(userId: string): Promise<Asset[]> {
@@ -225,6 +225,9 @@ function deserializePart(row: PartRow): Part {
   return { type: 'text', text: '', state: 'done' } as Part;
 }
 
+/** messageId → { partIndex → translatedText } */
+export type TranslationsMap = Record<string, Record<number, string>>;
+
 /**
  * Assemble messages for a single thread from raw DB rows.
  * Shared between getChatThread and getLatestChatThread.
@@ -232,22 +235,34 @@ function deserializePart(row: PartRow): Part {
 function assembleMessages(
   messageRows: (typeof qaMessages.$inferSelect)[],
   partRows: PartRow[],
-): MilkpodMessage[] {
-  if (messageRows.length === 0) return [];
+): { messages: MilkpodMessage[]; translations: TranslationsMap } {
+  if (messageRows.length === 0) return { messages: [], translations: {} };
+
   const partsByMessage = Map.groupBy(partRows, (r) => r.messageId);
-  return messageRows
+
+  // Extract saved translations from part rows
+  const translations: TranslationsMap = {};
+  for (const row of partRows) {
+    if (row.translatedTextContent) {
+      (translations[row.messageId] ??= {})[row.sortOrder] = row.translatedTextContent;
+    }
+  }
+
+  const messages = messageRows
     .filter((row) => isMessageRole(row.role))
     .map((row) => ({
       id: row.id,
       role: row.role as MessageRole,
       parts: (partsByMessage.get(row.id) ?? []).map(deserializePart),
     }));
+
+  return { messages, translations };
 }
 
 export async function getChatThread(
   threadId: string,
   userId: string,
-): Promise<{ threadId: string; messages: MilkpodMessage[] } | null> {
+): Promise<{ threadId: string; messages: MilkpodMessage[]; translations: TranslationsMap } | null> {
   const messagesSq = db()
     .select({ id: qaMessages.id })
     .from(qaMessages)
@@ -273,13 +288,14 @@ export async function getChatThread(
   const thread = threadRows[0];
   if (!thread) return null;
 
-  return { threadId: thread.id, messages: assembleMessages(messageRows, partRows) };
+  const { messages, translations } = assembleMessages(messageRows, partRows);
+  return { threadId: thread.id, messages, translations };
 }
 
 export async function getLatestChatThread(
   assetId: string,
   userId: string,
-): Promise<{ threadId: string; messages: MilkpodMessage[] } | null> {
+): Promise<{ threadId: string; messages: MilkpodMessage[]; translations: TranslationsMap } | null> {
   // Subquery for the latest thread — inlined into messages/parts queries so
   // all 3 fire in a single parallel batch (1 round trip instead of 3).
   const latestThreadSq = db()
@@ -316,5 +332,6 @@ export async function getLatestChatThread(
   const thread = threadRows[0];
   if (!thread) return null;
 
-  return { threadId: thread.id, messages: assembleMessages(messageRows, partRows) };
+  const { messages, translations } = assembleMessages(messageRows, partRows);
+  return { threadId: thread.id, messages, translations };
 }

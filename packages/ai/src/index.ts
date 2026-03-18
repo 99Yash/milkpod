@@ -64,5 +64,8 @@ export {
 } from './limits';
 export type { WordLimitOption } from './limits';
 
+// Translation
+export { streamTranslation } from './translation';
+
 // Errors
 export { AIError, EmbeddingError, RetrievalError, StreamingError } from './errors';

@@ -4,6 +4,7 @@ export { closeConnections, warmPool } from '@milkpod/db';
 import { serverEnv } from '@milkpod/env/server';
 import { sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
+import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/logger';
 import { rateLimiter } from './middleware/rate-limit';
 import {
@@ -26,6 +27,7 @@ import { quota, quotaAdmin } from './modules/quota';
 import { billing } from './modules/billing';
 
 export const app = new Elysia({ name: 'api' })
+  .use(errorHandler)
   .use(requestLogger)
   .get('/health', async ({ set }) => {
     try {

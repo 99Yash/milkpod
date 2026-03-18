@@ -8,6 +8,7 @@ import {
 } from '@milkpod/db/schemas';
 import { and, desc, eq, ilike, inArray, lt, or, type SQL } from 'drizzle-orm';
 import type { Asset, AssetWithTranscript } from '../../types';
+import { decodeCursor, buildPage, type CursorPage } from '../../utils';
 import type { AssetModel } from './model';
 
 const VALID_STATUSES = new Set<string>(assetStatusEnum.enumValues);
@@ -16,11 +17,7 @@ const MAX_SPEAKER_NAME_ENTRIES = 50;
 const MAX_SPEAKER_ID_LENGTH = 64;
 const MAX_SPEAKER_NAME_LENGTH = 80;
 
-export type AssetPage = {
-  items: Asset[];
-  nextCursor: string | null;
-  hasMore: boolean;
-};
+export type AssetPage = CursorPage<Asset>;
 
 export abstract class AssetService {
   private static asRecord(value: unknown): Record<string, unknown> | null {
@@ -65,11 +62,11 @@ export abstract class AssetService {
   }
 
   /**
-   * Null out internal error details so they never reach the client.
-   * The raw values remain in the DB for debugging via Drizzle Studio.
+   * Strip internal-only fields before sending to the client.
+   * `lastError` is kept — it is already sanitized by `toSafeErrorMessage()` at write time.
    */
-  private static sanitize<T extends { lastError?: unknown; visualLastError?: unknown }>(row: T): T {
-    return { ...row, lastError: null, visualLastError: null };
+  private static sanitize<T extends { visualLastError?: unknown }>(row: T): T {
+    return { ...row, visualLastError: null };
   }
 
   private static buildSearchConditions(
@@ -117,36 +114,7 @@ export abstract class AssetService {
     return conditions;
   }
 
-  private static encodeCursor(row: Pick<Asset, 'id' | 'createdAt'>): string {
-    const payload = JSON.stringify({
-      id: row.id,
-      createdAt: row.createdAt.toISOString(),
-    });
-    return Buffer.from(payload).toString('base64url');
-  }
 
-  private static decodeCursor(
-    cursor: string | undefined,
-  ): { id: string; createdAt: Date } | null {
-    if (!cursor) return null;
-
-    try {
-      const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
-      const parsed = JSON.parse(decoded) as { id?: string; createdAt?: string };
-      if (typeof parsed.id !== 'string' || typeof parsed.createdAt !== 'string') {
-        return null;
-      }
-
-      const createdAt = new Date(parsed.createdAt);
-      if (Number.isNaN(createdAt.getTime())) {
-        return null;
-      }
-
-      return { id: parsed.id, createdAt };
-    } catch {
-      return null;
-    }
-  }
 
   static async create(userId: string, data: AssetModel.Create): Promise<Asset> {
     const [asset] = await db()
@@ -184,7 +152,7 @@ export abstract class AssetService {
   ): Promise<AssetPage> {
     const pageSize = Math.max(1, Math.min(limit, 100));
     const conditions = AssetService.buildSearchConditions(userId, query);
-    const cursor = AssetService.decodeCursor(query.cursor);
+    const cursor = decodeCursor(query.cursor);
 
     if (cursor) {
       conditions.push(
@@ -205,18 +173,10 @@ export abstract class AssetService {
       .orderBy(desc(mediaAssets.createdAt), desc(mediaAssets.id))
       .limit(pageSize + 1);
 
-    const hasMore = rows.length > pageSize;
-    const pageRows = (hasMore ? rows.slice(0, pageSize) : rows).map(
-      AssetService.sanitize,
-    );
-    const nextCursor = hasMore
-      ? AssetService.encodeCursor(pageRows[pageRows.length - 1]!)
-      : null;
-
+    const page = buildPage(rows, pageSize);
     return {
-      items: pageRows,
-      nextCursor,
-      hasMore,
+      ...page,
+      items: page.items.map(AssetService.sanitize),
     };
   }
 
@@ -229,37 +189,53 @@ export abstract class AssetService {
   }
 
   static async getWithTranscript(id: string, userId: string): Promise<AssetWithTranscript | null> {
-    const asset = await AssetService.getById(id, userId);
-    if (!asset) return null;
+    const rows = await db()
+      .select({
+        asset: mediaAssets,
+        transcript: transcripts,
+        segment: transcriptSegments,
+      })
+      .from(mediaAssets)
+      .leftJoin(transcripts, eq(transcripts.assetId, mediaAssets.id))
+      .leftJoin(transcriptSegments, eq(transcriptSegments.transcriptId, transcripts.id))
+      .where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)))
+      .orderBy(desc(transcripts.createdAt), desc(transcripts.id), transcriptSegments.startTime);
 
-    const transcriptRows = await db()
-      .select()
-      .from(transcripts)
-      .where(eq(transcripts.assetId, id))
-      .orderBy(desc(transcripts.createdAt));
+    if (rows.length === 0) return null;
 
-    const latestTranscript = transcriptRows[0];
-    if (!latestTranscript) return { ...asset, transcript: null, segments: [] };
+    const asset = AssetService.sanitize(rows[0]!.asset);
 
-    const transcriptIds = transcriptRows.map((row) => row.id);
-    const allSegments = await db()
-      .select()
-      .from(transcriptSegments)
-      .where(inArray(transcriptSegments.transcriptId, transcriptIds))
-      .orderBy(transcriptSegments.transcriptId, transcriptSegments.startTime);
+    if (!rows[0]!.transcript) {
+      return { ...asset, transcript: null, segments: [] };
+    }
 
-    const segmentsByTranscript = Map.groupBy(
-      allSegments,
-      (segment) => segment.transcriptId,
-    );
+    // Group segments by transcript, preserving insertion order (createdAt DESC)
+    type Row = (typeof rows)[number];
+    const transcriptMap = new Map<string, {
+      transcript: NonNullable<Row['transcript']>;
+      segments: NonNullable<Row['segment']>[];
+    }>();
 
-    const transcript =
-      transcriptRows.find((row) => (segmentsByTranscript.get(row.id)?.length ?? 0) > 0)
-      ?? latestTranscript;
+    for (const row of rows) {
+      if (!row.transcript) continue;
+      if (!transcriptMap.has(row.transcript.id)) {
+        transcriptMap.set(row.transcript.id, { transcript: row.transcript, segments: [] });
+      }
+      if (row.segment) {
+        transcriptMap.get(row.transcript.id)!.segments.push(row.segment);
+      }
+    }
 
-    const segments = segmentsByTranscript.get(transcript.id) ?? [];
+    // Prefer most recent transcript that has segments (Map order = createdAt DESC)
+    for (const entry of transcriptMap.values()) {
+      if (entry.segments.length > 0) {
+        return { ...asset, transcript: entry.transcript, segments: entry.segments };
+      }
+    }
 
-    return { ...asset, transcript, segments };
+    // All transcripts empty — use the latest
+    const latest = transcriptMap.values().next().value!;
+    return { ...asset, transcript: latest.transcript, segments: [] };
   }
 
   static async getTranscriptLanguage(assetId: string): Promise<string | null> {

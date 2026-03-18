@@ -80,19 +80,16 @@ export function BillingDashboard() {
     try {
       const { data, error } = await api.api.billing.portal.post();
       if (error) {
-        const errVal = error.value;
-        if (typeof errVal === 'object' && errVal && 'error' in errVal) {
-          const code = (errVal as { error: string }).error;
-          if (code === 'billing_disabled') {
-            toast.error('Billing is not configured yet.');
-            return;
-          }
-          if (code === 'no_customer') {
-            toast.error('No billing account found. Subscribe to a plan first.');
-            return;
-          }
+        const errVal = error.value as { code?: string; message?: string } | undefined;
+        if (errVal?.code === 'BILLING_DISABLED') {
+          toast.error('Billing is not configured yet.');
+          return;
         }
-        toast.error('Could not open billing portal.');
+        if (errVal?.code === 'NO_CUSTOMER') {
+          toast.error('No billing account found. Subscribe to a plan first.');
+          return;
+        }
+        toast.error(errVal?.message ?? 'Could not open billing portal.');
         return;
       }
       if (data && 'portalUrl' in data && typeof data.portalUrl === 'string') {

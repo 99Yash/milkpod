@@ -141,6 +141,9 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
         }
         if (event.status === 'failed') {
           setProgressMessage(undefined);
+          if (event.message) {
+            setAsset((prev) => ({ ...prev, lastError: event.message ?? null }));
+          }
         }
       },
       [assetId],
@@ -345,6 +348,11 @@ export function AssetShell({ assetId, initialAsset }: AssetShellProps) {
                         : progressMessage ||
                           'Transcript will appear here once processing completes.'}
                     </p>
+                    {asset.status === 'failed' && asset.lastError && (
+                      <p className="text-xs text-destructive max-w-md">
+                        {asset.lastError}
+                      </p>
+                    )}
                     {asset.status === 'failed' && (
                       <Button
                         size="sm"

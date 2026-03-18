@@ -1,5 +1,6 @@
 import { Elysia, status } from 'elysia';
 import { authMacro } from '../../middleware/auth';
+import { normalizeLimit } from '../../utils';
 import { PodcastModel } from './model';
 import { PodcastService } from './service';
 import { orchestrateEpisodePipeline } from './episode-pipeline';
@@ -32,9 +33,14 @@ export const podcasts = new Elysia({ prefix: '/api/podcasts' })
     { auth: true, body: PodcastModel.addFeed }
   )
 
-  .get('/feeds', async ({ user }) => {
-    return PodcastService.listFeeds(user.id);
-  }, { auth: true })
+  .get(
+    '/feeds',
+    async ({ query, user }) => {
+      const limit = normalizeLimit(query.limit, 50);
+      return PodcastService.listFeedsPage(user.id, query, limit);
+    },
+    { auth: true, query: PodcastModel.listFeedsQuery }
+  )
 
   .get('/feeds/:id', async ({ params, user }) => {
     const feed = await PodcastService.getFeed(params.id, user.id);
@@ -91,14 +97,21 @@ export const podcasts = new Elysia({ prefix: '/api/podcasts' })
   // Episodes
   // ---------------------------------------------------------------------------
 
-  .get('/feeds/:id/episodes', async ({ params, user }) => {
-    const episodes = await PodcastService.listEpisodes(
-      params.id,
-      user.id
-    );
-    if (episodes === null) return status(404, { message: 'Feed not found' });
-    return episodes;
-  }, { auth: true })
+  .get(
+    '/feeds/:id/episodes',
+    async ({ params, query, user }) => {
+      const limit = normalizeLimit(query.limit, 50);
+      const episodes = await PodcastService.listEpisodesPage(
+        params.id,
+        user.id,
+        query,
+        limit,
+      );
+      if (episodes === null) return status(404, { message: 'Feed not found' });
+      return episodes;
+    },
+    { auth: true, query: PodcastModel.listEpisodesQuery }
+  )
 
   .get('/episodes/:id', async ({ params, user }) => {
     const episode = await PodcastService.getEpisode(

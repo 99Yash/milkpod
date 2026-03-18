@@ -2,7 +2,7 @@ import { t } from 'elysia';
 
 export namespace PodcastModel {
   export const addFeed = t.Object({
-    feedUrl: t.String({ format: 'uri' }),
+    feedUrl: t.String({ format: 'uri', maxLength: 2048 }),
   });
   export type AddFeed = typeof addFeed.static;
 
@@ -12,7 +12,19 @@ export namespace PodcastModel {
   export type UpdateFeed = typeof updateFeed.static;
 
   export const refreshFeed = t.Object({
-    feedId: t.String(),
+    feedId: t.String({ maxLength: 100 }),
   });
   export type RefreshFeed = typeof refreshFeed.static;
+
+  export const listFeedsQuery = t.Object({
+    cursor: t.Optional(t.String({ maxLength: 500 })),
+    limit: t.Optional(t.String({ maxLength: 10 })),
+  });
+  export type ListFeedsQuery = typeof listFeedsQuery.static;
+
+  export const listEpisodesQuery = t.Object({
+    cursor: t.Optional(t.String({ maxLength: 500 })),
+    limit: t.Optional(t.String({ maxLength: 10 })),
+  });
+  export type ListEpisodesQuery = typeof listEpisodesQuery.static;
 }
