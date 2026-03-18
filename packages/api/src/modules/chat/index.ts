@@ -179,7 +179,28 @@ export const chat = new Elysia({ prefix: '/api/chat' })
   )
   .post(
     '/translate',
-    async ({ body }) => {
+    async ({ body, user }) => {
+      // Verify message ownership before persisting anything
+      if (body.messageId) {
+        const owns = await ChatService.verifyMessageOwnership(body.messageId, user.id);
+        if (!owns) return status(403, { message: 'Access denied to message' });
+      }
+
+      // Lightweight quota check — translations count against the daily word budget
+      const admin = isAdminEmail(user.email);
+      if (!admin) {
+        const plan = await resolveUserPlan(user.id);
+        const entitlements = getEntitlementsForPlan(plan);
+        const wordEstimate = Math.ceil(body.text.split(/\s+/).length * 1.5);
+        const reserved = await UsageService.reserveWords(user.id, wordEstimate, entitlements.aiWordsDaily);
+        if (reserved <= 0) {
+          return status(429, {
+            message: 'Daily word limit reached. Resets at midnight UTC.',
+            code: 'WORD_BUDGET_EXHAUSTED',
+          });
+        }
+      }
+
       const { response, text } = streamTranslation(body.text, body.targetLanguage);
 
       // Fire-and-forget: persist translation when stream completes
@@ -203,7 +224,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       auth: true,
       body: t.Object({
         text: t.String({ minLength: 1, maxLength: 10000 }),
-        targetLanguage: t.Optional(t.String()),
+        targetLanguage: t.Optional(t.String({ maxLength: 100 })),
         messageId: t.Optional(t.String()),
         partIndex: t.Optional(t.Integer({ minimum: 0 })),
       }),
