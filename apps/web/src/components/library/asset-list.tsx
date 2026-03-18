@@ -102,7 +102,15 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
               pages: prev.pages.map((page) => ({
                 ...page,
                 items: page.items.map((a) =>
-                  a.id === event.assetId ? { ...a, status: event.status } : a,
+                  a.id === event.assetId
+                    ? {
+                        ...a,
+                        status: event.status,
+                        ...(event.status === 'failed' && event.message
+                          ? { lastError: event.message }
+                          : {}),
+                      }
+                    : a,
                 ),
               })),
             };
@@ -122,9 +130,7 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
             delete next[event.assetId];
             return next;
           });
-          if (event.status === 'ready') {
-            queryClient.invalidateQueries({ queryKey: queryKeys.assets.all });
-          }
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.all });
         }
       },
       [queryClient]

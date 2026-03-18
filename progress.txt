@@ -1,0 +1,108 @@
+# Code Review Progress
+
+## Pre-loop review findings (feat/translate vs main)
+
+Reviewed by hand before loop.sh — these issues exist in the current diff and should be addressed by the relevant plan.md tasks.
+
+### Must Fix
+1. `packages/ai/src/translation.ts:12` — Missing `timeout: { totalMs: 60_000 }` on `streamText`. Hangs indefinitely on provider failure.
+2. `packages/ai/src/translation.ts:14` — `targetLanguage` is user-supplied and interpolated directly into LLM prompt. Prompt injection risk. Validate against a language whitelist.
+3. `packages/api/src/modules/chat/index.ts:194-201` — Translate route reserves quota words but never releases the overage. AI SDK v6 `onFinish` provides `text` and `totalUsage`; use same pattern as main chat route.
+4. `packages/ai/src/translation.ts:12` — No `onError` callback on `streamText`. If stream errors, reserved quota words leak permanently.
+
+### Should Fix
+5. `apps/web/src/lib/api-fetchers.ts:17` + `apps/web/src/lib/data/queries.ts:227` — Duplicate `TranslationsMap` type. Define once, import.
+6. `apps/web/src/components/chat/message.tsx:221` — Missing final `decoder.decode()` flush after read loop. Multibyte chars (CJK, Hindi) split across chunks will truncate.
+7. `apps/web/src/components/chat/message.tsx:283` — `isNonLatinText()` recomputed every render. Wrap in `useMemo`.
+8. `packages/ai/src/translation.ts` — `streamTranslation` doesn't expose `onFinish`/`onError` hooks. Caller can't do quota cleanup. Should accept callbacks or return `result.totalUsage` promise.
+
+### Verified OK (library source confirmed)
+- `useSyncExternalStore` pattern: stable refs, no tearing risk ✅
+- `toTextStreamResponse()` + Elysia passthrough: confirmed Response bypasses body validation ✅
+- `result.text` + `toTextStreamResponse()` concurrent consumption: valid AI SDK v6 pattern ✅
+- Rate limiting: `/api/chat/translate` matches `path.startsWith('/api/chat')` → chat bucket (30/min) ✅
+- Ownership: `verifyMessageOwnership` JOINs qaMessages → qaThreads on userId ✅
+- `key={i}` on parts: static post-completion list, acceptable ✅
+- Barrel export of `streamTranslation`: only consumed server-side from `packages/api` ✅
+
+---
+
+## Task 8: Add optimistic updates for destructive actions ✅
+
+### Issues found and fixed:
+1. `apps/web/src/components/chat/chat-shell.tsx:150-195` — `handleDeleteThread` waited for API response before removing thread from state. Users saw a delay after confirming delete. **Fixed:** Snapshot current threads, remove optimistically, call API in background. On failure, restore snapshot and show toast. Added `deletingThreadIdsRef` guard to prevent duplicate API calls from double-clicks.
+2. `apps/web/src/components/chat/chat-shell.tsx:197-222` — `handleRenameThread` waited for API response before updating title. **Fixed:** Capture previous title, update optimistically, call API in background. On failure, restore previous title and show toast.
+3. Both handlers had no `catch` block — network errors would result in unhandled promise rejections with no user feedback. **Fixed:** Added try/catch with rollback + toast in both handlers.
+
+### Issues noted (no fix needed):
+1. `handleRegenerateTitle` is not optimistic — this is acceptable because the old title is still meaningful while regeneration is in progress, and the `isRegenerating` spinner in ThreadItem provides adequate feedback.
+2. The delete guard uses a ref (`deletingThreadIdsRef`) rather than state because the thread item unmounts immediately on optimistic removal — there's no button to visually disable. The ref prevents duplicate API calls.
+
+### Checklist verification:
+- **No redundant state**: Guard uses ref (not state) since no UI needs to react to it ✅
+- **useEffect cleanup**: No new effects added ✅
+- **Error handling**: Both handlers have try/catch with user-facing toast.error() ✅
+- **No silent error swallowing**: All catch blocks show toast + rollback ✅
+- **No console.log in production**: None added ✅
+- **Keyboard accessibility**: No UI changes — existing thread-sidebar already has keyboard support with group-focus-within ✅
+- **TypeScript**: No `any`, no non-null assertions beyond existing patterns ✅
+
+---
+
+## Task 9: Add error states and retry to asset list ✅
+
+### Issues found and fixed:
+1. `apps/web/src/lib/api-fetchers.ts:146` — `fetchAssetsPage` silently returned empty results on API/network errors (`if (error) return { items: [], ... }`). This meant `useInfiniteQuery` never entered error state — users saw "No media yet" instead of an error message on network failure. **Fixed:** Changed to `throw new Error('Failed to load assets')` on `error`, keeping the graceful empty return only for unexpected response shapes.
+2. `apps/web/src/components/library/asset-list.tsx` — No error state handling at all. Loading failure showed either an infinite spinner or misleading "No media yet" message. **Fixed:** Destructured `isError` and `isFetching` from `useInfiniteQuery`. Added error UI with AlertTriangle icon, descriptive text, and a Retry button. Button shows spinner + "Retrying..." while refetch is in flight and is disabled to prevent double-clicks.
+3. `apps/web/src/components/library/asset-list.tsx` — No user feedback on network errors. **Fixed:** Added `useEffect` that fires `toast.error()` when `isError` becomes true.
+
+### Issues noted (no fix needed):
+1. `handleRetry` callback deps include both `query.status` and `query` — `query.status` is derived from `query`, making it redundant. Left as-is since it's existing code outside the task scope and doesn't cause bugs.
+2. `asset-combobox.tsx` also uses `fetchAssetsPage` — it will now properly surface errors via react-query instead of silently showing empty results. The combobox is enabled only when the popover is open, so transient errors are acceptable without dedicated error UI.
+
+### Checklist verification:
+- **No redundant state**: Error state comes from react-query (`isError`), not separate `useState` ✅
+- **useEffect cleanup**: Toast effect has no subscriptions/timers to clean up ✅
+- **Stable keys**: Using `asset.id` for list keys (existing, unchanged) ✅
+- **SSR guards**: No browser-only APIs in state initializers or render path ✅
+- **No `any` types**: None added ✅
+- **No unjustified `!`**: None added ✅
+- **Accessibility**: Error container has `role="alert"`, AlertTriangle has `aria-hidden="true"` (text conveys meaning), Button has `type="button"` ✅
+- **Tailwind v4 tokens**: Uses `bg-destructive/10`, `text-destructive`, `text-muted-foreground`, `size-6`, `size-12` — all theme tokens ✅
+- **No console.log in production**: None added ✅
+- **Proper error handling**: Toast + visible error UI with retry — no silent swallowing ✅
+- **All states handled**: loading (spinner), error (AlertTriangle + Retry), empty ("No media yet"), populated (asset grid) ✅
+- **Library leverage**: Uses react-query's built-in `isError`/`isFetching`/`refetch` — no manual error state management ✅
+
+---
+
+## Task 10: Surface pipeline failures to the user ✅
+
+### Issues found and fixed:
+1. `packages/api/src/modules/assets/index.ts:65` — SSE endpoint stripped error messages for 'failed' events (`message: event.status === 'failed' ? undefined : event.message`). The message is already sanitized by `toSafeErrorMessage()` (redacts URLs, truncates to 240 chars, maps to user-friendly messages). **Fixed:** Removed the `undefined` override — the sanitized message now flows through to the client.
+2. `packages/api/src/modules/assets/service.ts:71-73` — `AssetService.sanitize()` stripped `lastError` from all API responses with comment "internal error details". However, `lastError` is always written through `toSafeErrorMessage()` which produces safe, user-friendly messages like "Audio transcription failed, and caption fallback was not available for this URL." **Fixed:** Stopped stripping `lastError` (kept stripping `visualLastError` which is internal-only).
+3. `apps/web/src/lib/data/queries.ts:22-25` — Same `lastError` stripping pattern in server-side queries. **Fixed:** Same as above.
+4. `apps/web/src/components/library/asset-list.tsx:104-106` — SSE handler's optimistic cache update only set `status` on the asset, not `lastError`. When a 'failed' event arrived with a message, the error reason was lost. **Fixed:** Now also sets `lastError` from `event.message` for 'failed' events.
+5. `apps/web/src/components/library/asset-list.tsx:125-127` — Query invalidation only happened for 'ready' events, not 'failed'. This meant `lastError` was never fetched from the server after failure. **Fixed:** Now invalidates queries on both 'ready' and 'failed' terminal states.
+6. `apps/web/src/components/library/asset-card.tsx` — No failure reason displayed. Users only saw "Failed" label with no explanation of why. **Fixed:** Added `asset.lastError` display below the title in destructive text when status is 'failed'. Also added `aria-label` to the Retry button.
+7. `apps/web/src/components/asset/asset-shell.tsx:142-144` — SSE handler cleared `progressMessage` on 'failed' but did not set `lastError` on the asset. **Fixed:** Now sets `asset.lastError` from `event.message` on failure.
+8. `apps/web/src/components/asset/asset-shell.tsx:342-347` — Asset detail page showed generic "Processing failed" message with no reason. **Fixed:** Added `asset.lastError` display below the generic message.
+9. `packages/api/src/modules/ingest/pipeline.ts:143` — `QuotaService.increment` catch logged full `err` object (`console.warn(..., err)`). Per review checklist, full error objects can leak connection strings, raw SQL, etc. **Fixed:** Changed to `err instanceof Error ? err.message : String(err)`.
+10. `packages/api/src/modules/ingest/pipeline.ts:174` — Visual context extraction catch used `err instanceof Error ? err.message : err` — the else branch passed raw `err` which could be an object. **Fixed:** Changed to `String(err)`.
+
+### Issues noted (no fix needed):
+1. `packages/api/src/modules/shares/service.ts:125-129` — Also strips `lastError` from shared resources. Left as-is because share links are publicly accessible (no auth), and shared assets should always be in 'ready' status where `lastError` is null anyway.
+2. `packages/api/src/modules/ingest/index.ts:45-59` — The `.catch()` blocks in `startUrlIngestPipeline` only log errors. These only fire if `handlePipelineError` itself throws (e.g., DB down during the failure status write). Since the DB would be unavailable, another write attempt would also fail. Acceptable edge case.
+3. `handlePipelineError` in `pipeline.ts:179-186` was already correctly implemented before this task — it updates status to 'failed', stores the sanitized `lastError`, and emits the SSE event. All three pipeline functions (`orchestratePipeline`, `orchestrateExternalPipeline`, `orchestrateUploadPipeline`) properly delegate to it in their catch blocks.
+
+### Checklist verification:
+- **Safe error logging**: Fixed two catch blocks logging full error objects (pipeline.ts:143, 174). All other catch blocks in pipeline.ts and ingest/index.ts already use `toSafeErrorMessage()` ✅
+- **No secrets in error responses**: `lastError` is always written through `toSafeErrorMessage()` which redacts URLs, truncates, and maps to user-friendly messages. `visualLastError` is still stripped ✅
+- **SSE endpoint**: Now forwards sanitized error messages for all statuses ✅
+- **Error handling UX**: Failed assets now show the failure reason in both library cards and asset detail view. Users see actionable messages like "Captions are not available for this source URL" instead of just "Failed" ✅
+- **No redundant state**: `lastError` comes from the SSE event (optimistic) and is confirmed by query invalidation (server). No new state added ✅
+- **Accessibility**: Retry button has `aria-label`, error text uses semantic `text-destructive` color alongside the "Failed" text label ✅
+- **No console.log in production**: None added ✅
+- **Tailwind v4 tokens**: Uses `text-destructive`, `max-w-md` — all theme tokens ✅
+- **TypeScript**: No `any`, no non-null assertions ✅
+- **Library leverage**: Uses react-query `invalidateQueries` + `setQueriesData` for cache management. SSE events drive real-time updates. No manual polling or state machines ✅
