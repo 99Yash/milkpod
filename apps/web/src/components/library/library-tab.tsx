@@ -38,14 +38,14 @@ export function LibraryTab({
         >
           Library
         </h2>
-        <div className="flex rounded-md border border-border/60 bg-muted/70 dark:bg-muted/30 p-0.5">
+        <div className="flex rounded-md border border-border/60 bg-accent/60 dark:bg-accent/30 p-0.5">
           <button
             type="button"
             onClick={() => setView('assets')}
             className={cn(
               'rounded-sm px-3 py-1 text-xs font-semibold transition-colors',
               view === 'assets'
-                ? 'bg-background/90 text-foreground shadow-sm dark:bg-background/50'
+                ? 'bg-background text-accent-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             )}
           >
@@ -57,7 +57,7 @@ export function LibraryTab({
             className={cn(
               'rounded-sm px-3 py-1 text-xs font-semibold transition-colors',
               view === 'collections'
-                ? 'bg-background/90 text-foreground shadow-sm dark:bg-background/50'
+                ? 'bg-background text-accent-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             )}
           >

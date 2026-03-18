@@ -161,6 +161,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         },
       });
 
+      response.headers.set('X-Plan', plan);
       if (admin) {
         response.headers.set('X-Is-Admin', 'true');
       } else {

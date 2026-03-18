@@ -27,6 +27,7 @@ import {
 import { Input } from '~/components/ui/input';
 import { Spinner } from '~/components/ui/spinner';
 import { api } from '~/lib/api';
+import { decrementCollectionCount } from '~/lib/plan-cache';
 import type { Collection } from '@milkpod/api/types';
 
 interface CollectionCardProps {
@@ -70,6 +71,7 @@ export function CollectionCard({
     setDeleting(true);
     try {
       await api.api.collections({ id: collection.id }).delete();
+      decrementCollectionCount();
       setDeleteOpen(false);
       onDeleted?.();
     } finally {

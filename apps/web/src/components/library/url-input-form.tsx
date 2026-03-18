@@ -8,6 +8,7 @@ import { api } from '~/lib/api';
 import { Loader2, Plus, Upload, Link, X } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { handleUpgradeError } from '~/lib/upgrade-prompt';
+import { checkQuotaLocal } from '~/lib/plan-cache';
 
 interface UrlInputFormProps {
   onSuccess: () => void;
@@ -67,6 +68,13 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
     const trimmed = url.trim();
     if (!trimmed) return;
 
+    // Client-side quota pre-check — avoid the round-trip when we already know
+    const quota = checkQuotaLocal('video_minutes');
+    if (quota && !quota.allowed) {
+      handleUpgradeError({ status: 402, value: { code: 'QUOTA_EXCEEDED' } });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const { data, error } = await api.api.ingest.post({ url: trimmed });
@@ -93,6 +101,12 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
 
   const handleSubmitFile = async () => {
     if (!file) return;
+
+    const quota = checkQuotaLocal('video_minutes');
+    if (quota && !quota.allowed) {
+      handleUpgradeError({ status: 402, value: { code: 'QUOTA_EXCEEDED' } });
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -135,7 +149,7 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
           className={cn(
             'flex items-center gap-1.5 rounded-md pl-2 pr-2.5 py-1 text-xs font-medium transition-colors',
             mode === 'url'
-              ? 'bg-muted text-foreground'
+              ? 'bg-accent text-accent-foreground'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
@@ -148,7 +162,7 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
           className={cn(
             'flex items-center gap-1.5 rounded-md pl-2 pr-2.5 py-1 text-xs font-medium transition-colors',
             mode === 'upload'
-              ? 'bg-muted text-foreground'
+              ? 'bg-accent text-accent-foreground'
               : 'text-muted-foreground hover:text-foreground'
           )}
         >
@@ -166,7 +180,12 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
             className="flex-1"
             disabled={isSubmitting}
           />
-          <Button type="submit" size="sm" disabled={isSubmitting || !url.trim()}>
+          <Button
+            type="submit"
+            size="sm"
+            disabled={isSubmitting || !url.trim()}
+            className="bg-[--milkpod-ocean] text-white hover:bg-[--milkpod-ocean]/90"
+          >
             {isSubmitting ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
@@ -235,7 +254,12 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
               >
                 <X className="size-3.5" />
               </Button>
-              <Button type="submit" size="sm" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isSubmitting}
+                className="bg-[--milkpod-ocean] text-white hover:bg-[--milkpod-ocean]/90"
+              >
                 {isSubmitting ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (

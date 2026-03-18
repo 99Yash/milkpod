@@ -7,7 +7,9 @@ import { clientEnv } from '@milkpod/env/client';
 import { chatMetadataSchema } from '@milkpod/ai/schemas';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 import type { ModelId } from '@milkpod/ai/models';
+import type { PlanId } from '@milkpod/ai/plans';
 import { handleUpgradeError } from '~/lib/upgrade-prompt';
+import { isPlanId, setCachedIsAdmin, setCachedPlan } from '~/lib/plan-cache';
 
 const SERVER_URL = clientEnv().NEXT_PUBLIC_SERVER_URL;
 
@@ -28,9 +30,23 @@ export function useMilkpodChat({
 } = {}): UseChatHelpers<MilkpodMessage> & {
   threadId: string | undefined;
   wordsRemaining: number | null;
+  plan: PlanId | null;
+  isAdmin: boolean | null;
 } {
   const threadIdRef = useRef<string | undefined>(threadId);
   const [wordsRemaining, setWordsRemaining] = useState<number | null>(null);
+  const [plan, setPlan] = useState<PlanId | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+
+  // useChat stores the Chat object (and its transport) in a ref that is NOT
+  // recreated when the transport prop changes — only when `id` changes.
+  // This means the body function baked into the initial transport would
+  // permanently close over the initial modelId/wordLimit values.
+  // Using refs ensures the body function always reads the latest values.
+  const modelIdRef = useRef(modelId);
+  modelIdRef.current = modelId;
+  const wordLimitRef = useRef(wordLimit);
+  wordLimitRef.current = wordLimit;
 
   useEffect(() => {
     threadIdRef.current = threadId;
@@ -54,10 +70,22 @@ export function useMilkpodChat({
       if (id) {
         threadIdRef.current = id;
       }
-      const isAdmin = response.headers.get('X-Is-Admin') === 'true';
-      if (isAdmin) {
+      const planHeader = response.headers.get('X-Plan');
+      if (isPlanId(planHeader)) {
+        setPlan(planHeader);
+        setCachedPlan(planHeader);
+      }
+
+      const isAdminHeader = response.headers.get('X-Is-Admin');
+      if (isAdminHeader === 'true') {
+        setIsAdmin(true);
+        setCachedIsAdmin(true);
         setWordsRemaining(null);
       } else {
+        if (isAdminHeader === 'false') {
+          setIsAdmin(false);
+          setCachedIsAdmin(false);
+        }
         const remaining = response.headers.get('X-Words-Remaining');
         if (remaining !== null) {
           const parsed = Number(remaining);
@@ -74,10 +102,10 @@ export function useMilkpodChat({
       threadId: threadIdRef.current,
       assetId,
       collectionId,
-      modelId,
-      wordLimit,
+      modelId: modelIdRef.current,
+      wordLimit: wordLimitRef.current,
     }),
-    [assetId, collectionId, modelId, wordLimit],
+    [assetId, collectionId],
   );
 
   const transport = useMemo(
@@ -102,5 +130,7 @@ export function useMilkpodChat({
     ...chat,
     threadId: threadIdRef.current,
     wordsRemaining,
+    plan,
+    isAdmin,
   };
 }

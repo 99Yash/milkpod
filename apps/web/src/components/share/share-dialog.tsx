@@ -4,8 +4,17 @@ import { useState } from 'react';
 import { Check, Copy, Link2, Share2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { getEntitlementsForPlan } from '@milkpod/ai/plans';
 import { fetchShareLinks, createShareLink } from '~/lib/api-fetchers';
 import { handleUpgradeError } from '~/lib/upgrade-prompt';
+import {
+  getCachedIsAdmin,
+  getCachedPlan,
+  setActiveShareLinkCount,
+  checkShareLinkLimit,
+  incrementActiveShareLinkCount,
+  decrementActiveShareLinkCount,
+} from '~/lib/plan-cache';
 import { queryKeys } from '~/lib/query-keys';
 import { api } from '~/lib/api';
 import { Button } from '~/components/ui/button';
@@ -87,12 +96,30 @@ export function ShareDialog({
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
+  const isAdmin = getCachedIsAdmin() === true;
+  const plan = getCachedPlan();
+  const canUsePublicShareQA =
+    isAdmin ||
+    (plan
+      ? getEntitlementsForPlan(plan).canUsePublicShareQA
+      : true); // not loaded → let server decide
+
+  const handleCanQueryChange = (checked: boolean) => {
+    if (checked && !canUsePublicShareQA) {
+      handleUpgradeError({ status: 402, value: { code: 'PUBLIC_SHARE_QA_NOT_ALLOWED' } });
+      return;
+    }
+    setCanQuery(checked);
+  };
+
   const queryKey = queryKeys.shareLinks({ assetId, collectionId });
 
   const { data: existingLinks = [], isLoading: loadingLinks } = useQuery({
     queryKey,
     queryFn: async () => {
       const links = await fetchShareLinks();
+      // Populate global active share link count before filtering by resource
+      setActiveShareLinkCount(links.length);
       return links.filter((link) =>
         assetId ? link.assetId === assetId : link.collectionId === collectionId
       );
@@ -101,6 +128,12 @@ export function ShareDialog({
   });
 
   const handleCreate = async () => {
+    const limitCheck = checkShareLinkLimit();
+    if (limitCheck && !limitCheck.allowed) {
+      handleUpgradeError({ status: 402, value: { code: 'SHARE_LINK_LIMIT' } });
+      return;
+    }
+
     setCreating(true);
     try {
       const result = await createShareLink({
@@ -116,6 +149,7 @@ export function ShareDialog({
       }
       // Optimistically add to cache
       queryClient.setQueryData<ShareLink[]>(queryKey, (prev) => [...(prev ?? []), result]);
+      incrementActiveShareLinkCount();
       // Auto-copy to clipboard
       await copyToClipboard(result.token);
       toast.success('Share link created and copied to clipboard');
@@ -136,6 +170,7 @@ export function ShareDialog({
       queryClient.setQueryData<ShareLink[]>(queryKey, (prev) =>
         prev?.filter((l) => l.id !== linkId) ?? []
       );
+      decrementActiveShareLinkCount();
       toast.success('Share link revoked');
     } catch {
       toast.error('Failed to revoke share link');
@@ -181,7 +216,8 @@ export function ShareDialog({
               <Switch
                 id="can-query"
                 checked={canQuery}
-                onCheckedChange={setCanQuery}
+                onCheckedChange={handleCanQueryChange}
+                disabled={!canUsePublicShareQA}
               />
             </div>
             <div className="flex items-center justify-between">
