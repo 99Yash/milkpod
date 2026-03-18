@@ -1,9 +1,11 @@
+import { db } from '@milkpod/db';
+import { mediaAssets, podcastEpisodes } from '@milkpod/db/schemas';
+import { eq } from 'drizzle-orm';
 import { transcribeAudio } from '../ingest/assemblyai';
 import { groupWordsIntoSegments } from '../ingest/segments';
 import { IngestService } from '../ingest/service';
 import { withRetry } from '../ingest/retry';
 import { embedSegments } from '../ingest/embed';
-import { AssetService } from '../assets/service';
 import { PodcastService } from './service';
 import { emitAssetStatus } from '../../events/asset-events';
 
@@ -35,23 +37,36 @@ export async function orchestrateEpisodePipeline(
   let assetId = episode.assetId;
 
   try {
-    // Stage 1: Create asset (if not already linked)
+    // Stage 1: Create asset + link to episode atomically (if not already linked).
+    // Without a transaction, a failure between create and link would leave an
+    // orphaned asset and the episode with no assetId, causing a retry to create
+    // yet another orphan.
     if (!assetId) {
       await PodcastService.updateEpisodeStatus(episodeId, 'fetching');
 
-      const asset = await AssetService.create(userId, {
-        title: episode.title,
-        sourceUrl: episode.sourceUrl,
-        sourceType: 'podcast',
-        mediaType: 'audio',
+      assetId = await db().transaction(async (tx) => {
+        const [asset] = await tx
+          .insert(mediaAssets)
+          .values({
+            userId,
+            title: episode.title,
+            sourceUrl: episode.sourceUrl,
+            sourceType: 'podcast',
+            mediaType: 'audio',
+          })
+          .returning({ id: mediaAssets.id });
+
+        if (!asset) {
+          throw new Error('Failed to create media asset for episode');
+        }
+
+        await tx
+          .update(podcastEpisodes)
+          .set({ assetId: asset.id })
+          .where(eq(podcastEpisodes.id, episodeId));
+
+        return asset.id;
       });
-
-      if (!asset) {
-        throw new Error('Failed to create media asset for episode');
-      }
-
-      assetId = asset.id;
-      await PodcastService.linkAsset(episodeId, assetId);
 
       if (episode.duration) {
         await IngestService.updateStatus(assetId, 'fetching', {

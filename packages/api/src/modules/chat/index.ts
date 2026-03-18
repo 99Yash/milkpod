@@ -86,24 +86,39 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         }
       }
 
-      // Auto-create thread if none provided
+      // Auto-create thread if none provided.
+      // Wrapped in try/catch so reserved words are released on failure —
+      // without this, a failed thread creation leaks the quota permanently.
+      const releaseReserved = async () => {
+        if (!admin && reserved > 0) {
+          await UsageService.releaseWords(userId, reserved).catch(() => {});
+        }
+      };
+
       let threadId = body.threadId;
       let isNewThread = false;
-      if (!threadId) {
-        const newThread = await ThreadService.create(userId, {
-          assetId: body.assetId,
-          collectionId: body.collectionId,
-        });
+      try {
+        if (!threadId) {
+          const newThread = await ThreadService.create(userId, {
+            assetId: body.assetId,
+            collectionId: body.collectionId,
+          });
 
-        if (!newThread) {
-          return status(500, { message: 'Failed to create or resolve thread' });
+          if (!newThread) {
+            await releaseReserved();
+            return status(500, { message: 'Failed to create or resolve thread' });
+          }
+
+          threadId = newThread.id;
+          isNewThread = true;
         }
-
-        threadId = newThread.id;
-        isNewThread = true;
+      } catch (err) {
+        await releaseReserved();
+        throw err;
       }
 
       if (!threadId) {
+        await releaseReserved();
         return status(500, { message: 'Failed to create or resolve thread' });
       }
 
