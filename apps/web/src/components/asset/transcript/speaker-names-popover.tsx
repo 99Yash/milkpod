@@ -76,82 +76,87 @@ export function SpeakerNamesPopover({
           </Tooltip>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} className="w-88 space-y-3 p-3">
-        <div className="space-y-1">
-          <h3 className="text-sm font-medium text-foreground">Name speakers</h3>
-          <p className="text-xs text-muted-foreground">
-            Add names for diarized speakers. Leave blank to keep the generic
-            label.
-          </p>
-        </div>
+      <PopoverContent align="end" sideOffset={8} className="w-88 p-3">
+        <form
+          className="space-y-3"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!hasChanges || isSavingSpeakerNames) return;
+            const sanitized = sanitizeSpeakerNames(draftSpeakerNames);
+            try {
+              await onSaveSpeakerNames(sanitized);
+              setOpen(false);
+            } catch {
+              return;
+            }
+          }}
+        >
+          <div className="space-y-1">
+            <h3 className="text-sm font-medium text-foreground">Name speakers</h3>
+            <p className="text-xs text-muted-foreground">
+              Add names for diarized speakers. Leave blank to keep the generic
+              label.
+            </p>
+          </div>
 
-        <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-          {speakerIds.map((speakerId) => (
-            <div key={speakerId} className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label
-                  htmlFor={`speaker-name-${speakerId}`}
-                  className="text-xs font-medium text-foreground"
-                >
-                  {formatSpeakerId(speakerId)}
-                </label>
-                <span className="font-mono text-[11px] text-muted-foreground">
-                  {speakerId}
-                </span>
+          <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+            {speakerIds.map((speakerId) => (
+              <div key={speakerId} className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label
+                    htmlFor={`speaker-name-${speakerId}`}
+                    className="text-xs font-medium text-foreground"
+                  >
+                    {formatSpeakerId(speakerId)}
+                  </label>
+                  <span className="font-mono text-[11px] text-muted-foreground">
+                    {speakerId}
+                  </span>
+                </div>
+                <Input
+                  id={`speaker-name-${speakerId}`}
+                  value={draftSpeakerNames[speakerId] ?? ''}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDraftSpeakerNames((prev) => ({
+                      ...prev,
+                      [speakerId]: value,
+                    }));
+                  }}
+                  placeholder="e.g. Mehdi Hasan"
+                  className="h-8 text-sm"
+                  maxLength={80}
+                />
               </div>
-              <Input
-                id={`speaker-name-${speakerId}`}
-                value={draftSpeakerNames[speakerId] ?? ''}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setDraftSpeakerNames((prev) => ({
-                    ...prev,
-                    [speakerId]: value,
-                  }));
-                }}
-                placeholder="e.g. Mehdi Hasan"
-                className="h-8 text-sm"
-                maxLength={80}
-              />
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        <div className="flex items-center justify-end gap-2 pt-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setOpen(false)}
-            disabled={Boolean(isSavingSpeakerNames)}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={!hasChanges || Boolean(isSavingSpeakerNames)}
-            onClick={async () => {
-              const sanitized = sanitizeSpeakerNames(draftSpeakerNames);
-
-              try {
-                await onSaveSpeakerNames(sanitized);
-                setOpen(false);
-              } catch {
-                return;
-              }
-            }}
-          >
-            {isSavingSpeakerNames ? (
-              <>
-                <Loader2 className="size-3.5 animate-spin" />
-                Saving
-              </>
-            ) : (
-              'Save names'
-            )}
-          </Button>
-        </div>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setOpen(false)}
+              disabled={Boolean(isSavingSpeakerNames)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!hasChanges || Boolean(isSavingSpeakerNames)}
+            >
+              {isSavingSpeakerNames ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Saving
+                </>
+              ) : (
+                'Save names'
+              )}
+            </Button>
+          </div>
+        </form>
       </PopoverContent>
     </Popover>
   );

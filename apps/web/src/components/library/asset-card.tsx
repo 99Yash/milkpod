@@ -148,6 +148,9 @@ export function AssetCard({
         <p className="text-sm font-medium text-foreground line-clamp-2">
           {asset.title}
         </p>
+        {isFailed && asset.lastError && (
+          <p className="text-xs text-destructive line-clamp-2">{asset.lastError}</p>
+        )}
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground truncate">
             {asset.channelName ?? ''}
@@ -177,6 +180,7 @@ export function AssetCard({
                 className="h-6 px-2.5 text-xs"
                 onClick={handleRetry}
                 disabled={retrying}
+                aria-label={`Retry processing ${asset.title}`}
               >
                 {retrying ? <Spinner className="size-3 mr-1" /> : null}
                 {retrying ? 'Retrying...' : 'Retry'}

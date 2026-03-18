@@ -6,6 +6,8 @@ import {
   useQueryClient,
   type InfiniteData,
 } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { AlertTriangle } from 'lucide-react';
 import { fetchAssetsPage, type AssetPageResult } from '~/lib/api-fetchers';
 import { queryKeys } from '~/lib/query-keys';
 import { AssetCard } from './asset-card';
@@ -43,6 +45,8 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
   const {
     data,
     isLoading,
+    isError,
+    isFetching,
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
@@ -76,6 +80,13 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
     refetch();
   }, [refreshKey, refetch]);
 
+  // Toast on fetch error
+  useEffect(() => {
+    if (isError) {
+      toast.error('Failed to load assets. Check your connection and try again.');
+    }
+  }, [isError]);
+
   // SSE: update asset status and progress in real-time
   // Falls back to polling via query invalidation if SSE permanently fails
   useAssetEvents(
@@ -91,7 +102,15 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
               pages: prev.pages.map((page) => ({
                 ...page,
                 items: page.items.map((a) =>
-                  a.id === event.assetId ? { ...a, status: event.status } : a,
+                  a.id === event.assetId
+                    ? {
+                        ...a,
+                        status: event.status,
+                        ...(event.status === 'failed' && event.message
+                          ? { lastError: event.message }
+                          : {}),
+                      }
+                    : a,
                 ),
               })),
             };
@@ -111,9 +130,7 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
             delete next[event.assetId];
             return next;
           });
-          if (event.status === 'ready') {
-            queryClient.invalidateQueries({ queryKey: queryKeys.assets.all });
-          }
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.all });
         }
       },
       [queryClient]
@@ -181,6 +198,26 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
     return (
       <div className="flex items-center justify-center py-12">
         <Spinner className="size-6" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div role="alert" className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+        <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10">
+          <AlertTriangle className="size-6 text-destructive" aria-hidden="true" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Failed to load assets</p>
+          <p className="text-sm text-muted-foreground">
+            Something went wrong. Check your connection and try again.
+          </p>
+        </div>
+        <Button type="button" variant="outline" onClick={() => refetch()} disabled={isFetching}>
+          {isFetching ? <Spinner className="size-4" /> : null}
+          {isFetching ? 'Retrying...' : 'Retry'}
+        </Button>
       </div>
     );
   }

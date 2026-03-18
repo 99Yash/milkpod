@@ -141,7 +141,10 @@ async function finalizePipeline(
   const durationMinutes = lastSegment ? Math.ceil(lastSegment.endTime / 60) : 0;
   if (durationMinutes > 0) {
     QuotaService.increment(userId, 'video_minutes', durationMinutes).catch((err) => {
-      console.warn(`[ingest] Failed to increment video minutes quota for ${assetId}:`, err);
+      console.warn(
+        `[ingest] Failed to increment video minutes quota for ${assetId}:`,
+        err instanceof Error ? err.message : String(err),
+      );
     });
   }
 }
@@ -171,7 +174,7 @@ function triggerVisualExtraction(
   extractVideoContext(assetId, sourceUrl, userId, duration).catch((err) => {
     console.warn(
       `[ingest] Visual context extraction failed for ${assetId}:`,
-      err instanceof Error ? err.message : err
+      err instanceof Error ? err.message : String(err),
     );
   });
 }

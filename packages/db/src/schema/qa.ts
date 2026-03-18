@@ -70,6 +70,7 @@ export const qaMessageParts = pgTable(
     toolState: text('tool_state'),
     toolInput: jsonb('tool_input'),
     toolOutput: jsonb('tool_output'),
+    translatedTextContent: text('translated_text_content'),
     sortOrder: integer('sort_order').notNull(),
   },
   (t) => [index('qa_message_part_message_sort_idx').on(t.messageId, t.sortOrder)],

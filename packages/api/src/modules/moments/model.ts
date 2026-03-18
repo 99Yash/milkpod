@@ -2,7 +2,7 @@ import { t } from 'elysia';
 
 export namespace MomentModel {
   export const generate = t.Object({
-    assetId: t.String(),
+    assetId: t.String({ maxLength: 100 }),
     preset: t.Union([
       t.Literal('default'),
       t.Literal('hook'),
@@ -16,7 +16,7 @@ export namespace MomentModel {
   export type Generate = typeof generate.static;
 
   export const listQuery = t.Object({
-    assetId: t.String(),
+    assetId: t.String({ maxLength: 100 }),
     preset: t.Optional(
       t.Union([
         t.Literal('default'),

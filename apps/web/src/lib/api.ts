@@ -18,7 +18,9 @@ export function toToastErrorMessage(
         ? error
         : typeof error === 'object' && error !== null && 'message' in error
           ? String((error as { message?: unknown }).message ?? '')
-          : fallback;
+          : typeof error === 'object' && error !== null && 'error' in error
+            ? String((error as { error?: unknown }).error ?? '')
+            : fallback;
 
   const normalized = raw.replace(URL_PATTERN, '[link]').replace(/\s+/g, ' ').trim();
   if (!normalized) return fallback;
@@ -30,7 +32,10 @@ export function toToastErrorMessage(
   return `${normalized.slice(0, MAX_TOAST_ERROR_LENGTH - 3)}...`;
 }
 
-export const api = treaty<App>(clientEnv().NEXT_PUBLIC_SERVER_URL, {
+const env = clientEnv();
+export const serverUrl = env.NEXT_PUBLIC_SERVER_URL;
+
+export const api = treaty<App>(serverUrl, {
   fetch: {
     credentials: 'include',
   },

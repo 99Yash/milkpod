@@ -5,8 +5,8 @@ export namespace AssetModel {
   const speakerDisplayName = t.String({ minLength: 1, maxLength: 80 });
 
   export const create = t.Object({
-    title: t.String(),
-    sourceUrl: t.Optional(t.String()),
+    title: t.String({ minLength: 1, maxLength: 200 }),
+    sourceUrl: t.Optional(t.String({ maxLength: 2048 })),
     sourceType: t.Union([
       t.Literal('youtube'),
       t.Literal('podcast'),
@@ -14,15 +14,15 @@ export namespace AssetModel {
       t.Literal('external'),
     ]),
     mediaType: t.Union([t.Literal('audio'), t.Literal('video')]),
-    channelName: t.Optional(t.String()),
-    thumbnailUrl: t.Optional(t.String()),
-    sourceId: t.Optional(t.String()),
-    idempotencyKey: t.Optional(t.String()),
+    channelName: t.Optional(t.String({ maxLength: 200 })),
+    thumbnailUrl: t.Optional(t.String({ maxLength: 2048 })),
+    sourceId: t.Optional(t.String({ maxLength: 500 })),
+    idempotencyKey: t.Optional(t.String({ maxLength: 100 })),
   });
   export type Create = typeof create.static;
 
   export const update = t.Object({
-    title: t.Optional(t.String()),
+    title: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
     status: t.Optional(
       t.Union([
         t.Literal('queued'),
@@ -44,12 +44,12 @@ export namespace AssetModel {
   export type SpeakerNamesUpdate = typeof speakerNamesUpdate.static;
 
   export const listQuery = t.Object({
-    q: t.Optional(t.String()),
-    status: t.Optional(t.String()),
-    sourceType: t.Optional(t.String()),
-    cursor: t.Optional(t.String()),
-    limit: t.Optional(t.String()),
-    paginate: t.Optional(t.String()),
+    q: t.Optional(t.String({ maxLength: 200 })),
+    status: t.Optional(t.String({ maxLength: 20 })),
+    sourceType: t.Optional(t.String({ maxLength: 20 })),
+    cursor: t.Optional(t.String({ maxLength: 500 })),
+    limit: t.Optional(t.String({ maxLength: 10 })),
+    paginate: t.Optional(t.String({ maxLength: 10 })),
   });
   export type ListQuery = typeof listQuery.static;
 

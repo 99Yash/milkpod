@@ -13,9 +13,38 @@ import {
   writePersistedChatMessages,
 } from './local-first/chat-cache';
 
-type ChatMessagesResult = { threadId: string; messages: MilkpodMessage[] };
+/** messageId → { partIndex → translatedText } */
+export type TranslationsMap = Record<string, Record<number, string>>;
+
+type ChatMessagesResult = {
+  threadId: string;
+  messages: MilkpodMessage[];
+  translations?: TranslationsMap;
+};
 
 const chatMessagesCache = new Map<string, ChatMessagesResult>();
+
+// Module-level reactive store for saved translations.
+// Populated from API responses; ChatMessage subscribes via useSyncExternalStore.
+const translationsStore = new Map<string, Record<number, string>>();
+const translationListeners = new Set<() => void>();
+
+function notifyTranslationsChanged() {
+  for (const listener of translationListeners) listener();
+}
+
+/** Subscribe to translation store changes (for useSyncExternalStore). */
+export function subscribeTranslations(listener: () => void): () => void {
+  translationListeners.add(listener);
+  return () => { translationListeners.delete(listener); };
+}
+
+/** Get saved translations for a specific message (keyed by part index). */
+export function getTranslationsForMessage(
+  messageId: string,
+): Record<number, string> | undefined {
+  return translationsStore.get(messageId);
+}
 const chatMessagesInflight = new Map<string, Promise<ChatMessagesResult | null>>();
 const persistedChatMessagesInflight = new Map<
   string,
@@ -114,7 +143,10 @@ export async function fetchAssetsPage(params: {
   query.paginate = 'true';
 
   const { data, error } = await api.api.assets.get({ query });
-  if (error || !data || Array.isArray(data)) {
+  if (error) {
+    throw new Error('Failed to load assets');
+  }
+  if (!data || Array.isArray(data)) {
     return { items: [], nextCursor: null, hasMore: false };
   }
 
@@ -190,8 +222,13 @@ export async function searchTranscript(
 
 export async function fetchCollections(): Promise<Collection[]> {
   const { data, error } = await api.api.collections.get();
-  if (error || !data || !Array.isArray(data)) return [];
-  return data;
+  if (error || !data) return [];
+  // Paginated response: { items, nextCursor, hasMore }
+  if (!Array.isArray(data) && 'items' in data && Array.isArray((data as { items?: unknown }).items)) {
+    return (data as { items: Collection[] }).items;
+  }
+  if (Array.isArray(data)) return data;
+  return [];
 }
 
 export async function fetchCollectionDetail(
@@ -242,9 +279,20 @@ export async function fetchThreadsForAsset(
   const { data, error } = await api.api.threads.get({
     query: { assetId },
   });
-  if (error || !data || !Array.isArray(data)) return [];
+  if (error || !data) return [];
+
+  type ThreadItem = { id: string; title: string | null; createdAt: string };
+
+  // Paginated response: { items, nextCursor, hasMore }
   // Eden types createdAt as Date but JSON serialization sends it as string
-  return data as unknown as { id: string; title: string | null; createdAt: string }[];
+  if ('items' in data && Array.isArray((data as { items?: unknown }).items)) {
+    return (data as unknown as { items: ThreadItem[] }).items;
+  }
+  // Fallback for array response
+  if (Array.isArray(data)) {
+    return data as unknown as ThreadItem[];
+  }
+  return [];
 }
 
 // Eden doesn't strip `status()` error branches from the data union, so a cast
@@ -337,8 +385,20 @@ export async function fetchChatMessages(
         return chatMessagesCache.get(threadId) ?? persisted ?? null;
       }
 
-      const result = data as ChatMessagesResult;
+      const raw = data as { threadId: string; messages: MilkpodMessage[]; translations?: TranslationsMap };
+      const result: ChatMessagesResult = {
+        threadId: raw.threadId,
+        messages: raw.messages,
+        translations: raw.translations,
+      };
       chatMessagesCache.set(threadId, result);
+      // Populate module-level translations store and notify subscribers
+      if (raw.translations && Object.keys(raw.translations).length > 0) {
+        for (const [msgId, parts] of Object.entries(raw.translations)) {
+          translationsStore.set(msgId, parts);
+        }
+        notifyTranslationsChanged();
+      }
       void writePersistedChatMessages(threadId, result.messages);
       return result;
     })

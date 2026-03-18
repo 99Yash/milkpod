@@ -50,6 +50,7 @@ export function ChatShell({
 
   const prefetchedThreadIdsRef = useRef<Set<string>>(new Set());
   const isCreatingThreadRef = useRef(false);
+  const deletingThreadIdsRef = useRef<Set<string>>(new Set());
 
   const isCallbackMode = !!onThreadChange;
 
@@ -148,16 +149,20 @@ export function ChatShell({
 
   const handleDeleteThread = useCallback(
     async (threadId: string) => {
-      const ok = await deleteThread(threadId);
-      if (!ok) {
-        toast.error('Failed to delete thread');
-        return;
-      }
+      if (deletingThreadIdsRef.current.has(threadId)) return;
+      deletingThreadIdsRef.current.add(threadId);
+
+      // Save snapshot for rollback
+      const previousThreads = threadsRef.current;
+
+      // Optimistically remove
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
-      const remaining = threadsRef.current.filter((t) => t.id !== threadId);
+
+      // Navigate away if we deleted the active thread
+      const remaining = previousThreads.filter((t) => t.id !== threadId);
       const fallbackId = remaining[0]?.id;
       const currentActive = isCallbackMode ? activeThreadIdProp : segment;
-      // If we deleted the active thread, navigate to the next one
+
       if (currentActive === threadId) {
         if (fallbackId) {
           prefetchThread(fallbackId);
@@ -172,20 +177,46 @@ export function ChatShell({
           router.push(`/asset/${assetId}/chat`, { scroll: false });
         }
       }
+
+      try {
+        const ok = await deleteThread(threadId);
+        if (!ok) {
+          setThreads(previousThreads);
+          toast.error('Failed to delete thread');
+        }
+      } catch {
+        setThreads(previousThreads);
+        toast.error('Failed to delete thread');
+      } finally {
+        deletingThreadIdsRef.current.delete(threadId);
+      }
     },
     [assetId, activeThreadIdProp, isCallbackMode, onThreadChange, onThreadsEmpty, prefetchThread, router, segment],
   );
 
   const handleRenameThread = useCallback(
     async (threadId: string, title: string) => {
-      const updated = await updateThread(threadId, { title });
-      if (!updated) {
-        toast.error('Failed to rename thread');
-        return;
-      }
+      const previousTitle = threadsRef.current.find((t) => t.id === threadId)?.title ?? null;
+
+      // Optimistically update
       setThreads((prev) =>
-        prev.map((t) => (t.id === threadId ? { ...t, title: updated.title } : t)),
+        prev.map((t) => (t.id === threadId ? { ...t, title } : t)),
       );
+
+      try {
+        const updated = await updateThread(threadId, { title });
+        if (!updated) {
+          setThreads((prev) =>
+            prev.map((t) => (t.id === threadId ? { ...t, title: previousTitle } : t)),
+          );
+          toast.error('Failed to rename thread');
+        }
+      } catch {
+        setThreads((prev) =>
+          prev.map((t) => (t.id === threadId ? { ...t, title: previousTitle } : t)),
+        );
+        toast.error('Failed to rename thread');
+      }
     },
     [],
   );
