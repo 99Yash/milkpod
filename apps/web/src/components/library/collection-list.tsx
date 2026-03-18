@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchCollections } from '~/lib/api-fetchers';
 import { queryKeys } from '~/lib/query-keys';
+import { setCollectionCount } from '~/lib/plan-cache';
 import { CollectionCard } from './collection-card';
 import { CreateCollectionDialog } from './create-collection-dialog';
 import { Spinner } from '~/components/ui/spinner';
@@ -23,6 +24,11 @@ export function CollectionList({ refreshKey, initialCollections }: CollectionLis
     initialData: initialCollections,
     initialDataUpdatedAt: initialCollections ? Date.now() : undefined,
   });
+
+  // Keep plan-cache collection count in sync with query data
+  useEffect(() => {
+    setCollectionCount(collections.length);
+  }, [collections.length]);
 
   const mountedRef = useRef(false);
   useEffect(() => {

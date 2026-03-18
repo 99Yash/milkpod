@@ -28,6 +28,12 @@ let monthlyUsage: Record<QuotaUnit, number> = {
 };
 let monthlyUsageLoaded = false;
 
+// Collection count (populated from collections list query)
+let collectionCount: number | null = null;
+
+// Active share link count (populated from fetchShareLinks in ShareDialog)
+let activeShareLinkCount: number | null = null;
+
 // ---------------------------------------------------------------------------
 // Plan
 // ---------------------------------------------------------------------------
@@ -65,6 +71,76 @@ export function setMonthlyUsage(used: { videoMinutes: number; visualSegments: nu
 export function incrementMonthlyUsage(unit: QuotaUnit, amount: number): void {
   monthlyUsage[unit] += amount;
 }
+
+// ---------------------------------------------------------------------------
+// Collection count
+// ---------------------------------------------------------------------------
+
+export function setCollectionCount(n: number): void {
+  collectionCount = n;
+}
+
+export function incrementCollectionCount(): void {
+  if (collectionCount !== null) collectionCount++;
+}
+
+export function decrementCollectionCount(): void {
+  if (collectionCount !== null && collectionCount > 0) collectionCount--;
+}
+
+/**
+ * Client-side collection limit pre-check. Returns `null` when plan or count
+ * is not yet loaded (caller should let the server decide).
+ */
+export function checkCollectionLimit(): {
+  allowed: boolean;
+  used: number;
+  limit: number | null;
+} | null {
+  if (!cachedPlan || collectionCount === null) return null;
+  const entitlements = getEntitlementsForPlan(cachedPlan);
+  const limit = entitlements.maxCollections;
+  // null = unlimited
+  if (limit === null) return { allowed: true, used: collectionCount, limit };
+  return { allowed: collectionCount < limit, used: collectionCount, limit };
+}
+
+// ---------------------------------------------------------------------------
+// Active share link count
+// ---------------------------------------------------------------------------
+
+export function setActiveShareLinkCount(n: number): void {
+  activeShareLinkCount = n;
+}
+
+export function incrementActiveShareLinkCount(): void {
+  if (activeShareLinkCount !== null) activeShareLinkCount++;
+}
+
+export function decrementActiveShareLinkCount(): void {
+  if (activeShareLinkCount !== null && activeShareLinkCount > 0) activeShareLinkCount--;
+}
+
+/**
+ * Client-side share link limit pre-check. Returns `null` when plan or count
+ * is not yet loaded (caller should let the server decide).
+ */
+export function checkShareLinkLimit(): {
+  allowed: boolean;
+  used: number;
+  limit: number | null;
+} | null {
+  if (!cachedPlan || activeShareLinkCount === null) return null;
+  const entitlements = getEntitlementsForPlan(cachedPlan);
+  const limit = entitlements.maxActiveShareLinks;
+  // null = unlimited
+  if (limit === null) return { allowed: true, used: activeShareLinkCount, limit };
+  return { allowed: activeShareLinkCount < limit, used: activeShareLinkCount, limit };
+}
+
+// ---------------------------------------------------------------------------
+// Monthly usage
+// ---------------------------------------------------------------------------
 
 /**
  * Client-side quota pre-check. Returns `{ allowed: true }` or a rejection

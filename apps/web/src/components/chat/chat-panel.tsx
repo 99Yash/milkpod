@@ -395,6 +395,7 @@ function ChatPanelContent({
   }, [messages, status, scrollToBottomIfNeeded]);
 
   const isModelBlocked = allowedModelIds != null && !allowedModelIds.includes(modelId);
+  const isWordBudgetExhausted = wordsRemaining === 0;
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -409,12 +410,22 @@ function ChatPanelContent({
         });
         return;
       }
+      if (isWordBudgetExhausted) {
+        toast.error('Daily word limit reached. Resets at midnight UTC.', {
+          action: {
+            label: 'View plans',
+            onClick: () => { window.location.href = '/pricing'; },
+          },
+          duration: 8000,
+        });
+        return;
+      }
       const trimmed = input.trim();
       if (!trimmed || isLoading) return;
       setInput('');
       sendMessage({ text: trimmed });
     },
-    [input, isLoading, isModelBlocked, sendMessage],
+    [input, isLoading, isModelBlocked, isWordBudgetExhausted, sendMessage],
   );
 
   const handleKeyDown = useCallback(
@@ -468,6 +479,16 @@ function ChatPanelContent({
                       onClick={() => {
                         if (isModelBlocked) {
                           toast.error('This model requires a paid plan.', {
+                            action: {
+                              label: 'View plans',
+                              onClick: () => { window.location.href = '/pricing'; },
+                            },
+                            duration: 8000,
+                          });
+                          return;
+                        }
+                        if (isWordBudgetExhausted) {
+                          toast.error('Daily word limit reached. Resets at midnight UTC.', {
                             action: {
                               label: 'View plans',
                               onClick: () => { window.location.href = '/pricing'; },

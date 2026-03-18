@@ -5,6 +5,7 @@ import { MessageCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Comment } from '@milkpod/api/types';
 import { api } from '~/lib/api';
+import { checkQuotaLocal, incrementMonthlyUsage } from '~/lib/plan-cache';
 import { handleUpgradeError } from '~/lib/upgrade-prompt';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
@@ -20,6 +21,13 @@ export function CommentsTab({ assetId, initialComments }: CommentsTabProps) {
   const [generating, setGenerating] = useState(false);
 
   async function handleGenerate(regenerate = false) {
+    // Client-side quota pre-check — avoid the round-trip when we already know
+    const quota = checkQuotaLocal('comments');
+    if (quota && !quota.allowed) {
+      handleUpgradeError({ status: 402, value: { code: 'QUOTA_EXCEEDED' } });
+      return;
+    }
+
     setGenerating(true);
     try {
       const { data, error } = await api.api.comments.generate.post({
@@ -30,7 +38,12 @@ export function CommentsTab({ assetId, initialComments }: CommentsTabProps) {
         if (handleUpgradeError(error)) return;
         throw new Error(String(error));
       }
-      setComments((data as Comment[]) ?? []);
+      const generated = (data as Comment[]) ?? [];
+      setComments(generated);
+      // Optimistically bump the local counter so subsequent generates are gated
+      if (generated.length > 0) {
+        incrementMonthlyUsage('comments', generated.length);
+      }
     } catch {
       toast.error('Failed to generate comments. Please try again.');
     } finally {
