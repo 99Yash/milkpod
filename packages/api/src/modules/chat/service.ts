@@ -1,7 +1,7 @@
 import { db } from '@milkpod/db';
 import { createId } from '@milkpod/db/helpers';
 import { qaMessages, qaMessageParts, qaEvidence, qaVisualEvidence } from '@milkpod/db/schemas';
-import { eq, asc, inArray } from 'drizzle-orm';
+import { and, eq, asc, inArray, isNotNull } from 'drizzle-orm';
 import { isStaticToolUIPart } from 'ai';
 import type { MilkpodMessage } from '@milkpod/ai';
 
@@ -250,5 +250,56 @@ export abstract class ChatService {
         ...(row.metadata != null && { metadata: row.metadata }),
       };
     });
+  }
+
+  /**
+   * Returns a map of saved translations for all message parts in a thread.
+   * Shape: `{ [messageId]: { [sortOrder]: translatedText } }`
+   */
+  static async getTranslations(
+    threadId: string,
+  ): Promise<Record<string, Record<number, string>>> {
+    const messagesSq = db()
+      .select({ id: qaMessages.id })
+      .from(qaMessages)
+      .where(eq(qaMessages.threadId, threadId));
+
+    const rows = await db()
+      .select({
+        messageId: qaMessageParts.messageId,
+        sortOrder: qaMessageParts.sortOrder,
+        translatedTextContent: qaMessageParts.translatedTextContent,
+      })
+      .from(qaMessageParts)
+      .where(
+        and(
+          inArray(qaMessageParts.messageId, messagesSq),
+          isNotNull(qaMessageParts.translatedTextContent),
+        ),
+      );
+
+    const result: Record<string, Record<number, string>> = {};
+    for (const row of rows) {
+      if (!row.translatedTextContent) continue;
+      (result[row.messageId] ??= {})[row.sortOrder] = row.translatedTextContent;
+    }
+    return result;
+  }
+
+  /** Persist a translation for a single message part. */
+  static async saveTranslation(
+    messageId: string,
+    sortOrder: number,
+    translatedText: string,
+  ): Promise<void> {
+    await db()
+      .update(qaMessageParts)
+      .set({ translatedTextContent: translatedText })
+      .where(
+        and(
+          eq(qaMessageParts.messageId, messageId),
+          eq(qaMessageParts.sortOrder, sortOrder),
+        ),
+      );
   }
 }

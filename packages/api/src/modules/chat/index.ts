@@ -180,13 +180,32 @@ export const chat = new Elysia({ prefix: '/api/chat' })
   .post(
     '/translate',
     async ({ body }) => {
-      return streamTranslation(body.text, body.targetLanguage);
+      const { response, text } = streamTranslation(body.text, body.targetLanguage);
+
+      // Fire-and-forget: persist translation when stream completes
+      if (body.messageId && body.partIndex != null) {
+        const { messageId, partIndex } = body;
+        Promise.resolve(text)
+          .then((translatedText: string) =>
+            ChatService.saveTranslation(messageId, partIndex, translatedText),
+          )
+          .catch((err: unknown) =>
+            console.error(
+              '[chat] Failed to save translation:',
+              err instanceof Error ? err.message : String(err),
+            ),
+          );
+      }
+
+      return response;
     },
     {
       auth: true,
       body: t.Object({
         text: t.String({ minLength: 1, maxLength: 10000 }),
         targetLanguage: t.Optional(t.String()),
+        messageId: t.Optional(t.String()),
+        partIndex: t.Optional(t.Integer({ minimum: 0 })),
       }),
     }
   )
@@ -199,9 +218,12 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       );
       if (!thread) return status(404, { message: 'Thread not found' });
 
-      const messages = await ChatService.getMessages(params.threadId);
+      const [messages, translations] = await Promise.all([
+        ChatService.getMessages(params.threadId),
+        ChatService.getTranslations(params.threadId),
+      ]);
 
-      return { threadId: thread.id, messages };
+      return { threadId: thread.id, messages, translations };
     },
     { auth: true, params: t.Object({ threadId: t.String() }) }
   );

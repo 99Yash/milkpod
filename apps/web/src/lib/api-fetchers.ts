@@ -13,9 +13,27 @@ import {
   writePersistedChatMessages,
 } from './local-first/chat-cache';
 
-type ChatMessagesResult = { threadId: string; messages: MilkpodMessage[] };
+/** messageId → { partIndex → translatedText } */
+export type TranslationsMap = Record<string, Record<number, string>>;
+
+type ChatMessagesResult = {
+  threadId: string;
+  messages: MilkpodMessage[];
+  translations?: TranslationsMap;
+};
 
 const chatMessagesCache = new Map<string, ChatMessagesResult>();
+
+// Module-level store for saved translations, populated from API responses.
+// ChatMessage components read from this on mount to restore translations.
+const translationsStore = new Map<string, Record<number, string>>();
+
+/** Get saved translations for a specific message (keyed by part index). */
+export function getTranslationsForMessage(
+  messageId: string,
+): Record<number, string> | undefined {
+  return translationsStore.get(messageId);
+}
 const chatMessagesInflight = new Map<string, Promise<ChatMessagesResult | null>>();
 const persistedChatMessagesInflight = new Map<
   string,
@@ -337,8 +355,19 @@ export async function fetchChatMessages(
         return chatMessagesCache.get(threadId) ?? persisted ?? null;
       }
 
-      const result = data as ChatMessagesResult;
+      const raw = data as { threadId: string; messages: MilkpodMessage[]; translations?: TranslationsMap };
+      const result: ChatMessagesResult = {
+        threadId: raw.threadId,
+        messages: raw.messages,
+        translations: raw.translations,
+      };
       chatMessagesCache.set(threadId, result);
+      // Populate module-level translations store
+      if (raw.translations) {
+        for (const [msgId, parts] of Object.entries(raw.translations)) {
+          translationsStore.set(msgId, parts);
+        }
+      }
       void writePersistedChatMessages(threadId, result.messages);
       return result;
     })
