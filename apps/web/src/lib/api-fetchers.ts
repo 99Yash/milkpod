@@ -24,9 +24,20 @@ type ChatMessagesResult = {
 
 const chatMessagesCache = new Map<string, ChatMessagesResult>();
 
-// Module-level store for saved translations, populated from API responses.
-// ChatMessage components read from this on mount to restore translations.
+// Module-level reactive store for saved translations.
+// Populated from API responses; ChatMessage subscribes via useSyncExternalStore.
 const translationsStore = new Map<string, Record<number, string>>();
+const translationListeners = new Set<() => void>();
+
+function notifyTranslationsChanged() {
+  for (const listener of translationListeners) listener();
+}
+
+/** Subscribe to translation store changes (for useSyncExternalStore). */
+export function subscribeTranslations(listener: () => void): () => void {
+  translationListeners.add(listener);
+  return () => { translationListeners.delete(listener); };
+}
 
 /** Get saved translations for a specific message (keyed by part index). */
 export function getTranslationsForMessage(
@@ -362,11 +373,12 @@ export async function fetchChatMessages(
         translations: raw.translations,
       };
       chatMessagesCache.set(threadId, result);
-      // Populate module-level translations store
-      if (raw.translations) {
+      // Populate module-level translations store and notify subscribers
+      if (raw.translations && Object.keys(raw.translations).length > 0) {
         for (const [msgId, parts] of Object.entries(raw.translations)) {
           translationsStore.set(msgId, parts);
         }
+        notifyTranslationsChanged();
       }
       void writePersistedChatMessages(threadId, result.messages);
       return result;
