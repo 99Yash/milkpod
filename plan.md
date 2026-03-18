@@ -142,15 +142,15 @@ Ordered task list. Work through them in order. Each task references findings in 
 - ~~Add `minValue: Date.now()` or equivalent for `expiresAt` on share links~~
 - ~~Replace `t.Any()` in chat model with a proper TypeBox schema for UIMessage structure~~
 
-### Task 13: Standardize API error responses
+### ~~Task 13: Standardize API error responses~~ ✅
 
 **Refs**: API-3
 **Files**: `packages/api/src/middleware/` (new error handler), all route handlers
 **What**:
 
-- Create an Elysia `onError` handler that normalizes all errors to `{ error: string, code: string }`
-- Use consistent HTTP status codes: 400 for validation, 401 for auth, 403 for authorization, 404 for not found, 429 for rate limit
-- Update frontend API client to expect this shape
+- ~~Create an Elysia `onError` handler that normalizes all errors to `{ error: string, code: string }`~~
+- ~~Use consistent HTTP status codes: 400 for validation, 401 for auth, 403 for authorization, 404 for not found, 429 for rate limit~~
+- ~~Update frontend API client to expect this shape~~
 
 ### Task 14: Collapse N+1 queries into JOINs
 

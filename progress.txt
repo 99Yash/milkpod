@@ -179,3 +179,37 @@ Reviewed by hand before loop.sh — these issues exist in the current diff and s
 - **TypeScript**: No type changes needed — TypeBox constraints don't alter the inferred TypeScript types ✅
 - **Elysia validation**: All constraints use Elysia's TypeBox `t.String({ maxLength })` which is validated automatically before the handler runs ✅
 - **No breaking changes**: All new constraints are generous enough for legitimate use (200 chars for titles, 2048 for URLs, 100 for IDs, 1000 for descriptions) ✅
+
+---
+
+## Task 13: Standardize API error responses ✅
+
+### Issues found and fixed:
+1. **No global error handler existed** — Elysia's built-in validation errors (TypeBox schema failures), unknown route 404s, parse errors, and unhandled exceptions all returned Elysia's default error shapes, which were inconsistent and sometimes leaked internal details. **Fixed:** Created `packages/api/src/middleware/error-handler.ts` with a global `.onError({ as: 'global' })` hook that normalizes all error responses to `{ error: string, code: string }` with correct HTTP status codes (400 for validation/parse, 404 for unknown routes, 500 for unhandled errors).
+2. **No typed error classes for services to throw** — Route handlers used `status()` returns for error paths, which is fine but prevents services from signaling errors without coupling to Elysia. **Fixed:** Created `packages/api/src/middleware/errors.ts` with `ApiError` base class and subclasses: `NotFoundError` (404), `ForbiddenError` (403), `UnauthorizedError` (401), `ValidationError` (400), `ConflictError` (409). The global error handler catches these and returns normalized responses.
+3. `packages/api/src/modules/billing/index.ts` — **Inconsistent error response shape.** All other modules used `status(code, { message: string, code?: string })`, but billing used `set.status = N; return { error: string, message: string }` — a completely different shape (`error` field instead of `code`, and `set.status` instead of `status()` helper). Frontend code in `pricing-grid.tsx` and `billing-dashboard.tsx` parsed the old `error` field with special string matching. **Fixed:** Converted all 8 billing error returns to use `status()` with `{ message, code }` shape matching the rest of the codebase. Error codes changed from snake_case to SCREAMING_SNAKE_CASE for consistency: `billing_disabled` → `BILLING_DISABLED`, `no_customer` → `NO_CUSTOMER`, `no_subscription` → `NO_SUBSCRIPTION`, `checkout_failed` → `CHECKOUT_FAILED`, `portal_failed` → `PORTAL_FAILED`, `cancel_failed` → `CANCEL_FAILED`, `processing_failed` → `PROCESSING_FAILED`, `invalid_signature` → `INVALID_SIGNATURE`. Removed unused `set` destructuring from all 4 billing handlers.
+4. `packages/api/src/modules/billing/index.ts:57,97,133` — **Unsafe error logging in catch blocks.** Three catch blocks used `err instanceof Error ? err.message : err` — the else branch passes the raw error object which could contain connection strings or sensitive data in toString(). **Fixed:** Changed all three to `err instanceof Error ? err.message : String(err)`.
+5. `apps/web/src/components/billing/pricing-grid.tsx:107` — Frontend checked `errVal.error === 'billing_disabled'` to detect billing-disabled state. **Fixed:** Updated to check `errVal?.code === 'BILLING_DISABLED'` to match new response shape. Also extracts `errVal?.message` for the toast fallback.
+6. `apps/web/src/components/billing/billing-dashboard.tsx:84-93` — Frontend checked `(errVal as { error: string }).error` to match billing error codes. **Fixed:** Updated to use `errVal?.code` matching with new SCREAMING_SNAKE_CASE codes. Also extracts `errVal?.message` for the toast fallback.
+7. `apps/web/src/lib/api.ts:10-31` — `toToastErrorMessage` only checked for `.message` field on error objects. The new global error handler returns `{ error: string, code: string }` (using `error` not `message`). **Fixed:** Added fallback check for `.error` field after `.message` check, so both shapes are handled.
+
+### Issues noted (no fix needed):
+1. **`status()` returns bypass the onError hook** — Existing route handlers return `status(404, { message: '...' })` which Elysia treats as typed responses, not errors. These don't flow through `.onError()`. Task 37 will refactor these to throw `NotFoundError`/`ForbiddenError` via a `resolveOwned()` helper, which the error handler will then catch.
+2. **Chat module model gating uses `new Response()`** — `chat/index.ts:63-70` constructs a raw `Response` for the 402 MODEL_NOT_ALLOWED error. This is intentional: the main path returns a streaming `Response` from `createChatStream()`, so error branches must also return `Response` for type compatibility. Switching to `status()` causes a TS2322 type error because Elysia's `ElysiaCustomStatusResponse` is not assignable to `Response`.
+3. **Validation errors return 400 instead of Elysia's default 422** — Elysia defaults to 422 for validation errors. The error handler normalizes to 400, which is more conventional for client validation failures. The plan specifies 400.
+4. **Auth macro uses `status(401)` return, not thrown error** — The auth macro in `middleware/auth.ts` returns `status(401)` from a `resolve` hook. This is the correct Elysia pattern for macros — the resolve hook short-circuits the handler. It doesn't need the error handler.
+
+### Library improvements made:
+- **Elysia `.onError()` with `{ as: 'global' }` scoping** — Verified via Elysia `.d.ts` (`error.d.ts`) that the onError hook receives a discriminated union on `code` (VALIDATION, NOT_FOUND, PARSE, INTERNAL_SERVER_ERROR, UNKNOWN). Used `{ as: 'global' }` to ensure the handler catches errors from all mounted modules.
+- **Elysia `status()` function** — Verified via `error.d.ts` that `status()` returns `ElysiaCustomStatusResponse<Code, T>` which is handled differently from thrown errors. The status() pattern works well for route-level error returns; thrown ApiError classes complement it for service-level errors.
+
+### Checklist verification:
+- **No secrets in error responses**: Unhandled errors return generic "Internal server error" — never the actual error message. Validation errors expose field name/type but no internal details. Custom ApiError messages are developer-controlled ✅
+- **Safe error logging**: Unhandled errors logged with `err instanceof Error ? err.message : String(err)` — never full error objects. Fixed 3 billing catch blocks that used bare `err` ✅
+- **Proper HTTP status codes**: 400 (validation, parse), 401 (auth), 403 (forbidden), 404 (not found, unknown route), 409 (conflict), 500 (unhandled). All match plan spec ✅
+- **Consistent error shape**: Global handler returns `{ error: string, code: string }`. Billing module normalized from mixed `{ error, message }` to `{ message, code }` matching all other modules ✅
+- **Frontend handles both shapes**: `toToastErrorMessage` checks `.message` then `.error`. `handleUpgradeError` already checked `.code` and `.message` — works with both old `status()` returns and new error handler responses ✅
+- **No `any` types**: None added ✅
+- **No console.log in production**: None added ✅
+- **TypeScript**: ApiError class hierarchy uses proper inheritance with readonly properties. No type assertions needed ✅
+- **Reuse existing utilities**: Error classes are designed for Task 37's `resolveOwned()` helper. The error handler is a single Elysia plugin, composable via `.use()` ✅
