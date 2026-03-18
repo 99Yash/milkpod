@@ -15,7 +15,7 @@ import {
   assetComments,
   momentPresetEnum,
 } from '@milkpod/db/schemas';
-import { and, asc, desc, eq, inArray, isNull, isNotNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Asset, AssetWithTranscript, Collection, CollectionWithItems, Comment, Moment } from '@milkpod/api/types';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 
