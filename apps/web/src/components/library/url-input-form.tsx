@@ -8,6 +8,7 @@ import { api } from '~/lib/api';
 import { Loader2, Plus, Upload, Link, X } from 'lucide-react';
 import { cn } from '~/lib/utils';
 import { handleUpgradeError } from '~/lib/upgrade-prompt';
+import { checkQuotaLocal, incrementMonthlyUsage } from '~/lib/plan-cache';
 
 interface UrlInputFormProps {
   onSuccess: () => void;
@@ -67,6 +68,13 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
     const trimmed = url.trim();
     if (!trimmed) return;
 
+    // Client-side quota pre-check — avoid the round-trip when we already know
+    const quota = checkQuotaLocal('video_minutes');
+    if (quota && !quota.allowed) {
+      handleUpgradeError({ status: 402, value: { code: 'QUOTA_EXCEEDED' } });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const { data, error } = await api.api.ingest.post({ url: trimmed });
@@ -80,6 +88,8 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
         );
         return;
       }
+      // Optimistically bump the local counter so subsequent adds are gated
+      incrementMonthlyUsage('video_minutes', 1);
       const title = data && 'title' in data ? data.title : 'media';
       toast.success(`Added "${title}"`);
       setUrl('');
@@ -94,6 +104,12 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
   const handleSubmitFile = async () => {
     if (!file) return;
 
+    const quota = checkQuotaLocal('video_minutes');
+    if (quota && !quota.allowed) {
+      handleUpgradeError({ status: 402, value: { code: 'QUOTA_EXCEEDED' } });
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const { data, error } = await api.api.ingest.upload.post({ file });
@@ -107,6 +123,7 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
         );
         return;
       }
+      incrementMonthlyUsage('video_minutes', 1);
       const title = data && 'title' in data ? data.title : 'file';
       toast.success(`Added "${title}"`);
       setFile(null);

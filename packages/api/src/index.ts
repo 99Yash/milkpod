@@ -6,7 +6,10 @@ import { sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
 import { requestLogger } from './middleware/logger';
 import { rateLimiter } from './middleware/rate-limit';
-import { getSessionCached } from './middleware/session-cache';
+import {
+  getSessionCached,
+  invalidateSessionToken,
+} from './middleware/session-cache';
 import { chat } from './modules/chat';
 import { assets } from './modules/assets';
 import { collections } from './modules/collections';
@@ -123,6 +126,17 @@ export const app = new Elysia({ name: 'api' })
     } catch {
       set.headers['Cache-Control'] = 'private, no-store';
       return null;
+    }
+  })
+  // Clear the session token cache immediately on sign-out so concurrent
+  // requests (e.g. the /signin page's session check) don't see stale data.
+  .onRequest(({ request }) => {
+    const url = new URL(request.url);
+    if (
+      request.method === 'POST' &&
+      url.pathname === '/api/auth/sign-out'
+    ) {
+      invalidateSessionToken(request.headers);
     }
   })
   .mount(auth().handler)

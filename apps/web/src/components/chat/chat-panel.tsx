@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { ArrowUp, BrainCircuit, ChevronDown, MessageSquareText, Sparkles, Square } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
@@ -23,6 +23,8 @@ import {
   getCachedChatMessages,
   primeChatMessagesCache,
 } from '~/lib/api-fetchers';
+import { getEntitlementsForPlan } from '@milkpod/ai/plans';
+import { getCachedPlan } from '~/lib/plan-cache';
 import { useOptionalThreadList } from '~/contexts/thread-list-context';
 
 // ---------------------------------------------------------------------------
@@ -256,7 +258,7 @@ function ChatPanelContent({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { modelId, setModelId, wordLimit, setWordLimit } = useChatSettings();
 
-  const { messages, sendMessage, stop, status, error, threadId: chatThreadId, wordsRemaining } = useMilkpodChat({
+  const { messages, setMessages, sendMessage, clearError, stop, status, error, threadId: chatThreadId, wordsRemaining, plan: chatPlan } = useMilkpodChat({
     threadId,
     assetId,
     collectionId,
@@ -264,6 +266,14 @@ function ChatPanelContent({
     wordLimit,
     initialMessages,
   });
+
+  // Derive allowed model IDs locally from the plan — no API call needed.
+  // chatPlan is set from X-Plan response header; getCachedPlan() is set by sidebar's billing summary fetch.
+  const allowedModelIds = useMemo(() => {
+    const plan = chatPlan ?? getCachedPlan();
+    if (!plan) return null;
+    return getEntitlementsForPlan(plan).allowedModelIds;
+  }, [chatPlan]);
 
   const isLoading = status === 'streaming' || status === 'submitted';
 
@@ -285,11 +295,21 @@ function ChatPanelContent({
     }
   }, [chatThreadId, threadId, onThreadCreated, status, messages]);
 
+  // Unsend: on error, remove the failed user message and restore it to the input box
   useEffect(() => {
-    if (error) {
-      toast.error(error.message || 'An error occurred');
+    if (!error) return;
+    toast.error(error.message || 'An error occurred');
+
+    const lastMsg = messages.at(-1);
+    if (lastMsg?.role === 'user') {
+      const textPart = lastMsg.parts.find((p) => p.type === 'text');
+      if (textPart && 'text' in textPart) {
+        setInput(textPart.text);
+      }
+      setMessages(messages.slice(0, -1));
     }
-  }, [error]);
+    clearError();
+  }, [error, messages, setMessages, clearError]);
 
   useEffect(() => {
     if (!chatThreadId) return;
@@ -374,15 +394,27 @@ function ChatPanelContent({
     scrollToBottomIfNeeded();
   }, [messages, status, scrollToBottomIfNeeded]);
 
+  const isModelBlocked = allowedModelIds != null && !allowedModelIds.includes(modelId);
+
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
+      if (isModelBlocked) {
+        toast.error('This model requires a paid plan.', {
+          action: {
+            label: 'View plans',
+            onClick: () => { window.location.href = '/pricing'; },
+          },
+          duration: 8000,
+        });
+        return;
+      }
       const trimmed = input.trim();
       if (!trimmed || isLoading) return;
       setInput('');
       sendMessage({ text: trimmed });
     },
-    [input, isLoading, sendMessage],
+    [input, isLoading, isModelBlocked, sendMessage],
   );
 
   const handleKeyDown = useCallback(
@@ -433,7 +465,19 @@ function ChatPanelContent({
                     <button
                       key={suggestion}
                       type="button"
-                      onClick={() => sendMessage({ text: suggestion })}
+                      onClick={() => {
+                        if (isModelBlocked) {
+                          toast.error('This model requires a paid plan.', {
+                            action: {
+                              label: 'View plans',
+                              onClick: () => { window.location.href = '/pricing'; },
+                            },
+                            duration: 8000,
+                          });
+                          return;
+                        }
+                        sendMessage({ text: suggestion });
+                      }}
                       className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background py-2 pl-3 pr-3.5 text-xs font-medium text-muted-foreground shadow-sm transition-all hover:border-ring/25 hover:bg-accent/18 hover:text-foreground hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
                     >
                       <Sparkles className="size-3" />
@@ -519,7 +563,7 @@ function ChatPanelContent({
             rows={1}
           />
           <div className="flex items-center gap-1.5 px-3 pb-3">
-            <ModelPicker value={modelId} onChange={setModelId} />
+            <ModelPicker value={modelId} onChange={setModelId} allowedModelIds={allowedModelIds} />
             <WordLimitPicker value={wordLimit} onChange={setWordLimit} />
             <div className="ml-auto flex items-center gap-2">
               <DailyQuota remaining={wordsRemaining} />
