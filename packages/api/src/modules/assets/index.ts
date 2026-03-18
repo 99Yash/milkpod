@@ -114,8 +114,8 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     {
       auth: true,
       query: t.Object({
-        q: t.String({ minLength: 1 }),
-        limit: t.Optional(t.String()),
+        q: t.String({ minLength: 1, maxLength: 200 }),
+        limit: t.Optional(t.String({ maxLength: 10 })),
       }),
     }
   )

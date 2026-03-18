@@ -225,7 +225,7 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       body: t.Object({
         text: t.String({ minLength: 1, maxLength: 10000 }),
         targetLanguage: t.Optional(t.String({ maxLength: 100 })),
-        messageId: t.Optional(t.String()),
+        messageId: t.Optional(t.String({ maxLength: 100 })),
         partIndex: t.Optional(t.Integer({ minimum: 0 })),
       }),
     }
@@ -246,5 +246,5 @@ export const chat = new Elysia({ prefix: '/api/chat' })
 
       return { threadId: thread.id, messages, translations };
     },
-    { auth: true, params: t.Object({ threadId: t.String() }) }
+    { auth: true, params: t.Object({ threadId: t.String({ maxLength: 100 }) }) }
   );
