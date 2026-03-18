@@ -103,12 +103,12 @@ export function PricingGrid() {
         interval,
       });
       if (error) {
-        const errVal = error.value;
-        if (typeof errVal === 'object' && errVal && 'error' in errVal && errVal.error === 'billing_disabled') {
+        const errVal = error.value as { code?: string; message?: string } | undefined;
+        if (errVal?.code === 'BILLING_DISABLED') {
           toast.error('Billing is not configured yet.');
           return;
         }
-        toast.error('Failed to start checkout. Please try again.');
+        toast.error(errVal?.message ?? 'Failed to start checkout. Please try again.');
         return;
       }
       if (data && 'checkoutUrl' in data && typeof data.checkoutUrl === 'string') {

@@ -1,5 +1,5 @@
 import { serverEnv } from '@milkpod/env/server';
-import { Elysia, t } from 'elysia';
+import { Elysia, status, t } from 'elysia';
 import { authMacro } from '../../middleware/auth';
 import { getBillingProvider } from './resolve-provider';
 import { BillingService } from './service';
@@ -32,11 +32,10 @@ export const billing = new Elysia({ prefix: '/api/billing' })
   // -------------------------------------------------------------------------
   .post(
     '/checkout',
-    async ({ user, body, set }) => {
+    async ({ user, body }) => {
       const provider = getBillingProvider();
       if (!provider) {
-        set.status = 503;
-        return { error: 'billing_disabled', message: 'Billing is not configured' };
+        return status(503, { message: 'Billing is not configured', code: 'BILLING_DISABLED' });
       }
 
       const env = serverEnv();
@@ -54,9 +53,8 @@ export const billing = new Elysia({ prefix: '/api/billing' })
 
         return { checkoutUrl };
       } catch (err) {
-        console.error('[billing] Checkout error:', err instanceof Error ? err.message : err);
-        set.status = 502;
-        return { error: 'checkout_failed', message: 'Could not create checkout session' };
+        console.error('[billing] Checkout error:', err instanceof Error ? err.message : String(err));
+        return status(502, { message: 'Could not create checkout session', code: 'CHECKOUT_FAILED' });
       }
     },
     {
@@ -73,17 +71,15 @@ export const billing = new Elysia({ prefix: '/api/billing' })
   // -------------------------------------------------------------------------
   .post(
     '/portal',
-    async ({ user, set }) => {
+    async ({ user }) => {
       const provider = getBillingProvider();
       if (!provider) {
-        set.status = 503;
-        return { error: 'billing_disabled', message: 'Billing is not configured' };
+        return status(503, { message: 'Billing is not configured', code: 'BILLING_DISABLED' });
       }
 
       const customer = await BillingService.getCustomer(user.id);
       if (!customer) {
-        set.status = 404;
-        return { error: 'no_customer', message: 'No billing account found' };
+        return status(404, { message: 'No billing account found', code: 'NO_CUSTOMER' });
       }
 
       try {
@@ -94,9 +90,8 @@ export const billing = new Elysia({ prefix: '/api/billing' })
 
         return { portalUrl };
       } catch (err) {
-        console.error('[billing] Portal error:', err instanceof Error ? err.message : err);
-        set.status = 502;
-        return { error: 'portal_failed', message: 'Could not create portal session' };
+        console.error('[billing] Portal error:', err instanceof Error ? err.message : String(err));
+        return status(502, { message: 'Could not create portal session', code: 'PORTAL_FAILED' });
       }
     },
     { auth: true },
@@ -107,17 +102,15 @@ export const billing = new Elysia({ prefix: '/api/billing' })
   // -------------------------------------------------------------------------
   .post(
     '/cancel',
-    async ({ user, body, set }) => {
+    async ({ user, body }) => {
       const provider = getBillingProvider();
       if (!provider) {
-        set.status = 503;
-        return { error: 'billing_disabled', message: 'Billing is not configured' };
+        return status(503, { message: 'Billing is not configured', code: 'BILLING_DISABLED' });
       }
 
       const sub = await BillingService.getActiveProviderSubscriptionId(user.id);
       if (!sub) {
-        set.status = 404;
-        return { error: 'no_subscription', message: 'No active subscription found' };
+        return status(404, { message: 'No active subscription found', code: 'NO_SUBSCRIPTION' });
       }
 
       try {
@@ -128,9 +121,8 @@ export const billing = new Elysia({ prefix: '/api/billing' })
 
         return { ok: true };
       } catch (err) {
-        console.error('[billing] Cancel error:', err instanceof Error ? err.message : err);
-        set.status = 502;
-        return { error: 'cancel_failed', message: 'Could not cancel subscription' };
+        console.error('[billing] Cancel error:', err instanceof Error ? err.message : String(err));
+        return status(502, { message: 'Could not cancel subscription', code: 'CANCEL_FAILED' });
       }
     },
     {
@@ -146,11 +138,10 @@ export const billing = new Elysia({ prefix: '/api/billing' })
   // -------------------------------------------------------------------------
   .post(
     '/webhook',
-    async ({ body, request, set }) => {
+    async ({ body, request }) => {
       const provider = getBillingProvider();
       if (!provider) {
-        set.status = 503;
-        return { error: 'billing_disabled' };
+        return status(503, { message: 'Billing is not configured', code: 'BILLING_DISABLED' });
       }
 
       // body is raw text from onParse hook above
@@ -165,8 +156,7 @@ export const billing = new Elysia({ prefix: '/api/billing' })
 
       // Verify signature
       if (!provider.verifyWebhookSignature({ body: rawBody, headers: webhookHeaders })) {
-        set.status = 401;
-        return { error: 'invalid_signature' };
+        return status(401, { message: 'Invalid webhook signature', code: 'INVALID_SIGNATURE' });
       }
 
       // Parse event
@@ -188,8 +178,7 @@ export const billing = new Elysia({ prefix: '/api/billing' })
           return { ok: true, duplicate: true };
         }
         console.error('[billing] Webhook processing error:', msg);
-        set.status = 500;
-        return { error: 'processing_failed' };
+        return status(500, { message: 'Webhook processing failed', code: 'PROCESSING_FAILED' });
       }
 
       return { ok: true };
