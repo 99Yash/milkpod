@@ -18,17 +18,20 @@ interface CollectionListProps {
 export function CollectionList({ refreshKey, initialCollections }: CollectionListProps) {
   const queryClient = useQueryClient();
 
-  const { data: collections = [], isLoading, refetch } = useQuery({
+  const { data: collectionsData, isLoading, isSuccess, refetch } = useQuery({
     queryKey: queryKeys.collections.list(),
     queryFn: fetchCollections,
     initialData: initialCollections,
     initialDataUpdatedAt: initialCollections ? Date.now() : undefined,
   });
 
+  const collections = collectionsData ?? [];
+
   // Keep plan-cache collection count in sync with query data
   useEffect(() => {
+    if (!isSuccess) return;
     setCollectionCount(collections.length);
-  }, [collections.length]);
+  }, [collections.length, isSuccess]);
 
   const mountedRef = useRef(false);
   useEffect(() => {

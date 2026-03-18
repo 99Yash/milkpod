@@ -8,6 +8,7 @@ import { getEntitlementsForPlan } from '@milkpod/ai/plans';
 import { fetchShareLinks, createShareLink } from '~/lib/api-fetchers';
 import { handleUpgradeError } from '~/lib/upgrade-prompt';
 import {
+  getCachedIsAdmin,
   getCachedPlan,
   setActiveShareLinkCount,
   checkShareLinkLimit,
@@ -95,10 +96,13 @@ export function ShareDialog({
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
+  const isAdmin = getCachedIsAdmin() === true;
   const plan = getCachedPlan();
-  const canUsePublicShareQA = plan
-    ? getEntitlementsForPlan(plan).canUsePublicShareQA
-    : true; // not loaded → let server decide
+  const canUsePublicShareQA =
+    isAdmin ||
+    (plan
+      ? getEntitlementsForPlan(plan).canUsePublicShareQA
+      : true); // not loaded → let server decide
 
   const handleCanQueryChange = (checked: boolean) => {
     if (checked && !canUsePublicShareQA) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { ArrowUp, BrainCircuit, ChevronDown, MessageSquareText, Sparkles, Square } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
@@ -24,7 +24,7 @@ import {
   primeChatMessagesCache,
 } from '~/lib/api-fetchers';
 import { getEntitlementsForPlan } from '@milkpod/ai/plans';
-import { getCachedPlan } from '~/lib/plan-cache';
+import { getCachedIsAdmin, getCachedPlan } from '~/lib/plan-cache';
 import { useOptionalThreadList } from '~/contexts/thread-list-context';
 
 // ---------------------------------------------------------------------------
@@ -258,7 +258,7 @@ function ChatPanelContent({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { modelId, setModelId, wordLimit, setWordLimit } = useChatSettings();
 
-  const { messages, setMessages, sendMessage, clearError, stop, status, error, threadId: chatThreadId, wordsRemaining, plan: chatPlan } = useMilkpodChat({
+  const { messages, setMessages, sendMessage, clearError, stop, status, error, threadId: chatThreadId, wordsRemaining, plan: chatPlan, isAdmin: chatIsAdmin } = useMilkpodChat({
     threadId,
     assetId,
     collectionId,
@@ -269,11 +269,10 @@ function ChatPanelContent({
 
   // Derive allowed model IDs locally from the plan — no API call needed.
   // chatPlan is set from X-Plan response header; getCachedPlan() is set by sidebar's billing summary fetch.
-  const allowedModelIds = useMemo(() => {
-    const plan = chatPlan ?? getCachedPlan();
-    if (!plan) return null;
-    return getEntitlementsForPlan(plan).allowedModelIds;
-  }, [chatPlan]);
+  const isAdmin = chatIsAdmin === true || getCachedIsAdmin() === true;
+  const plan = chatPlan ?? getCachedPlan();
+  const allowedModelIds =
+    isAdmin || !plan ? null : getEntitlementsForPlan(plan).allowedModelIds;
 
   const isLoading = status === 'streaming' || status === 'submitted';
 

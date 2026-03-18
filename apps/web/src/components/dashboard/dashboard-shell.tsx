@@ -42,7 +42,12 @@ import { route } from '~/lib/routes';
 import { siteConfig } from '~/lib/site';
 import { cn, getErrorMessage } from '~/lib/utils';
 import { fetchBillingSummary } from '~/lib/sidebar-data';
-import { setCachedPlan, setMonthlyUsage } from '~/lib/plan-cache';
+import {
+  isPlanId,
+  setCachedIsAdmin,
+  setCachedPlan,
+  setMonthlyUsage,
+} from '~/lib/plan-cache';
 import type { PlanId } from '@milkpod/ai/plans';
 
 export type DashboardTab = 'home' | 'library' | 'agent';
@@ -311,12 +316,21 @@ function SidebarPlanUsage() {
     let cancelled = false;
     fetchBillingSummary().then((data) => {
       if (cancelled || !data) return;
-      const plan = data.plan as PlanId;
-      setCachedPlan(plan);
+
+      const isAdminUser = Boolean(data.isAdmin);
+      setIsAdmin(isAdminUser);
+      setCachedIsAdmin(isAdminUser);
+
+      const plan = isPlanId(data.plan) ? data.plan : null;
+      if (plan) {
+        setCachedPlan(plan);
+      }
+
       const u = data.usage;
-      if (u?.dailyWords) {
+      if (u?.dailyWords && plan) {
         setSummary({ plan, used: u.dailyWords.used, budget: u.dailyWords.limit });
       }
+
       // Populate monthly usage cache for client-side quota pre-checks
       const vm = u?.monthlyVideoMinutes as { used: number } | undefined;
       const vs = u?.monthlyVisualSegments as { used: number } | undefined;
@@ -326,28 +340,11 @@ function SidebarPlanUsage() {
         visualSegments: vs?.used ?? 0,
         comments: cm?.used ?? 0,
       });
-      if (data.isAdmin) {
-        setIsAdmin(true);
-      }
     });
     return () => {
       cancelled = true;
     };
   }, []);
-
-  if (!summary) {
-    return (
-      <DashboardPanel className="gap-3 py-4">
-        <DashboardPanelContent className="space-y-2 px-4 py-0">
-          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <Gauge className="size-3.5" />
-            Plan usage
-          </div>
-          <div className="h-1.5 w-full animate-pulse rounded-full bg-muted" />
-        </DashboardPanelContent>
-      </DashboardPanel>
-    );
-  }
 
   if (isAdmin) {
     return (
@@ -363,6 +360,20 @@ function SidebarPlanUsage() {
               ∞
             </span>
           </div>
+        </DashboardPanelContent>
+      </DashboardPanel>
+    );
+  }
+
+  if (!summary) {
+    return (
+      <DashboardPanel className="gap-3 py-4">
+        <DashboardPanelContent className="space-y-2 px-4 py-0">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <Gauge className="size-3.5" />
+            Plan usage
+          </div>
+          <div className="h-1.5 w-full animate-pulse rounded-full bg-muted" />
         </DashboardPanelContent>
       </DashboardPanel>
     );
