@@ -177,14 +177,14 @@ Ordered task list. Work through them in order. Each task references findings in 
 
 ## Phase 4: Frontend Quality
 
-### Task 16: Fix AgentTab waterfall and add Suspense
+### ~~Task 16: Fix AgentTab waterfall and add Suspense~~ ✅
 
 **Refs**: FE-1, FE-3
 **Files**: `apps/web/src/components/agent/agent-tab.tsx`, `apps/web/src/app/dashboard/page.tsx`
 **What**:
 
-- Remove `selectedId` from the `fetchAssets` effect dependency array — asset list doesn't change when selection changes
-- Add `<Suspense fallback={<Skeleton />}>` around the dashboard content in `page.tsx`
+- ~~Remove `selectedId` from the `fetchAssets` effect dependency array — asset list doesn't change when selection changes~~
+- ~~Add `<Suspense fallback={<Skeleton />}>` around the dashboard content in `page.tsx`~~
 
 ### Task 17: Put search/filter state in URL params
 
