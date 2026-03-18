@@ -9,7 +9,7 @@ import type { MilkpodMessage } from '@milkpod/ai/types';
 import type { ModelId } from '@milkpod/ai/models';
 import type { PlanId } from '@milkpod/ai/plans';
 import { handleUpgradeError } from '~/lib/upgrade-prompt';
-import { setCachedPlan } from '~/lib/plan-cache';
+import { isPlanId, setCachedIsAdmin, setCachedPlan } from '~/lib/plan-cache';
 
 const SERVER_URL = clientEnv().NEXT_PUBLIC_SERVER_URL;
 
@@ -31,10 +31,12 @@ export function useMilkpodChat({
   threadId: string | undefined;
   wordsRemaining: number | null;
   plan: PlanId | null;
+  isAdmin: boolean | null;
 } {
   const threadIdRef = useRef<string | undefined>(threadId);
   const [wordsRemaining, setWordsRemaining] = useState<number | null>(null);
   const [plan, setPlan] = useState<PlanId | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   // useChat stores the Chat object (and its transport) in a ref that is NOT
   // recreated when the transport prop changes — only when `id` changes.
@@ -68,15 +70,22 @@ export function useMilkpodChat({
       if (id) {
         threadIdRef.current = id;
       }
-      const planHeader = response.headers.get('X-Plan') as PlanId | null;
-      if (planHeader) {
+      const planHeader = response.headers.get('X-Plan');
+      if (isPlanId(planHeader)) {
         setPlan(planHeader);
         setCachedPlan(planHeader);
       }
-      const isAdmin = response.headers.get('X-Is-Admin') === 'true';
-      if (isAdmin) {
+
+      const isAdminHeader = response.headers.get('X-Is-Admin');
+      if (isAdminHeader === 'true') {
+        setIsAdmin(true);
+        setCachedIsAdmin(true);
         setWordsRemaining(null);
       } else {
+        if (isAdminHeader === 'false') {
+          setIsAdmin(false);
+          setCachedIsAdmin(false);
+        }
         const remaining = response.headers.get('X-Words-Remaining');
         if (remaining !== null) {
           const parsed = Number(remaining);
@@ -122,5 +131,6 @@ export function useMilkpodChat({
     threadId: threadIdRef.current,
     wordsRemaining,
     plan,
+    isAdmin,
   };
 }

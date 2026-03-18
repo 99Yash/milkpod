@@ -19,6 +19,7 @@ import {
 } from '@milkpod/ai/plans';
 
 let cachedPlan: PlanId | null = null;
+let cachedIsAdmin: boolean | null = null;
 
 // Monthly usage counters (populated from billing summary)
 let monthlyUsage: Record<QuotaUnit, number> = {
@@ -38,6 +39,10 @@ let activeShareLinkCount: number | null = null;
 // Plan
 // ---------------------------------------------------------------------------
 
+export function isPlanId(value: string | null | undefined): value is PlanId {
+  return value === 'free' || value === 'pro' || value === 'team';
+}
+
 export function getCachedPlan(): PlanId | null {
   return cachedPlan;
 }
@@ -46,12 +51,21 @@ export function setCachedPlan(plan: PlanId): void {
   cachedPlan = plan;
 }
 
+export function getCachedIsAdmin(): boolean | null {
+  return cachedIsAdmin;
+}
+
+export function setCachedIsAdmin(isAdmin: boolean): void {
+  cachedIsAdmin = isAdmin;
+}
+
 export function getCachedEntitlements(): PlanEntitlements | null {
   if (!cachedPlan) return null;
   return getEntitlementsForPlan(cachedPlan);
 }
 
 export function getCachedAllowedModelIds(): string[] | null {
+  if (cachedIsAdmin === true) return null;
   return getCachedEntitlements()?.allowedModelIds ?? null;
 }
 
@@ -97,6 +111,9 @@ export function checkCollectionLimit(): {
   used: number;
   limit: number | null;
 } | null {
+  if (cachedIsAdmin === true) {
+    return { allowed: true, used: collectionCount ?? 0, limit: null };
+  }
   if (!cachedPlan || collectionCount === null) return null;
   const entitlements = getEntitlementsForPlan(cachedPlan);
   const limit = entitlements.maxCollections;
@@ -130,6 +147,9 @@ export function checkShareLinkLimit(): {
   used: number;
   limit: number | null;
 } | null {
+  if (cachedIsAdmin === true) {
+    return { allowed: true, used: activeShareLinkCount ?? 0, limit: null };
+  }
   if (!cachedPlan || activeShareLinkCount === null) return null;
   const entitlements = getEntitlementsForPlan(cachedPlan);
   const limit = entitlements.maxActiveShareLinks;
@@ -150,9 +170,17 @@ export function checkShareLinkLimit(): {
 export function checkQuotaLocal(unit: QuotaUnit): {
   allowed: boolean;
   used: number;
-  limit: number;
-  remaining: number;
+  limit: number | null;
+  remaining: number | null;
 } | null {
+  if (cachedIsAdmin === true) {
+    return {
+      allowed: true,
+      used: monthlyUsage[unit],
+      limit: null,
+      remaining: null,
+    };
+  }
   if (!cachedPlan || !monthlyUsageLoaded) return null;
   const quotas = getQuotaForPlan(cachedPlan);
   const limitMap: Record<QuotaUnit, number> = {
