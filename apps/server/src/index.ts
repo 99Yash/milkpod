@@ -14,7 +14,7 @@ const server = new Elysia({ adapter: node() })
       origin: serverEnv().CORS_ORIGIN,
       methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
-      exposeHeaders: ['X-Thread-Id', 'X-RateLimit-Remaining'],
+      exposeHeaders: ['X-Thread-Id', 'X-Plan', 'X-Words-Remaining', 'X-Is-Admin', 'X-RateLimit-Remaining'],
       credentials: true,
     }),
   )

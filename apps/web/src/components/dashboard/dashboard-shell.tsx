@@ -41,10 +41,9 @@ import { authClient } from '~/lib/auth/client';
 import { route } from '~/lib/routes';
 import { siteConfig } from '~/lib/site';
 import { cn, getErrorMessage } from '~/lib/utils';
-import {
-  fetchBillingSummary,
-  fetchUsageRemaining,
-} from '~/lib/sidebar-data';
+import { fetchBillingSummary } from '~/lib/sidebar-data';
+import { setCachedPlan, setMonthlyUsage } from '~/lib/plan-cache';
+import type { PlanId } from '@milkpod/ai/plans';
 
 export type DashboardTab = 'home' | 'library' | 'agent';
 
@@ -301,27 +300,42 @@ const PLAN_LABELS: Record<string, string> = {
 
 function SidebarPlanUsage() {
   const router = useRouter();
-  const [usage, setUsage] = useState<{
-    remaining: number;
+  const [summary, setSummary] = useState<{
+    plan: PlanId;
+    used: number;
     budget: number;
-    isAdmin: boolean;
   } | null>(null);
-  const [plan, setPlan] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    fetchUsageRemaining().then((data) => {
-      if (!cancelled && data) setUsage(data);
-    });
     fetchBillingSummary().then((data) => {
-      if (!cancelled && data) setPlan(data.plan);
+      if (cancelled || !data) return;
+      const plan = data.plan as PlanId;
+      setCachedPlan(plan);
+      const u = data.usage;
+      if (u?.dailyWords) {
+        setSummary({ plan, used: u.dailyWords.used, budget: u.dailyWords.limit });
+      }
+      // Populate monthly usage cache for client-side quota pre-checks
+      const vm = u?.monthlyVideoMinutes as { used: number } | undefined;
+      const vs = u?.monthlyVisualSegments as { used: number } | undefined;
+      const cm = u?.monthlyComments as { used: number } | undefined;
+      setMonthlyUsage({
+        videoMinutes: vm?.used ?? 0,
+        visualSegments: vs?.used ?? 0,
+        comments: cm?.used ?? 0,
+      });
+      if (data.isAdmin) {
+        setIsAdmin(true);
+      }
     });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  if (!usage) {
+  if (!summary) {
     return (
       <DashboardPanel className="gap-3 py-4">
         <DashboardPanelContent className="space-y-2 px-4 py-0">
@@ -335,7 +349,7 @@ function SidebarPlanUsage() {
     );
   }
 
-  if (usage.isAdmin) {
+  if (isAdmin) {
     return (
       <DashboardPanel className="gap-3 py-4">
         <DashboardPanelContent className="space-y-2 px-4 py-0">
@@ -354,10 +368,9 @@ function SidebarPlanUsage() {
     );
   }
 
-  const used = usage.budget - usage.remaining;
-  const pct = Math.min(100, (used / usage.budget) * 100);
+  const pct = Math.min(100, (summary.used / summary.budget) * 100);
   const isHigh = pct > 80;
-  const isPaid = plan === 'pro' || plan === 'team';
+  const isPaid = summary.plan === 'pro' || summary.plan === 'team';
 
   return (
     <DashboardPanel className="gap-3 py-4">
@@ -365,14 +378,14 @@ function SidebarPlanUsage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <Gauge className="size-3.5" />
-            {plan ? `${PLAN_LABELS[plan] ?? plan} plan` : 'Plan usage'}
+            {`${PLAN_LABELS[summary.plan] ?? summary.plan} plan`}
           </div>
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>Words today</span>
             <span className={cn(isHigh && 'text-destructive font-medium')}>
-              {used.toLocaleString()}/{usage.budget.toLocaleString()}
+              {summary.used.toLocaleString()}/{summary.budget.toLocaleString()}
             </span>
           </div>
           <div className="h-1.5 w-full rounded-full bg-muted">
@@ -446,24 +459,20 @@ function SidebarSignOutButton({ collapsed }: { collapsed: boolean }) {
   const router = useRouter();
   const [isSigningOut, setIsSigningOut] = useState(false);
 
-  const handleSignOut = async () => {
+  const handleSignOut = () => {
     if (isSigningOut) {
       return;
     }
 
     setIsSigningOut(true);
 
-    try {
-      const { error } = await authClient.signOut();
-      if (error) {
-        throw error;
-      }
+    // Fire signout in background — don't block the redirect
+    authClient.signOut().catch(() => {
+      // Signout may race with navigation; cookie will be cleared regardless
+    });
 
-      router.replace('/signin');
-    } catch (error) {
-      toast.error(getErrorMessage(error));
-      setIsSigningOut(false);
-    }
+    // Navigate immediately for instant feel
+    router.replace('/signin');
   };
 
   return (

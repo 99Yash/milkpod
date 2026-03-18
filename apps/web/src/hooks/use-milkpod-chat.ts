@@ -7,7 +7,9 @@ import { clientEnv } from '@milkpod/env/client';
 import { chatMetadataSchema } from '@milkpod/ai/schemas';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 import type { ModelId } from '@milkpod/ai/models';
+import type { PlanId } from '@milkpod/ai/plans';
 import { handleUpgradeError } from '~/lib/upgrade-prompt';
+import { setCachedPlan } from '~/lib/plan-cache';
 
 const SERVER_URL = clientEnv().NEXT_PUBLIC_SERVER_URL;
 
@@ -28,9 +30,21 @@ export function useMilkpodChat({
 } = {}): UseChatHelpers<MilkpodMessage> & {
   threadId: string | undefined;
   wordsRemaining: number | null;
+  plan: PlanId | null;
 } {
   const threadIdRef = useRef<string | undefined>(threadId);
   const [wordsRemaining, setWordsRemaining] = useState<number | null>(null);
+  const [plan, setPlan] = useState<PlanId | null>(null);
+
+  // useChat stores the Chat object (and its transport) in a ref that is NOT
+  // recreated when the transport prop changes — only when `id` changes.
+  // This means the body function baked into the initial transport would
+  // permanently close over the initial modelId/wordLimit values.
+  // Using refs ensures the body function always reads the latest values.
+  const modelIdRef = useRef(modelId);
+  modelIdRef.current = modelId;
+  const wordLimitRef = useRef(wordLimit);
+  wordLimitRef.current = wordLimit;
 
   useEffect(() => {
     threadIdRef.current = threadId;
@@ -54,6 +68,11 @@ export function useMilkpodChat({
       if (id) {
         threadIdRef.current = id;
       }
+      const planHeader = response.headers.get('X-Plan') as PlanId | null;
+      if (planHeader) {
+        setPlan(planHeader);
+        setCachedPlan(planHeader);
+      }
       const isAdmin = response.headers.get('X-Is-Admin') === 'true';
       if (isAdmin) {
         setWordsRemaining(null);
@@ -74,10 +93,10 @@ export function useMilkpodChat({
       threadId: threadIdRef.current,
       assetId,
       collectionId,
-      modelId,
-      wordLimit,
+      modelId: modelIdRef.current,
+      wordLimit: wordLimitRef.current,
     }),
-    [assetId, collectionId, modelId, wordLimit],
+    [assetId, collectionId],
   );
 
   const transport = useMemo(
@@ -102,5 +121,6 @@ export function useMilkpodChat({
     ...chat,
     threadId: threadIdRef.current,
     wordsRemaining,
+    plan,
   };
 }

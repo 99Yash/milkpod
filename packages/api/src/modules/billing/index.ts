@@ -3,6 +3,7 @@ import { Elysia, t } from 'elysia';
 import { authMacro } from '../../middleware/auth';
 import { getBillingProvider } from './resolve-provider';
 import { BillingService } from './service';
+import { isAdminEmail } from '../usage/service';
 
 export const billing = new Elysia({ prefix: '/api/billing' })
   .use(authMacro)
@@ -20,7 +21,8 @@ export const billing = new Elysia({ prefix: '/api/billing' })
   .get(
     '/summary',
     async ({ user }) => {
-      return BillingService.getSummary(user.id);
+      const summary = await BillingService.getSummary(user.id);
+      return { ...summary, isAdmin: isAdminEmail(user.email) };
     },
     { auth: true },
   )

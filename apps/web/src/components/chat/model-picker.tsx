@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, Check, Zap, Brain } from 'lucide-react';
+import { ChevronDown, Check, Zap, Brain, Lock } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import {
   Popover,
@@ -19,6 +19,7 @@ import {
 import { cn } from '~/lib/utils';
 import { MODEL_REGISTRY, type ModelDescriptor, type ModelId } from '@milkpod/ai/models';
 import { GoogleG, OpenAILogo } from '~/components/ui/icons';
+import { toast } from 'sonner';
 
 function ProviderIcon({ provider, className }: { provider: string; className?: string }) {
   switch (provider) {
@@ -79,13 +80,17 @@ function ModelDetail({ model }: { model: ModelDescriptor }) {
 interface ModelPickerProps {
   value: ModelId;
   onChange: (id: ModelId) => void;
+  /** Model IDs the user's plan allows. When null/undefined, all models are shown as available (loading state). */
+  allowedModelIds?: string[] | null;
 }
 
-export function ModelPicker({ value, onChange }: ModelPickerProps) {
+export function ModelPicker({ value, onChange, allowedModelIds }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const selected = MODEL_REGISTRY.find((m) => m.id === value) ?? MODEL_REGISTRY[0]!;
   const hovered = MODEL_REGISTRY.find((m) => m.id === hoveredId) ?? selected;
+
+  const isAllowed = (id: string) => !allowedModelIds || allowedModelIds.includes(id);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -115,27 +120,44 @@ export function ModelPicker({ value, onChange }: ModelPickerProps) {
                 No models found.
               </CommandEmpty>
               <CommandGroup>
-                {MODEL_REGISTRY.map((model) => (
-                  <CommandItem
-                    key={model.id}
-                    value={model.id}
-                    keywords={[model.name, model.provider]}
-                    onSelect={(id) => {
-                      onChange(id as ModelId);
-                      setOpen(false);
-                    }}
-                    onMouseEnter={() => setHoveredId(model.id)}
-                    onMouseLeave={() => setHoveredId(null)}
-                    className="flex items-center gap-2"
-                  >
-                    <ProviderIcon
-                      provider={model.provider}
-                      className="size-3.5 shrink-0"
-                    />
-                    <span className="flex-1 truncate text-xs">{model.name}</span>
-                    {model.id === value && <Check className="size-3 shrink-0" />}
-                  </CommandItem>
-                ))}
+                {MODEL_REGISTRY.map((model) => {
+                  const locked = !isAllowed(model.id);
+                  return (
+                    <CommandItem
+                      key={model.id}
+                      value={model.id}
+                      keywords={[model.name, model.provider]}
+                      onSelect={(id) => {
+                        if (locked) {
+                          toast.error('This model requires a paid plan.', {
+                            action: {
+                              label: 'View plans',
+                              onClick: () => { window.location.href = '/pricing'; },
+                            },
+                            duration: 8000,
+                          });
+                          return;
+                        }
+                        onChange(id as ModelId);
+                        setOpen(false);
+                      }}
+                      onMouseEnter={() => setHoveredId(model.id)}
+                      onMouseLeave={() => setHoveredId(null)}
+                      className={cn('flex items-center gap-2', locked && 'opacity-50')}
+                    >
+                      <ProviderIcon
+                        provider={model.provider}
+                        className="size-3.5 shrink-0"
+                      />
+                      <span className="flex-1 truncate text-xs">{model.name}</span>
+                      {locked ? (
+                        <Lock className="size-3 shrink-0 text-muted-foreground" />
+                      ) : (
+                        model.id === value && <Check className="size-3 shrink-0" />
+                      )}
+                    </CommandItem>
+                  );
+                })}
               </CommandGroup>
             </CommandList>
           </Command>
