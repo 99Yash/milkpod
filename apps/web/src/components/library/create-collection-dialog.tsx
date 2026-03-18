@@ -15,6 +15,7 @@ import {
 } from '~/components/ui/dialog';
 import { api } from '~/lib/api';
 import { handleUpgradeError } from '~/lib/upgrade-prompt';
+import { checkCollectionLimit, incrementCollectionCount } from '~/lib/plan-cache';
 import { Plus } from 'lucide-react';
 
 interface CreateCollectionDialogProps {
@@ -33,6 +34,14 @@ export function CreateCollectionDialog({
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
+
+    // Client-side collection limit pre-check
+    const limit = checkCollectionLimit();
+    if (limit && !limit.allowed) {
+      handleUpgradeError({ status: 402, value: { code: 'COLLECTION_LIMIT' } });
+      return;
+    }
+
     setSaving(true);
     try {
       const { error } = await api.api.collections.post({
@@ -43,6 +52,7 @@ export function CreateCollectionDialog({
         if (handleUpgradeError(error)) return;
         return;
       }
+      incrementCollectionCount();
       setName('');
       setDescription('');
       setOpen(false);

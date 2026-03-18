@@ -78,6 +78,19 @@ function extractSessionToken(headers: Headers): string | undefined {
 // Public API
 // ---------------------------------------------------------------------------
 
+/**
+ * Remove the session token from the in-memory cache so the next lookup hits
+ * the database.  Called on sign-out so concurrent requests (e.g. the /signin
+ * page's session check) don't see a stale valid session.
+ */
+export function invalidateSessionToken(headers: Headers): void {
+  const token = extractSessionToken(headers);
+  if (token) {
+    tokenCache.delete(token);
+    tokenInflight.delete(token);
+  }
+}
+
 export function getSessionCached(request: Request): Promise<Session> {
   // 1. Per-request dedup
   let promise = perRequest.get(request);

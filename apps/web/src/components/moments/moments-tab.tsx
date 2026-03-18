@@ -2,8 +2,11 @@
 
 import { useCallback, useState } from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Moment } from '@milkpod/api/types';
 import { api } from '~/lib/api';
+import { checkQuotaLocal, incrementMonthlyUsage } from '~/lib/plan-cache';
+import { handleUpgradeError } from '~/lib/upgrade-prompt';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
 import { MomentCard } from './moment-card';
@@ -44,6 +47,13 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
   );
 
   async function handleGenerate(regenerate = false) {
+    // Client-side quota pre-check — avoid the round-trip when we already know
+    const quota = checkQuotaLocal('visual_segments');
+    if (quota && !quota.allowed) {
+      handleUpgradeError({ status: 402, value: { code: 'QUOTA_EXCEEDED' } });
+      return;
+    }
+
     setGenerating(true);
     try {
       const { data, error } = await api.api.moments.generate.post({
@@ -51,10 +61,18 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
         preset,
         regenerate,
       });
-      if (error) throw new Error(String(error));
-      setMoments((data as Moment[]) ?? []);
+      if (error) {
+        if (handleUpgradeError(error)) return;
+        throw new Error(String(error));
+      }
+      const generated = (data as Moment[]) ?? [];
+      setMoments(generated);
+      // Optimistically bump the local counter so subsequent generates are gated
+      if (generated.length > 0) {
+        incrementMonthlyUsage('visual_segments', generated.length);
+      }
     } catch {
-      // Error handled by global handler
+      toast.error('Failed to generate moments. Please try again.');
     } finally {
       setGenerating(false);
     }

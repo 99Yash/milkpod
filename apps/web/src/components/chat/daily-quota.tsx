@@ -6,6 +6,8 @@ import {
   TooltipTrigger,
 } from '~/components/ui/tooltip';
 import { cn } from '~/lib/utils';
+import { getCachedPlan } from '~/lib/plan-cache';
+import { getEntitlementsForPlan } from '@milkpod/ai/plans';
 import { DAILY_WORD_BUDGET } from '@milkpod/ai/limits';
 
 interface DailyQuotaProps {
@@ -15,6 +17,8 @@ interface DailyQuotaProps {
 export function DailyQuota({ remaining }: DailyQuotaProps) {
   if (remaining === null) return null;
 
+  const plan = getCachedPlan();
+  const budget = plan ? getEntitlementsForPlan(plan).aiWordsDaily : DAILY_WORD_BUDGET;
   const isLow = remaining < 200;
 
   return (
@@ -30,7 +34,7 @@ export function DailyQuota({ remaining }: DailyQuotaProps) {
         </span>
       </TooltipTrigger>
       <TooltipContent side="top">
-        <p>{remaining} of {DAILY_WORD_BUDGET} words remaining today</p>
+        <p>{remaining} of {budget.toLocaleString()} words remaining today</p>
         <p className="text-muted-foreground">Resets at midnight UTC</p>
       </TooltipContent>
     </Tooltip>
