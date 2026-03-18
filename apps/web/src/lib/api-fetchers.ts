@@ -143,7 +143,10 @@ export async function fetchAssetsPage(params: {
   query.paginate = 'true';
 
   const { data, error } = await api.api.assets.get({ query });
-  if (error || !data || Array.isArray(data)) {
+  if (error) {
+    throw new Error('Failed to load assets');
+  }
+  if (!data || Array.isArray(data)) {
     return { items: [], nextCursor: null, hasMore: false };
   }
 
