@@ -10,6 +10,7 @@ import { Streamdown } from 'streamdown';
 import { toast } from 'sonner';
 import { Spinner } from '~/components/ui/spinner';
 import { serverUrl } from '~/lib/api';
+import { getTranslationsForMessage } from '~/lib/api-fetchers';
 import { ActivitySteps } from './activity-steps';
 import { AiAvatar } from './ai-avatar';
 import { useAssetSource } from './asset-source-context';
@@ -108,11 +109,20 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
   const translationCache = useRef<Map<number, string>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
 
+  // Restore saved translations from DB on mount
   useEffect(() => {
+    const saved = getTranslationsForMessage(message.id);
+    if (saved && Object.keys(saved).length > 0) {
+      for (const [idx, text] of Object.entries(saved)) {
+        translationCache.current.set(Number(idx), text);
+      }
+      setTranslationState('done');
+      setShowTranslation(true);
+    }
     return () => {
       abortRef.current?.abort();
     };
-  }, []);
+  }, [message.id]);
 
   const handleTranslateToggle = useCallback(async () => {
     // Toggle back to original
@@ -154,7 +164,11 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: entry.part.text }),
+          body: JSON.stringify({
+            text: entry.part.text,
+            messageId: message.id,
+            partIndex: entry.index,
+          }),
           signal: controller.signal,
         });
 
@@ -190,7 +204,7 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
       setTranslationState('done');
       setShowTranslation(true);
     }
-  }, [showTranslation, message.parts]);
+  }, [showTranslation, message.id, message.parts]);
 
   const shouldLinkify = !!assetSource && assetSource.sourceType !== 'upload';
   const hasRenderableAssistantPart = message.parts.some((part) => {
@@ -224,11 +238,13 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
     (p) => p.type === 'text' && p.text.trim().length > 0,
   );
 
-  // Check once if this message has non-Latin text (for translate button visibility)
+  // Show translate button if: message has saved translations, translation is
+  // in progress/done, or the text is predominantly non-Latin.
   const showTranslateButton =
     !isStreaming &&
     hasTextContent &&
     (translationState !== 'idle' ||
+      translationCache.current.size > 0 ||
       isNonLatinText(
         message.parts
           .filter((p) => p.type === 'text')

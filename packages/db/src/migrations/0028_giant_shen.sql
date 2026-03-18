@@ -1,0 +1,1 @@
+ALTER TABLE "qa_message_part" ADD COLUMN "translated_text_content" text;
