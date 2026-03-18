@@ -81,14 +81,17 @@ export abstract class ThreadService {
   }
 
   static async getWithMessages(id: string, userId: string) {
-    const thread = await ThreadService.getById(id, userId);
-    if (!thread) return null;
-
-    const messages = await db()
-      .select()
-      .from(qaMessages)
-      .where(eq(qaMessages.threadId, id))
+    const rows = await db()
+      .select({ thread: qaThreads, message: qaMessages })
+      .from(qaThreads)
+      .leftJoin(qaMessages, eq(qaMessages.threadId, qaThreads.id))
+      .where(and(eq(qaThreads.id, id), eq(qaThreads.userId, userId)))
       .orderBy(qaMessages.createdAt);
+
+    if (rows.length === 0) return null;
+
+    const thread = rows[0]!.thread;
+    const messages = rows.flatMap((row) => (row.message ? [row.message] : []));
 
     return { ...thread, messages };
   }
