@@ -15,4 +15,16 @@ export namespace PodcastModel {
     feedId: t.String(),
   });
   export type RefreshFeed = typeof refreshFeed.static;
+
+  export const listFeedsQuery = t.Object({
+    cursor: t.Optional(t.String()),
+    limit: t.Optional(t.String()),
+  });
+  export type ListFeedsQuery = typeof listFeedsQuery.static;
+
+  export const listEpisodesQuery = t.Object({
+    cursor: t.Optional(t.String()),
+    limit: t.Optional(t.String()),
+  });
+  export type ListEpisodesQuery = typeof listEpisodesQuery.static;
 }

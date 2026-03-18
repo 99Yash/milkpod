@@ -1,5 +1,6 @@
 import { Elysia, status } from 'elysia';
 import { authMacro } from '../../middleware/auth';
+import { normalizeLimit } from '../../utils';
 import { CollectionModel } from './model';
 import { CollectionService } from './service';
 import { AssetService } from '../assets/service';
@@ -28,9 +29,14 @@ export const collections = new Elysia({ prefix: '/api/collections' })
     },
     { auth: true, body: CollectionModel.create }
   )
-  .get('/', async ({ user }) => {
-    return CollectionService.list(user.id);
-  }, { auth: true })
+  .get(
+    '/',
+    async ({ query, user }) => {
+      const limit = normalizeLimit(query.limit, 50);
+      return CollectionService.listPage(user.id, query, limit);
+    },
+    { auth: true, query: CollectionModel.listQuery }
+  )
   .get('/:id', async ({ params, user }) => {
     const collection = await CollectionService.getWithItems(
       params.id,

@@ -1,7 +1,8 @@
 import { db } from '@milkpod/db';
 import { collections, collectionItems, mediaAssets } from '@milkpod/db/schemas';
-import { and, eq, count } from 'drizzle-orm';
+import { and, desc, eq, count, lt, or, type SQL } from 'drizzle-orm';
 import type { Collection, CollectionItem, CollectionWithItems } from '../../types';
+import { decodeCursor, buildPage, type CursorPage } from '../../utils';
 import type { CollectionModel } from './model';
 
 export abstract class CollectionService {
@@ -28,6 +29,37 @@ export abstract class CollectionService {
       .from(collections)
       .where(eq(collections.userId, userId))
       .orderBy(collections.createdAt);
+  }
+
+  static async listPage(
+    userId: string,
+    query: CollectionModel.ListQuery,
+    limit = 50,
+  ): Promise<CursorPage<Collection>> {
+    const pageSize = Math.max(1, Math.min(limit, 100));
+    const conditions: SQL[] = [eq(collections.userId, userId)];
+
+    const cursor = decodeCursor(query.cursor);
+    if (cursor) {
+      conditions.push(
+        or(
+          lt(collections.createdAt, cursor.createdAt),
+          and(
+            eq(collections.createdAt, cursor.createdAt),
+            lt(collections.id, cursor.id),
+          ),
+        )!,
+      );
+    }
+
+    const rows = await db()
+      .select()
+      .from(collections)
+      .where(and(...conditions))
+      .orderBy(desc(collections.createdAt), desc(collections.id))
+      .limit(pageSize + 1);
+
+    return buildPage(rows, pageSize);
   }
 
   static async getById(id: string, userId: string): Promise<Collection | null> {

@@ -1,6 +1,8 @@
 import { db } from '@milkpod/db';
 import { qaThreads, qaMessages } from '@milkpod/db/schemas';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, lt, or, type SQL } from 'drizzle-orm';
+import type { Thread } from '../../types';
+import { decodeCursor, buildPage, type CursorPage } from '../../utils';
 import type { ThreadModel } from './model';
 
 export abstract class ThreadService {
@@ -33,6 +35,41 @@ export abstract class ThreadService {
         and(eq(qaThreads.assetId, assetId), eq(qaThreads.userId, userId))
       )
       .orderBy(desc(qaThreads.createdAt));
+  }
+
+  static async listPage(
+    userId: string,
+    query: ThreadModel.ListQuery,
+    limit = 50,
+  ): Promise<CursorPage<Thread>> {
+    const pageSize = Math.max(1, Math.min(limit, 100));
+    const conditions: SQL[] = [eq(qaThreads.userId, userId)];
+
+    if (query.assetId) {
+      conditions.push(eq(qaThreads.assetId, query.assetId));
+    }
+
+    const cursor = decodeCursor(query.cursor);
+    if (cursor) {
+      conditions.push(
+        or(
+          lt(qaThreads.createdAt, cursor.createdAt),
+          and(
+            eq(qaThreads.createdAt, cursor.createdAt),
+            lt(qaThreads.id, cursor.id),
+          ),
+        )!,
+      );
+    }
+
+    const rows = await db()
+      .select()
+      .from(qaThreads)
+      .where(and(...conditions))
+      .orderBy(desc(qaThreads.createdAt), desc(qaThreads.id))
+      .limit(pageSize + 1);
+
+    return buildPage(rows, pageSize);
   }
 
   static async getById(id: string, userId: string) {
