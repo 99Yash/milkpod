@@ -162,16 +162,16 @@ Ordered task list. Work through them in order. Each task references findings in 
 - ~~`ThreadService.getWithMessages()`: single query with LEFT JOIN on qa_messages~~
 - ~~`ShareService.getSharedResource()`: single query joining share_links → assets → transcripts → segments~~
 
-### Task 15: Wrap multi-step writes in transactions
+### ~~Task 15: Wrap multi-step writes in transactions~~ ✅
 
 **Refs**: DB-4
 **Files**: `packages/api/src/modules/podcasts/service.ts`, `packages/api/src/modules/chat/index.ts`, `packages/api/src/modules/podcasts/episode-pipeline.ts`
 **What**:
 
-- `addFeed()`: wrap feed insert + episode inserts in `db().transaction()`
-- `refreshFeed()`: wrap feed update + episode inserts in transaction
-- Chat thread auto-creation: wrap thread create + word reservation in transaction
-- Episode-asset linking: wrap asset create + episode link in transaction
+- ~~`addFeed()`: wrap feed insert + episode inserts in `db().transaction()`~~
+- ~~`refreshFeed()`: wrap feed update + episode inserts in transaction~~
+- ~~Chat thread auto-creation: wrap thread create + word reservation in transaction~~
+- ~~Episode-asset linking: wrap asset create + episode link in transaction~~
 
 ---
 

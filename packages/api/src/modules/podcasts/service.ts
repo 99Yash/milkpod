@@ -11,6 +11,9 @@ import type { PodcastModel } from './model';
 
 type EpisodeStatus = (typeof episodeStatusEnum.enumValues)[number];
 
+/** Transaction handle type extracted from db().transaction() callback. */
+type DbTx = Parameters<Parameters<ReturnType<typeof db>['transaction']>[0]>[0];
+
 export abstract class PodcastService {
   // ---------------------------------------------------------------------------
   // Feed CRUD
@@ -18,32 +21,37 @@ export abstract class PodcastService {
 
   /** Add a new podcast feed and discover its episodes. */
   static async addFeed(userId: string, feedUrl: string) {
+    // Parse RSS feed outside the transaction — it's a network call that
+    // shouldn't hold a DB connection open.
     const parsed = await parseFeed(feedUrl);
 
-    const [feed] = await db()
-      .insert(podcastFeeds)
-      .values({
-        userId,
-        feedUrl,
-        title: parsed.meta.title,
-        description: parsed.meta.description,
-        imageUrl: parsed.meta.imageUrl,
-        author: parsed.meta.author,
-        language: parsed.meta.language,
-        totalEpisodes: parsed.episodes.length,
-        lastFetchedAt: new Date(),
-      })
-      .returning();
+    return db().transaction(async (tx) => {
+      const [feed] = await tx
+        .insert(podcastFeeds)
+        .values({
+          userId,
+          feedUrl,
+          title: parsed.meta.title,
+          description: parsed.meta.description,
+          imageUrl: parsed.meta.imageUrl,
+          author: parsed.meta.author,
+          language: parsed.meta.language,
+          totalEpisodes: parsed.episodes.length,
+          lastFetchedAt: new Date(),
+        })
+        .returning();
 
-    if (!feed) throw new Error('Failed to insert podcast feed');
+      if (!feed) throw new Error('Failed to insert podcast feed');
 
-    // Discover episodes (insert new GUIDs only)
-    const newEpisodes = await PodcastService.upsertEpisodes(
-      feed.id,
-      parsed.episodes
-    );
+      // Discover episodes (insert new GUIDs only)
+      const newEpisodes = await PodcastService.upsertEpisodes(
+        tx,
+        feed.id,
+        parsed.episodes
+      );
 
-    return { feed, newEpisodes };
+      return { feed, newEpisodes };
+    });
   }
 
   /** List all feeds for a user. */
@@ -134,26 +142,27 @@ export abstract class PodcastService {
     const feed = await PodcastService.getFeed(feedId, userId);
     if (!feed) return null;
 
+    // Parse RSS feed outside the transaction — network call shouldn't
+    // hold a DB connection open.
     const parsed = await parseFeed(feed.feedUrl);
 
-    // Update feed metadata
-    await db()
-      .update(podcastFeeds)
-      .set({
-        title: parsed.meta.title,
-        description: parsed.meta.description,
-        imageUrl: parsed.meta.imageUrl,
-        author: parsed.meta.author,
-        language: parsed.meta.language,
-        totalEpisodes: parsed.episodes.length,
-        lastFetchedAt: new Date(),
-      })
-      .where(eq(podcastFeeds.id, feedId));
+    const newEpisodes = await db().transaction(async (tx) => {
+      // Update feed metadata
+      await tx
+        .update(podcastFeeds)
+        .set({
+          title: parsed.meta.title,
+          description: parsed.meta.description,
+          imageUrl: parsed.meta.imageUrl,
+          author: parsed.meta.author,
+          language: parsed.meta.language,
+          totalEpisodes: parsed.episodes.length,
+          lastFetchedAt: new Date(),
+        })
+        .where(eq(podcastFeeds.id, feedId));
 
-    const newEpisodes = await PodcastService.upsertEpisodes(
-      feedId,
-      parsed.episodes
-    );
+      return PodcastService.upsertEpisodes(tx, feedId, parsed.episodes);
+    });
 
     return { feed: { ...feed, ...parsed.meta }, newEpisodes };
   }
@@ -164,13 +173,14 @@ export abstract class PodcastService {
 
   /** Insert new episodes that don't already exist (by guid+feedId). */
   private static async upsertEpisodes(
+    tx: DbTx,
     feedId: string,
     episodes: FeedEpisode[]
   ) {
     if (episodes.length === 0) return [];
 
     // Get existing GUIDs for this feed
-    const existing = await db()
+    const existing = await tx
       .select({ guid: podcastEpisodes.guid })
       .from(podcastEpisodes)
       .where(eq(podcastEpisodes.feedId, feedId));
@@ -180,7 +190,7 @@ export abstract class PodcastService {
 
     if (newItems.length === 0) return [];
 
-    const inserted = await db()
+    const inserted = await tx
       .insert(podcastEpisodes)
       .values(
         newItems.map((ep) => ({
