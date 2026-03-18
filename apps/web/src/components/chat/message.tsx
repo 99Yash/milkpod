@@ -4,13 +4,13 @@ import { useAutoAnimate } from '@formkit/auto-animate/react';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 import { isToolUIPart } from 'ai';
 import { BrainCircuit, Languages } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Components } from 'streamdown';
 import { Streamdown } from 'streamdown';
 import { toast } from 'sonner';
 import { Spinner } from '~/components/ui/spinner';
 import { serverUrl } from '~/lib/api';
-import { getTranslationsForMessage } from '~/lib/api-fetchers';
+import { getTranslationsForMessage, subscribeTranslations } from '~/lib/api-fetchers';
 import { ActivitySteps } from './activity-steps';
 import { AiAvatar } from './ai-avatar';
 import { useAssetSource } from './asset-source-context';
@@ -97,34 +97,69 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
     easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
   });
 
-  // Translation state
-  const [showTranslation, setShowTranslation] = useState(false);
+  // Reactively subscribe to translations store — fires when background
+  // fetch populates translations after the component has already mounted.
+  const savedTranslations = useSyncExternalStore(
+    subscribeTranslations,
+    () => getTranslationsForMessage(message.id),
+    () => undefined, // SSR snapshot
+  );
+
+  // Pre-populate translation cache synchronously from store on first render
+  // to avoid a flash of untranslated content.
+  const translationCache = useRef<Map<number, string>>(new Map());
+  const initializedRef = useRef(false);
+  if (!initializedRef.current && savedTranslations && Object.keys(savedTranslations).length > 0) {
+    for (const [idx, txt] of Object.entries(savedTranslations)) {
+      translationCache.current.set(Number(idx), txt);
+    }
+    initializedRef.current = true;
+  }
+
+  const hasSavedTranslations = initializedRef.current;
+
+  // Translation state — initialize from saved translations to avoid flash
+  const [showTranslation, setShowTranslation] = useState(hasSavedTranslations);
   const [translationState, setTranslationState] = useState<
     'idle' | 'streaming' | 'done'
-  >('idle');
+  >(hasSavedTranslations ? 'done' : 'idle');
   const [streamingPartIndex, setStreamingPartIndex] = useState<number | null>(
     null,
   );
   const [streamedText, setStreamedText] = useState('');
-  const translationCache = useRef<Map<number, string>>(new Map());
   const abortRef = useRef<AbortController | null>(null);
+  // Track whether the user has manually toggled — prevents async arrivals
+  // from overriding the user's choice to show original.
+  const userToggledRef = useRef(false);
 
-  // Restore saved translations from DB on mount
+  // When translations arrive asynchronously (after mount), populate cache
+  // and show translation — but only if the user hasn't toggled manually.
   useEffect(() => {
-    const saved = getTranslationsForMessage(message.id);
-    if (saved && Object.keys(saved).length > 0) {
-      for (const [idx, text] of Object.entries(saved)) {
-        translationCache.current.set(Number(idx), text);
+    if (
+      savedTranslations &&
+      Object.keys(savedTranslations).length > 0 &&
+      !initializedRef.current
+    ) {
+      for (const [idx, txt] of Object.entries(savedTranslations)) {
+        translationCache.current.set(Number(idx), txt);
       }
-      setTranslationState('done');
-      setShowTranslation(true);
+      initializedRef.current = true;
+      if (!userToggledRef.current) {
+        setTranslationState('done');
+        setShowTranslation(true);
+      }
     }
+  }, [savedTranslations]);
+
+  useEffect(() => {
     return () => {
       abortRef.current?.abort();
     };
-  }, [message.id]);
+  }, []);
 
   const handleTranslateToggle = useCallback(async () => {
+    userToggledRef.current = true;
+
     // Toggle back to original
     if (showTranslation) {
       setShowTranslation(false);
@@ -276,28 +311,6 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
           const cached = translationCache.current.get(i);
           const isPartStreaming = streamingPartIndex === i;
 
-          // Completed translation — show translated text
-          if (showTranslation && cached && !isPartStreaming) {
-            const translated = shouldLinkify
-              ? linkifyTimestamps(cached)
-              : cached;
-            return (
-              <div
-                key={i}
-                className="rounded-2xl rounded-tl-md bg-muted/40 px-4 py-3"
-              >
-                <Streamdown
-                  className={TEXT_CLASS}
-                  components={
-                    shouldLinkify ? streamdownComponents : undefined
-                  }
-                >
-                  {translated}
-                </Streamdown>
-              </div>
-            );
-          }
-
           // Currently streaming this part — grid overlay with blur dissolve
           if (isPartStreaming) {
             const streamed = shouldLinkify
@@ -335,14 +348,74 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
             );
           }
 
-          // Waiting for its turn (other parts streaming first)
           const isWaiting =
             translationState === 'streaming' &&
             streamingPartIndex !== null &&
             streamingPartIndex < i &&
             !cached;
+          const showingTranslated = showTranslation && !!cached;
 
-          // Default — show original
+          // Has cached translation — animate height between original ↔ translated
+          if (cached) {
+            const translated = shouldLinkify
+              ? linkifyTimestamps(cached)
+              : cached;
+            return (
+              <div
+                key={i}
+                className="rounded-2xl rounded-tl-md bg-muted/40"
+              >
+                {/* Original — collapses when showing translation */}
+                <div
+                  className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+                    showingTranslated
+                      ? 'grid-rows-[0fr]'
+                      : 'grid-rows-[1fr]'
+                  }`}
+                >
+                  <div className="min-h-0 overflow-hidden">
+                    <div className="px-4 py-3">
+                      <Streamdown
+                        className={TEXT_CLASS}
+                        components={
+                          shouldLinkify
+                            ? streamdownComponents
+                            : undefined
+                        }
+                      >
+                        {originalMarkdown}
+                      </Streamdown>
+                    </div>
+                  </div>
+                </div>
+                {/* Translation — expands when shown */}
+                <div
+                  className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+                    showingTranslated
+                      ? 'grid-rows-[1fr]'
+                      : 'grid-rows-[0fr]'
+                  }`}
+                >
+                  <div className="min-h-0 overflow-hidden">
+                    <div className="px-4 py-3">
+                      <Streamdown
+                        className={TEXT_CLASS}
+                        components={
+                          shouldLinkify
+                            ? streamdownComponents
+                            : undefined
+                        }
+                      >
+                        {translated}
+                      </Streamdown>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // No translation — just the original
           return (
             <div
               key={i}
