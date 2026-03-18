@@ -1,0 +1,115 @@
+# Client-Side Checks Progress
+
+## 1.1 Daily Word Gate in ChatPanel
+
+**Files changed:**
+- `apps/web/src/components/chat/chat-panel.tsx`
+  - Added `isWordBudgetExhausted` derived from `wordsRemaining === 0`
+  - Added word budget check in `handleSubmit` (after model block check, before send)
+  - Added same check in suggestion button click handlers
+  - Toast: "Daily word limit reached. Resets at midnight UTC." with "View plans" action (8s duration)
+  - Added `isWordBudgetExhausted` to `handleSubmit` dependency array
+
+**Decisions:**
+- Admin bypass is automatic: `useMilkpodChat` sets `wordsRemaining = null` when `X-Is-Admin` header is `'true'`, so `null !== 0` skips the gate.
+- When `wordsRemaining` is `null` (not yet loaded or admin), the check is skipped — server remains the fallback.
+- Used direct `toast.error()` pattern matching the existing `isModelBlocked` check, rather than `handleUpgradeError`, since the server returns 429 (not 402) for word budget exhaustion.
+
+## 1.2 Public Share Q&A Toggle Gate in ShareDialog
+
+**Files changed:**
+- `apps/web/src/components/share/share-dialog.tsx`
+  - Added imports: `getEntitlementsForPlan` from `@milkpod/ai/plans`, `getCachedPlan` from `~/lib/plan-cache`
+  - Computed `canUsePublicShareQA` from cached plan entitlements
+  - Added `handleCanQueryChange` handler that gates toggling ON behind `canUsePublicShareQA`, calling `handleUpgradeError` with `PUBLIC_SHARE_QA_NOT_ALLOWED` code
+  - Replaced `onCheckedChange={setCanQuery}` with `onCheckedChange={handleCanQueryChange}`
+  - Added `disabled={!canUsePublicShareQA}` to the Switch for visual indication
+
+**Decisions:**
+- Admin bypass: admins are on `pro` or `team` plans where `canUsePublicShareQA` is `true`, so they pass the check naturally. No explicit admin check needed.
+- When `getCachedPlan()` returns `null` (not yet loaded), `canUsePublicShareQA` defaults to `true` — the toggle is allowed and the server remains the authority (per PRD principle 1).
+- Used `disabled` prop on Switch rather than a lock icon — simpler, uses existing shadcn/ui disabled styling, and the upgrade toast on click provides clear feedback.
+- `handleUpgradeError` was already imported in this file (used in `handleCreate`), so the existing `PUBLIC_SHARE_QA_NOT_ALLOWED` message mapping in `upgrade-prompt.ts` is leveraged directly.
+
+## 1.3 Comments Quota Pre-Check in CommentsTab
+
+**Files changed:**
+- `apps/web/src/components/comments/comments-tab.tsx`
+  - Added imports: `checkQuotaLocal`, `incrementMonthlyUsage` from `~/lib/plan-cache`
+  - Added `checkQuotaLocal('comments')` pre-check at the top of `handleGenerate`, before `setGenerating(true)` — if `!allowed`, calls `handleUpgradeError` with `QUOTA_EXCEEDED` code and returns early
+  - On success, extracted `generated` variable from `(data as Comment[]) ?? []`, then calls `incrementMonthlyUsage('comments', generated.length)` to optimistically update the local counter
+
+**Decisions:**
+- Admin bypass: `checkQuotaLocal` returns `null` when the cache hasn't been populated, and admin users on `pro`/`team` plans have high enough quota limits that the check passes naturally. No explicit admin check needed.
+- When `checkQuotaLocal` returns `null` (plan or usage not yet loaded), the request proceeds to the server — server remains the authority (per PRD principle 1).
+- Pre-check is placed before `setGenerating(true)` so no loading spinner flashes when the user is over quota.
+- Followed the exact same pattern as `url-input-form.tsx` (UrlInputForm): `checkQuotaLocal` → early return with `handleUpgradeError` → `incrementMonthlyUsage` on success.
+- Only increments the counter when `generated.length > 0` to avoid no-op increments.
+
+## 1.4 MomentsTab: Add Missing 402 Handling + Visual Segments Pre-Check
+
+**Files changed:**
+- `apps/web/src/components/moments/moments-tab.tsx`
+  - Added imports: `toast` from `sonner`, `checkQuotaLocal` and `incrementMonthlyUsage` from `~/lib/plan-cache`, `handleUpgradeError` from `~/lib/upgrade-prompt`
+  - Added `checkQuotaLocal('visual_segments')` pre-check at the top of `handleGenerate`, before `setGenerating(true)` — if `!allowed`, calls `handleUpgradeError` with `QUOTA_EXCEEDED` code and returns early
+  - **Bug fix:** Added `handleUpgradeError(error)` check in the error path — previously the catch block silently swallowed 402 errors with only a comment "Error handled by global handler"
+  - On success, extracted `generated` variable from `(data as Moment[]) ?? []`, then calls `incrementMonthlyUsage('visual_segments', generated.length)` to optimistically update the local counter
+  - Added `toast.error('Failed to generate moments. Please try again.')` in the catch block for non-402 errors (previously silent)
+
+**Decisions:**
+- Followed the exact same pattern as `comments-tab.tsx` (CommentsTab): `checkQuotaLocal` → early return with `handleUpgradeError` → server error 402 handling → `incrementMonthlyUsage` on success → `toast.error` in catch.
+- Admin bypass: same as CommentsTab — `checkQuotaLocal` returns `null` when cache isn't populated, and admin users on `pro`/`team` plans have high enough limits. No explicit admin check needed.
+- When `checkQuotaLocal` returns `null` (plan or usage not yet loaded), the request proceeds to the server — server remains the authority (per PRD principle 1).
+- Pre-check is placed before `setGenerating(true)` so no loading spinner flashes when the user is over quota.
+- Only increments the counter when `generated.length > 0` to avoid no-op increments.
+- The original catch block had no user-visible error feedback — added `toast.error` to match CommentsTab's pattern.
+
+## 2.1 Collection Limit Pre-Check in CreateCollectionDialog
+
+**Files changed:**
+- `apps/web/src/lib/plan-cache.ts`
+  - Added `collectionCount: number | null = null` module-level state
+  - Added `setCollectionCount(n)` to populate count from query data
+  - Added `incrementCollectionCount()` and `decrementCollectionCount()` for optimistic updates (both guard against `null`)
+  - Added `checkCollectionLimit()` that returns `null` when plan or count isn't loaded, `{ allowed: true }` when `maxCollections` is `null` (unlimited), or compares `collectionCount < limit`
+- `apps/web/src/components/library/create-collection-dialog.tsx`
+  - Added imports: `checkCollectionLimit`, `incrementCollectionCount` from `~/lib/plan-cache`
+  - Added `checkCollectionLimit()` pre-check at the top of `handleSubmit` (after name trim, before `setSaving`) — if `!allowed`, calls `handleUpgradeError` with `COLLECTION_LIMIT` code and returns early
+  - On success, calls `incrementCollectionCount()` before resetting form state
+- `apps/web/src/components/library/collection-card.tsx`
+  - Added import: `decrementCollectionCount` from `~/lib/plan-cache`
+  - In `handleDelete`, calls `decrementCollectionCount()` after successful API delete
+- `apps/web/src/components/library/collection-list.tsx`
+  - Added import: `setCollectionCount` from `~/lib/plan-cache`
+  - Added `useEffect` that syncs `collections.length` to plan-cache whenever query data changes (Option A from the plan)
+
+**Decisions:**
+- Chose Option A (extract count from collections list query) over Option B (billing summary) — simpler, no backend change needed, and the library page already fetches the full list on mount.
+- Admin bypass: `checkCollectionLimit` returns `null` when plan isn't cached (server decides), and admin users on `pro`/`team` plans have `maxCollections: null` (unlimited), so the check returns `{ allowed: true }` naturally.
+- When `checkCollectionLimit` returns `null` (plan or count not yet loaded), the request proceeds to the server — server remains the authority (per PRD principle 1).
+- Pre-check is placed before `setSaving(true)` so no loading spinner flashes when the user is at the limit.
+- `decrementCollectionCount` guards against going below 0.
+- The `useEffect` for populating count uses `collections.length` as the dependency — it fires on initial load, refetch, and after query invalidation (create/delete callbacks call `invalidate` which re-fetches, updating the count).
+
+## 2.2 Share Link Limit Pre-Check in ShareDialog
+
+**Files changed:**
+- `apps/web/src/lib/plan-cache.ts`
+  - Added `activeShareLinkCount: number | null = null` module-level state
+  - Added `setActiveShareLinkCount(n)` to populate count from query data
+  - Added `incrementActiveShareLinkCount()` and `decrementActiveShareLinkCount()` for optimistic updates (both guard against `null`; decrement guards against going below 0)
+  - Added `checkShareLinkLimit()` that returns `null` when plan or count isn't loaded, `{ allowed: true }` when `maxActiveShareLinks` is `null` (unlimited), or compares `activeShareLinkCount < limit`
+- `apps/web/src/components/share/share-dialog.tsx`
+  - Added imports: `setActiveShareLinkCount`, `checkShareLinkLimit`, `incrementActiveShareLinkCount`, `decrementActiveShareLinkCount` from `~/lib/plan-cache`
+  - In `queryFn`, calls `setActiveShareLinkCount(links.length)` on the unfiltered result before filtering by resource — this populates the global active count
+  - In `handleCreate`, added `checkShareLinkLimit()` pre-check before `setCreating(true)` — if `!allowed`, calls `handleUpgradeError` with `SHARE_LINK_LIMIT` code and returns early
+  - On successful create, calls `incrementActiveShareLinkCount()` after optimistic query cache update
+  - On successful revoke, calls `decrementActiveShareLinkCount()` after optimistic query cache update
+
+**Decisions:**
+- Chose Option A (extract count from `fetchShareLinks()`) — `fetchShareLinks()` already fetches ALL share links globally (the dialog filters by resource afterward). No backend change needed.
+- Admin bypass: `checkShareLinkLimit` returns `null` when plan isn't cached (server decides), and admin users on `pro`/`team` plans have `maxActiveShareLinks: null` (unlimited), so the check returns `{ allowed: true }` naturally.
+- When `checkShareLinkLimit` returns `null` (plan or count not yet loaded), the request proceeds to the server — server remains the authority (per PRD principle 1).
+- Pre-check is placed before `setCreating(true)` so no loading spinner flashes when the user is at the limit.
+- The count is populated whenever the ShareDialog is opened (query runs on `enabled: open`). If the dialog hasn't been opened yet, `activeShareLinkCount` remains `null` and the server decides.
+- `SHARE_LINK_LIMIT` message mapping already exists in `upgrade-prompt.ts`.
