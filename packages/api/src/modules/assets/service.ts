@@ -65,11 +65,11 @@ export abstract class AssetService {
   }
 
   /**
-   * Null out internal error details so they never reach the client.
-   * The raw values remain in the DB for debugging via Drizzle Studio.
+   * Strip internal-only fields before sending to the client.
+   * `lastError` is kept — it is already sanitized by `toSafeErrorMessage()` at write time.
    */
-  private static sanitize<T extends { lastError?: unknown; visualLastError?: unknown }>(row: T): T {
-    return { ...row, lastError: null, visualLastError: null };
+  private static sanitize<T extends { visualLastError?: unknown }>(row: T): T {
+    return { ...row, visualLastError: null };
   }
 
   private static buildSearchConditions(

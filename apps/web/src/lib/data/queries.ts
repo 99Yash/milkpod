@@ -19,9 +19,9 @@ import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Asset, AssetWithTranscript, Collection, CollectionWithItems, Comment, Moment } from '@milkpod/api/types';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 
-/** Null out internal error details before they reach the client. */
-function sanitizeAsset<T extends { lastError?: unknown; visualLastError?: unknown }>(row: T): T {
-  return { ...row, lastError: null, visualLastError: null };
+/** Strip internal-only fields. `lastError` is kept (already sanitized at write time). */
+function sanitizeAsset<T extends { visualLastError?: unknown }>(row: T): T {
+  return { ...row, visualLastError: null };
 }
 
 export async function getAssets(userId: string): Promise<Asset[]> {
