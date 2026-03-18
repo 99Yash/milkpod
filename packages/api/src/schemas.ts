@@ -8,15 +8,16 @@ import type { MilkpodMessage } from '@milkpod/ai/types';
  */
 export const uiMessageSchema = t.Unsafe<MilkpodMessage>(
   t.Object({
-    id: t.String(),
+    id: t.String({ maxLength: 100 }),
     role: t.Union([
       t.Literal('system'),
       t.Literal('user'),
       t.Literal('assistant'),
     ]),
     parts: t.Array(
-      t.Object({ type: t.String() }, { additionalProperties: true })
+      t.Object({ type: t.String({ maxLength: 50 }) }, { additionalProperties: true }),
+      { maxItems: 200 }
     ),
-    metadata: t.Optional(t.Record(t.String(), t.Unknown())),
+    metadata: t.Optional(t.Record(t.String({ maxLength: 100 }), t.Unknown())),
   })
 );

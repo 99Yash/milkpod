@@ -204,7 +204,7 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
       auth: true,
       body: t.Object({
         file: t.File(),
-        title: t.Optional(t.String()),
+        title: t.Optional(t.String({ maxLength: 200 })),
       }),
     }
   );

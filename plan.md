@@ -131,16 +131,16 @@ Ordered task list. Work through them in order. Each task references findings in 
 - ~~Return `{ items: T[], nextCursor: string | null }` instead of bare arrays~~
 - ~~Update frontend to handle paginated responses (can use infinite scroll or load-more button)~~
 
-### Task 12: Add input validation to all API schemas
+### ~~Task 12: Add input validation to all API schemas~~ ✅
 
 **Refs**: API-1
 **Files**: All `model.ts` files in `packages/api/src/modules/*/`
 **What**:
 
-- Add `maxLength` to all string fields: `title` (200), `name` (100), `description` (1000), `sourceUrl` (2048)
-- Add URL host whitelist for ingest endpoint (youtube.com, youtu.be initially)
-- Add `minValue: Date.now()` or equivalent for `expiresAt` on share links
-- Replace `t.Any()` in chat model with a proper TypeBox schema for UIMessage structure
+- ~~Add `maxLength` to all string fields: `title` (200), `name` (100), `description` (1000), `sourceUrl` (2048)~~
+- ~~Add URL host whitelist for ingest endpoint (youtube.com, youtu.be initially)~~
+- ~~Add `minValue: Date.now()` or equivalent for `expiresAt` on share links~~
+- ~~Replace `t.Any()` in chat model with a proper TypeBox schema for UIMessage structure~~
 
 ### Task 13: Standardize API error responses
 

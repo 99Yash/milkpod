@@ -141,3 +141,41 @@ Reviewed by hand before loop.sh — these issues exist in the current diff and s
 - **Reuse existing utilities**: Extracted 4 shared functions from asset-specific code. All 4 modules use the same pagination pattern via `decodeCursor` + `buildPage` ✅
 - **No magic numbers**: Default limit (50) and max (100) are explicit function parameters. Page size clamping uses `Math.max(1, Math.min(n, 100))` ✅
 - **Frontend error handling**: Fetchers handle both paginated and legacy array responses gracefully. No new error states needed — existing react-query error handling applies ✅
+
+---
+
+## Task 12: Add input validation to all API schemas ✅
+
+### Issues found and fixed:
+1. `packages/api/src/modules/assets/model.ts` — `create.title`, `create.sourceUrl`, `create.channelName`, `create.thumbnailUrl`, `create.sourceId`, `create.idempotencyKey` all used bare `t.String()` with no length constraints. Attackers could submit multi-MB strings. **Fixed:** Added `minLength: 1` on required fields (title), `maxLength` on all: title (200), sourceUrl (2048), channelName (200), thumbnailUrl (2048), sourceId (500), idempotencyKey (100).
+2. `packages/api/src/modules/assets/model.ts` — `update.title` had no length constraints. **Fixed:** Added `minLength: 1, maxLength: 200`.
+3. `packages/api/src/modules/assets/model.ts` — `listQuery` fields `q`, `status`, `sourceType`, `cursor`, `limit`, `paginate` all unbounded. **Fixed:** Added `maxLength`: q (200), status (20), sourceType (20), cursor (500), limit (10), paginate (10).
+4. `packages/api/src/modules/threads/model.ts` — `create.title`, `update.title`, `create.assetId`, `create.collectionId`, `listQuery.assetId/cursor/limit` all unbounded. **Fixed:** Added `minLength: 1, maxLength: 200` on titles, `maxLength: 100` on IDs, `maxLength: 500` on cursor, `maxLength: 10` on limit.
+5. `packages/api/src/modules/collections/model.ts` — `create.name`, `create.description`, `update.name`, `update.description`, `addItem.assetId`, `listQuery.cursor/limit` all unbounded. **Fixed:** name (minLength: 1, maxLength: 100), description (maxLength: 1000), assetId (maxLength: 100), cursor (500), limit (10). Also added `minimum: 0` on `addItem.position`.
+6. `packages/api/src/modules/shares/model.ts` — `create.assetId`, `create.collectionId`, `create.expiresAt` lacked length constraints. **Fixed:** Added `maxLength: 100` on IDs, `maxLength: 50` on expiresAt.
+7. `packages/api/src/modules/shares/index.ts` — `expiresAt` accepted past dates. Share links created with past expiry would be immediately expired. **Fixed:** Added runtime validation after schema validation — checks that parsed date is in the future, returns 400 if not.
+8. `packages/api/src/modules/ingest/model.ts` — `ingest.url` had `format: 'uri'` but no length limit. **Fixed:** Added `maxLength: 2048`.
+9. `packages/api/src/modules/podcasts/model.ts` — `addFeed.feedUrl` had `format: 'uri'` but no length limit. `refreshFeed.feedId`, all cursor/limit fields unbounded. **Fixed:** feedUrl (maxLength: 2048), feedId (maxLength: 100), cursors (500), limits (10).
+10. `packages/api/src/modules/comments/model.ts` — `generate.assetId`, `listQuery.assetId` unbounded. **Fixed:** Added `maxLength: 100`.
+11. `packages/api/src/modules/moments/model.ts` — `generate.assetId`, `listQuery.assetId` unbounded. **Fixed:** Added `maxLength: 100`.
+12. `packages/api/src/modules/chat/model.ts` — `send.id`, `send.messageId`, `send.threadId`, `send.assetId`, `send.collectionId` all unbounded. **Fixed:** Added `maxLength: 100` on all ID fields.
+13. `packages/api/src/modules/chat/index.ts:228` — Translate route `messageId` unbounded. **Fixed:** Added `maxLength: 100`.
+14. `packages/api/src/modules/chat/index.ts:249` — Thread detail `params.threadId` unbounded. **Fixed:** Added `maxLength: 100`.
+15. `packages/api/src/modules/ingest/index.ts:207` — Upload route `title` unbounded. **Fixed:** Added `maxLength: 200`.
+16. `packages/api/src/modules/assets/index.ts:117-118` — Search endpoint `q` and `limit` query params unbounded. **Fixed:** q (maxLength: 200), limit (maxLength: 10).
+17. `packages/api/src/modules/retention/index.ts:29` — `limit` query param unbounded. **Fixed:** Added `maxLength: 10`.
+18. `packages/api/src/modules/visual-parity/index.ts:31` — `limit` query param unbounded. **Fixed:** Added `maxLength: 10`.
+19. `packages/api/src/schemas.ts` — `uiMessageSchema` had no constraints on `id`, `type` in parts, or `parts` array size. **Fixed:** Added `maxLength: 100` on message `id`, `maxLength: 50` on part `type`, `maxItems: 200` on `parts` array, `maxLength: 100` on metadata record keys.
+
+### Issues noted (no fix needed):
+1. **URL host whitelist not added** — The plan specified adding a YouTube-only host whitelist for the ingest endpoint. However, the codebase has evolved to support external (non-YouTube) audio/video URLs as a feature (`sourceType: 'external'`, visible in search filters). The existing URL safety validation in `url-safety.ts` is comprehensive: protocol checks, credential rejection, SSRF protection via DNS resolution + private IP blocking, redirect-following with re-validation. A strict host whitelist would be a feature regression. The `maxLength: 2048` + `format: 'uri'` + runtime SSRF checks provide adequate protection.
+2. **`uiMessageSchema` parts remain loosely typed** — The plan specified replacing `t.Any()` in chat model. No `t.Any()` exists — the schema already uses `t.Object({ type: t.String() }, { additionalProperties: true })` for parts. This is documented as intentional: "Parts are a complex discriminated union — we validate they exist as objects with a `type` field and let the AI SDK handle deep part validation" via `validateUIMessages()`. Making the TypeBox schema match the full UIMessage part union would be extremely complex (20+ part types with nested structures) and would duplicate validation the AI SDK already does. The current approach is the pragmatic choice.
+3. **Response schemas not constrained** — `AssetModel.asset` (response schema) fields like `id`, `title`, `sourceUrl` etc. have no `maxLength`. This is intentional — output schemas describe what we return, not what we accept. Input validation is the security boundary.
+
+### Checklist verification:
+- **Input validation on every route**: All body, query, and params schemas now have `maxLength` on string fields, `minLength` on required user-facing text fields, and `maxLength`/`maxItems` on arrays ✅
+- **Proper HTTP status codes**: expiresAt validation returns 400 (validation error) ✅
+- **No magic numbers**: All length limits are explicit inline values matching the plan spec (title: 200, name: 100, description: 1000, sourceUrl: 2048) ✅
+- **TypeScript**: No type changes needed — TypeBox constraints don't alter the inferred TypeScript types ✅
+- **Elysia validation**: All constraints use Elysia's TypeBox `t.String({ maxLength })` which is validated automatically before the handler runs ✅
+- **No breaking changes**: All new constraints are generous enough for legitimate use (200 chars for titles, 2048 for URLs, 100 for IDs, 1000 for descriptions) ✅

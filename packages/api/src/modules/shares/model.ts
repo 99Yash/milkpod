@@ -3,10 +3,10 @@ import { uiMessageSchema } from '../../schemas';
 
 export namespace ShareModel {
   export const create = t.Object({
-    assetId: t.Optional(t.String()),
-    collectionId: t.Optional(t.String()),
+    assetId: t.Optional(t.String({ maxLength: 100 })),
+    collectionId: t.Optional(t.String({ maxLength: 100 })),
     canQuery: t.Optional(t.Boolean()),
-    expiresAt: t.Optional(t.String({ format: 'date-time' })),
+    expiresAt: t.Optional(t.String({ format: 'date-time', maxLength: 50 })),
   });
   export type Create = typeof create.static;
 

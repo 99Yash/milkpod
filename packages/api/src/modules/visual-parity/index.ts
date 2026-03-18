@@ -28,7 +28,7 @@ export const visualParity = new Elysia({ prefix: '/api/admin/visual' })
     {
       auth: true,
       query: t.Object({
-        limit: t.Optional(t.String()),
+        limit: t.Optional(t.String({ maxLength: 10 })),
       }),
     },
   )

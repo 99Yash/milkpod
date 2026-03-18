@@ -27,6 +27,14 @@ export const shares = new Elysia({ prefix: '/api/shares' })
         return status(400, { message: 'Provide either assetId or collectionId, not both' });
       }
 
+      // Validate expiresAt is in the future
+      if (body.expiresAt) {
+        const expiry = new Date(body.expiresAt);
+        if (Number.isNaN(expiry.getTime()) || expiry <= new Date()) {
+          return status(400, { message: 'expiresAt must be a future date' });
+        }
+      }
+
       // Enforce share-link limit per plan
       const plan = await resolveUserPlan(userId);
       const entitlements = getEntitlementsForPlan(plan);
