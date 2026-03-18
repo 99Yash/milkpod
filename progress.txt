@@ -289,3 +289,28 @@ Reviewed by hand before loop.sh — these issues exist in the current diff and s
 - **Reuse existing utilities**: `releaseReserved()` helper deduplicates the release logic across 3 call sites in the chat route. `upsertEpisodes` shared between `addFeed` and `refreshFeed` via the `tx` parameter ✅
 - **No dead code**: Removed unused `AssetService` import from episode-pipeline ✅
 - **Connection pooling**: Network calls (`parseFeed`) are kept outside transactions to avoid holding DB connections during HTTP requests ✅
+
+---
+
+## Task 16: Fix AgentTab waterfall and add Suspense ✅
+
+### Issues found and fixed:
+1. `apps/web/src/app/dashboard/page.tsx:126-143` — `DashboardPage` server component awaited both `getAssets()` and `getCollections()` in the page body, blocking the entire page from streaming until both queries completed. Users saw either the bare `loading.tsx` spinner or a blank page during data fetching. **Fixed:** Extracted data-fetching into a separate `DashboardLoader` async server component and wrapped it in `<Suspense fallback={<DashboardSkeleton />}>`. Auth check (`getServerSession` + `assertAuthenticated`) remains outside the boundary so unauthenticated users are redirected immediately without seeing the skeleton. The `DashboardSkeleton` mirrors the home tab layout: title bar, 4-column quick actions grid, agent section, get started section, and 3-column recent items grid — all using the project's `Skeleton` component with theme-appropriate `rounded-xl` borders.
+2. `apps/web/src/app/dashboard/page.tsx:28` — Unused import `import { route } from '~/lib/routes'` was present in the file. **Fixed:** Removed the dead import.
+
+### Issues noted (no fix needed):
+1. **FE-1 waterfall already resolved** — The plan specified "Remove `selectedId` from the `fetchAssets` effect dependency array." The current `agent-tab.tsx` uses react-query's `useQuery` with `queryKey: queryKeys.assets.list()` (no `selectedId` in the key or query function). There is no manual `useEffect` + `fetch` pattern — the waterfall issue was either fixed in a prior refactor or during the react-query migration. No changes needed.
+2. **`loading.tsx` kept as-is** — The existing `loading.tsx` with a bare spinner serves as the route-segment fallback during initial navigation/code loading. The new inline `<Suspense>` handles data-loading specifically, creating a two-tier loading experience: spinner during JS load, then skeleton during data fetch.
+3. **`DashboardSkeleton` uses `key={i}` for static arrays** — The skeleton grid items are static, fixed-length arrays (4 quick action cards, 3 recent items) that never reorder. Index keys are acceptable per the review checklist for static, non-reorderable lists.
+
+### Checklist verification:
+- **No redundant state**: No state added. `DashboardLoader` is a pure async server component ✅
+- **useEffect cleanup**: No effects added or modified ✅
+- **Stable keys**: Skeleton grids use `key={i}` on static fixed-length arrays — acceptable ✅
+- **SSR guards**: `DashboardSkeleton` and `DashboardLoader` are server components — no browser APIs needed ✅
+- **No `any` types**: None added ✅
+- **No console.log in production**: None added ✅
+- **Accessibility**: Skeleton layout uses semantic `div` containers matching the actual content structure. No interactive elements in the skeleton ✅
+- **Tailwind v4 tokens**: Uses `rounded-xl`, standard height/width utilities — all theme-compatible ✅
+- **Remove dead code**: Removed unused `route` import ✅
+- **TypeScript**: `DashboardLoader` has typed `userId: string` prop. No assertions or casts ✅

@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import type { Route } from 'next';
 import Link from 'next/link';
+import { Suspense } from 'react';
 import {
   ArrowRight,
   CheckCircle2,
@@ -21,9 +22,9 @@ import {
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
+import { Skeleton } from '~/components/ui/skeleton';
 import { getServerSession, assertAuthenticated } from '~/lib/auth/session';
 import { getAssets, getCollections } from '~/lib/data/queries';
-import { route } from '~/lib/routes';
 import { cn } from '~/lib/utils';
 
 type QuickAction = {
@@ -128,9 +129,17 @@ export default async function DashboardPage() {
 
   assertAuthenticated(session);
 
+  return (
+    <Suspense fallback={<DashboardSkeleton />}>
+      <DashboardLoader userId={session.user.id} />
+    </Suspense>
+  );
+}
+
+async function DashboardLoader({ userId }: { userId: string }) {
   const [initialAssets, initialCollections] = await Promise.all([
-    getAssets(session.user.id),
-    getCollections(session.user.id),
+    getAssets(userId),
+    getCollections(userId),
   ]);
 
   return (
@@ -139,6 +148,42 @@ export default async function DashboardPage() {
       initialAssets={initialAssets}
       initialCollections={initialCollections}
     />
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="relative isolate space-y-8 pb-10">
+      <div className="flex items-center gap-3">
+        <Skeleton className="h-7 w-16" />
+      </div>
+      <div className="space-y-8">
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-28" />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 rounded-xl" />
+            ))}
+          </div>
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-36 rounded-xl" />
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-60 rounded-xl" />
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-20" />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 rounded-xl" />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
