@@ -30,7 +30,10 @@ export function toToastErrorMessage(
   return `${normalized.slice(0, MAX_TOAST_ERROR_LENGTH - 3)}...`;
 }
 
-export const api = treaty<App>(clientEnv().NEXT_PUBLIC_SERVER_URL, {
+const env = clientEnv();
+export const serverUrl = env.NEXT_PUBLIC_SERVER_URL;
+
+export const api = treaty<App>(serverUrl, {
   fetch: {
     credentials: 'include',
   },

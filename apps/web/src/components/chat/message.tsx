@@ -3,9 +3,13 @@
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 import { isToolUIPart } from 'ai';
-import { BrainCircuit } from 'lucide-react';
+import { BrainCircuit, Languages } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Components } from 'streamdown';
 import { Streamdown } from 'streamdown';
+import { toast } from 'sonner';
+import { Spinner } from '~/components/ui/spinner';
+import { serverUrl } from '~/lib/api';
 import { ActivitySteps } from './activity-steps';
 import { AiAvatar } from './ai-avatar';
 import { useAssetSource } from './asset-source-context';
@@ -61,8 +65,22 @@ const streamdownComponents: Components = {
   },
 };
 
+const TEXT_CLASS =
+  'text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1';
+
 function isActivityPart(part: MilkpodMessage['parts'][number]) {
   return part.type === 'reasoning' || isToolUIPart(part);
+}
+
+/**
+ * Detects whether text is predominantly non-Latin (e.g. Hindi, Arabic, CJK).
+ * Used to decide whether to show the translate toggle on a message.
+ */
+function isNonLatinText(text: string): boolean {
+  const letters = text.replace(/[\s\d\p{P}\p{S}]/gu, '');
+  if (letters.length < 10) return false;
+  const latinCount = (letters.match(/[\p{Script=Latin}]/gu) ?? []).length;
+  return latinCount / letters.length < 0.5;
 }
 
 interface ChatMessageProps {
@@ -77,6 +95,102 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
     duration: 220,
     easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
   });
+
+  // Translation state
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [translationState, setTranslationState] = useState<
+    'idle' | 'streaming' | 'done'
+  >('idle');
+  const [streamingPartIndex, setStreamingPartIndex] = useState<number | null>(
+    null,
+  );
+  const [streamedText, setStreamedText] = useState('');
+  const translationCache = useRef<Map<number, string>>(new Map());
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  const handleTranslateToggle = useCallback(async () => {
+    // Toggle back to original
+    if (showTranslation) {
+      setShowTranslation(false);
+      setTranslationState('idle');
+      return;
+    }
+
+    // All parts cached — instant show
+    const textParts = message.parts
+      .map((p, i) => ({ part: p, index: i }))
+      .filter(
+        (e) => e.part.type === 'text' && e.part.text.trim().length > 0,
+      );
+
+    if (textParts.every((e) => translationCache.current.has(e.index))) {
+      setShowTranslation(true);
+      setTranslationState('done');
+      return;
+    }
+
+    // Start streaming translation
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setTranslationState('streaming');
+
+    for (const entry of textParts) {
+      if (controller.signal.aborted) return;
+      if (translationCache.current.has(entry.index)) continue;
+      if (entry.part.type !== 'text') continue;
+
+      setStreamingPartIndex(entry.index);
+      setStreamedText('');
+
+      try {
+        const res = await fetch(`${serverUrl}/api/chat/translate`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: entry.part.text }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) throw new Error('Translation failed');
+        if (!res.body) throw new Error('No response body');
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let result = '';
+
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (controller.signal.aborted) return;
+          result += decoder.decode(value, { stream: true });
+          setStreamedText(result);
+        }
+
+        translationCache.current.set(entry.index, result);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        toast.error('Translation failed. Please try again.');
+        setTranslationState('idle');
+        setStreamingPartIndex(null);
+        setStreamedText('');
+        return;
+      }
+    }
+
+    if (!controller.signal.aborted) {
+      setStreamingPartIndex(null);
+      setStreamedText('');
+      setTranslationState('done');
+      setShowTranslation(true);
+    }
+  }, [showTranslation, message.parts]);
 
   const shouldLinkify = !!assetSource && assetSource.sourceType !== 'upload';
   const hasRenderableAssistantPart = message.parts.some((part) => {
@@ -110,6 +224,18 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
     (p) => p.type === 'text' && p.text.trim().length > 0,
   );
 
+  // Check once if this message has non-Latin text (for translate button visibility)
+  const showTranslateButton =
+    !isStreaming &&
+    hasTextContent &&
+    (translationState !== 'idle' ||
+      isNonLatinText(
+        message.parts
+          .filter((p) => p.type === 'text')
+          .map((p) => (p.type === 'text' ? p.text : ''))
+          .join(' '),
+      ));
+
   return (
     <div className="flex gap-3 py-2">
       <AiAvatar />
@@ -128,25 +254,117 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
         {message.parts.map((part, i) => {
           if (part.type !== 'text') return null;
 
-          const text = shouldLinkify
+          const originalMarkdown = shouldLinkify
             ? linkifyTimestamps(part.text)
             : part.text;
+          const cached = translationCache.current.get(i);
+          const isPartStreaming = streamingPartIndex === i;
 
+          // Completed translation — show translated text
+          if (showTranslation && cached && !isPartStreaming) {
+            const translated = shouldLinkify
+              ? linkifyTimestamps(cached)
+              : cached;
+            return (
+              <div
+                key={i}
+                className="rounded-2xl rounded-tl-md bg-muted/40 px-4 py-3"
+              >
+                <Streamdown
+                  className={TEXT_CLASS}
+                  components={
+                    shouldLinkify ? streamdownComponents : undefined
+                  }
+                >
+                  {translated}
+                </Streamdown>
+              </div>
+            );
+          }
+
+          // Currently streaming this part — grid overlay with blur dissolve
+          if (isPartStreaming) {
+            const streamed = shouldLinkify
+              ? linkifyTimestamps(streamedText)
+              : streamedText;
+            return (
+              <div
+                key={i}
+                className="grid rounded-2xl rounded-tl-md bg-muted/40 px-4 py-3"
+              >
+                {/* Blurred original underneath */}
+                <div
+                  className="col-start-1 row-start-1 select-none blur-[3px] opacity-20 transition-[filter,opacity] duration-500"
+                  aria-hidden
+                >
+                  <Streamdown className={TEXT_CLASS}>
+                    {originalMarkdown}
+                  </Streamdown>
+                </div>
+                {/* Streaming translation on top */}
+                {streamedText && (
+                  <div className="col-start-1 row-start-1">
+                    <Streamdown
+                      isAnimating
+                      className={TEXT_CLASS}
+                      components={
+                        shouldLinkify ? streamdownComponents : undefined
+                      }
+                    >
+                      {streamed}
+                    </Streamdown>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          // Waiting for its turn (other parts streaming first)
+          const isWaiting =
+            translationState === 'streaming' &&
+            streamingPartIndex !== null &&
+            streamingPartIndex < i &&
+            !cached;
+
+          // Default — show original
           return (
             <div
               key={i}
-              className="rounded-2xl rounded-tl-md bg-muted/40 px-4 py-3"
+              className={`rounded-2xl rounded-tl-md bg-muted/40 px-4 py-3 transition-[filter,opacity] duration-300 ${
+                isWaiting ? 'blur-[2px] opacity-40' : ''
+              }`}
             >
               <Streamdown
                 isAnimating={isStreaming}
-                className="text-sm leading-relaxed [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-5 [&_ol]:pl-5 [&_li]:my-1"
+                className={TEXT_CLASS}
                 components={shouldLinkify ? streamdownComponents : undefined}
               >
-                {text}
+                {originalMarkdown}
               </Streamdown>
             </div>
           );
         })}
+
+        {/* Translate toggle */}
+        {showTranslateButton && (
+          <button
+            type="button"
+            onClick={handleTranslateToggle}
+            disabled={translationState === 'streaming'}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-50"
+          >
+            {translationState === 'streaming' ? (
+              <Spinner className="size-3" />
+            ) : (
+              <Languages className="size-3" />
+            )}
+            {translationState === 'streaming'
+              ? 'Translating...'
+              : showTranslation
+                ? 'Show original'
+                : 'Translate'}
+          </button>
+        )}
 
         {/* Initial thinking state (before any parts arrive) */}
         {isStreaming && !hasRenderableAssistantPart && (

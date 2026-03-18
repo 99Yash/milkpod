@@ -1,5 +1,5 @@
 import { Elysia, status, t } from 'elysia';
-import { createChatStream, generateThreadTitle, HARD_WORD_CAP } from '@milkpod/ai';
+import { createChatStream, generateThreadTitle, streamTranslation, HARD_WORD_CAP } from '@milkpod/ai';
 import { authMacro } from '../../middleware/auth';
 import { ChatModel } from './model';
 import { ChatService } from './service';
@@ -17,11 +17,48 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       const userId = user.id;
       const admin = isAdminEmail(user.email);
 
-      // Resolve plan entitlements for model gating and word budget
-      const plan = await resolveUserPlan(userId);
-      const entitlements = getEntitlementsForPlan(plan);
+      // Phase 1: Run all independent lookups in parallel.
+      // Each of these is a separate DB round-trip (~225ms cross-region).
+      // Running them concurrently cuts total wait from ~1350ms to ~450ms.
+      const [plan, thread, assetResult, collection] = await Promise.all([
+        resolveUserPlan(userId),
+        body.threadId
+          ? ThreadService.getById(body.threadId, userId)
+          : null,
+        body.assetId
+          ? Promise.all([
+              AssetService.getById(body.assetId, userId),
+              AssetService.getTranscriptLanguage(body.assetId),
+            ])
+          : null,
+        body.collectionId
+          ? CollectionService.getById(body.collectionId, userId)
+          : null,
+      ]);
+
+      // Validate ownership of referenced resources
+      if (body.threadId && !thread) {
+        return status(403, { message: 'Access denied to thread' });
+      }
+      const existingThreadTitle = thread?.title;
+
+      let assetTitle: string | undefined;
+      let transcriptLanguage: string | null = null;
+      if (body.assetId) {
+        const [asset, language] = assetResult!;
+        if (!asset) {
+          return status(403, { message: 'Access denied to asset' });
+        }
+        assetTitle = asset.title ?? undefined;
+        transcriptLanguage = language;
+      }
+
+      if (body.collectionId && !collection) {
+        return status(403, { message: 'Access denied to collection' });
+      }
 
       // Model gating: reject requests for models not in the user's plan
+      const entitlements = getEntitlementsForPlan(plan);
       if (body.modelId && !admin && !entitlements.allowedModelIds.includes(body.modelId)) {
         return new Response(
           JSON.stringify({
@@ -33,10 +70,8 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         );
       }
 
+      // Phase 2: Reserve words (depends on plan from Phase 1).
       const requestedLimit = Math.min(body.wordLimit ?? HARD_WORD_CAP, HARD_WORD_CAP);
-
-      // Atomically reserve words from the plan-aware daily budget.
-      // Admins bypass quota entirely.
       let reserved: number;
       if (admin) {
         reserved = requestedLimit;
@@ -51,51 +86,20 @@ export const chat = new Elysia({ prefix: '/api/chat' })
         }
       }
 
-      // Verify ownership of referenced resources
-      let existingThreadTitle: string | null | undefined;
-      if (body.threadId) {
-        const thread = await ThreadService.getById(body.threadId, userId);
-        if (!thread) {
-          return status(403, { message: 'Access denied to thread' });
-        }
-        existingThreadTitle = thread.title;
-      }
-
-      let assetTitle: string | undefined;
-      let transcriptLanguage: string | null = null;
-      if (body.assetId) {
-        const asset = await AssetService.getById(body.assetId, userId);
-        if (!asset) {
-          return status(403, { message: 'Access denied to asset' });
-        }
-        assetTitle = asset.title ?? undefined;
-        transcriptLanguage = await AssetService.getTranscriptLanguage(body.assetId);
-      }
-
-      if (body.collectionId) {
-        const collection = await CollectionService.getById(
-          body.collectionId,
-          userId
-        );
-        if (!collection) {
-          return status(403, { message: 'Access denied to collection' });
-        }
-      }
-
       // Auto-create thread if none provided
       let threadId = body.threadId;
       let isNewThread = false;
       if (!threadId) {
-        const thread = await ThreadService.create(userId, {
+        const newThread = await ThreadService.create(userId, {
           assetId: body.assetId,
           collectionId: body.collectionId,
         });
 
-        if (!thread) {
+        if (!newThread) {
           return status(500, { message: 'Failed to create or resolve thread' });
         }
 
-        threadId = thread.id;
+        threadId = newThread.id;
         isNewThread = true;
       }
 
@@ -172,6 +176,19 @@ export const chat = new Elysia({ prefix: '/api/chat' })
       return response;
     },
     { auth: true, body: ChatModel.send }
+  )
+  .post(
+    '/translate',
+    async ({ body }) => {
+      return streamTranslation(body.text, body.targetLanguage);
+    },
+    {
+      auth: true,
+      body: t.Object({
+        text: t.String({ minLength: 1, maxLength: 10000 }),
+        targetLanguage: t.Optional(t.String()),
+      }),
+    }
   )
   .get(
     '/:threadId',
