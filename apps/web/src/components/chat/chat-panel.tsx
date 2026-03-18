@@ -1,13 +1,13 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { BrainCircuit, MessageSquareText, SendHorizonal, Sparkles } from 'lucide-react';
+import { ArrowUp, BrainCircuit, ChevronDown, MessageSquareText, Sparkles, Square } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
-import { ScrollArea } from '~/components/ui/scroll-area';
 import { Spinner } from '~/components/ui/spinner';
 import { toast } from 'sonner';
 import { useMilkpodChat } from '~/hooks/use-milkpod-chat';
+import { useChatScroll } from '~/hooks/use-chat-scroll';
 import { useChatSettings } from '~/hooks/use-chat-settings';
 import { AiAvatar } from './ai-avatar';
 import { ChatMessage } from './message';
@@ -251,11 +251,12 @@ function ChatPanelContent({
   onThreadCreated?: (threadId: string, title?: string | null) => void;
 }) {
   const [input, setInput] = useState('');
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { modelId, setModelId, wordLimit, setWordLimit } = useChatSettings();
 
-  const { messages, sendMessage, status, error, threadId: chatThreadId, wordsRemaining } = useMilkpodChat({
+  const { messages, sendMessage, stop, status, error, threadId: chatThreadId, wordsRemaining } = useMilkpodChat({
     threadId,
     assetId,
     collectionId,
@@ -265,6 +266,13 @@ function ChatPanelContent({
   });
 
   const isLoading = status === 'streaming' || status === 'submitted';
+
+  const {
+    showScrollToBottom,
+    scrollToBottom,
+    scrollToBottomIfNeeded,
+    handlers: scrollHandlers,
+  } = useChatScroll({ scrollRef, composerRef });
 
   // Notify parent when a draft thread is created (threadId was undefined, now has a value)
   const notifiedRef = useRef(false);
@@ -363,8 +371,8 @@ function ChatPanelContent({
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages, status]);
+    scrollToBottomIfNeeded();
+  }, [messages, status, scrollToBottomIfNeeded]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -389,84 +397,117 @@ function ChatPanelContent({
 
   return (
     <div className="flex h-full flex-col font-open-runde">
-      <ScrollArea className="min-h-0 flex-1 px-4">
-        <div className="mx-auto max-w-3xl">
-          {messages.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-5 py-12 text-center">
-              <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-b from-accent/30 to-accent/10 shadow-sm ring-1 ring-ring/15">
-                <MessageSquareText className="size-6 text-muted-foreground" />
-              </div>
-              <div className="space-y-1.5">
-                <p className="text-base font-semibold text-foreground">
-                  Ask about this video
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Get answers with timestamps from the transcript.
-                </p>
-              </div>
-              <div className="flex flex-wrap justify-center gap-2">
-                {SUGGESTIONS.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    onClick={() => sendMessage({ text: suggestion })}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background py-2 pl-3 pr-3.5 text-xs font-medium text-muted-foreground shadow-sm transition-all hover:border-ring/25 hover:bg-accent/18 hover:text-foreground hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
-                  >
-                    <Sparkles className="size-3" />
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2 py-4">
-              {messages.map((message, i) => (
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  isStreaming={
-                    isLoading &&
-                    message.role === 'assistant' &&
-                    i === messages.length - 1
-                  }
-                />
-              ))}
-              {isLoading && messages.at(-1)?.role !== 'assistant' && (
-                <div className="flex gap-3 py-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
-                  <AiAvatar />
-                  <div className="flex items-center gap-2 pt-1">
-                    <BrainCircuit className="size-4 shrink-0 text-muted-foreground/45 animate-pulse" />
-                    <ShimmerText
-                      active
-                      className="text-[13px] font-medium text-muted-foreground/65"
-                    >
-                      Thinking
-                    </ShimmerText>
-                    <span className="inline-flex items-center gap-1" aria-hidden>
-                      {[0, 1, 2].map((idx) => (
-                        <span
-                          key={idx}
-                          className="size-1 rounded-full bg-muted-foreground/40 animate-pulse motion-reduce:animate-none"
-                          style={{
-                            animationDelay: `${idx * 160}ms`,
-                            animationDuration: '1s',
-                          }}
-                        />
-                      ))}
-                    </span>
-                  </div>
+      {/* Scrollable message area */}
+      <div className="relative min-h-0 flex-1">
+        {/* Top fade mask */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-card to-transparent" />
+        {/* Bottom fade mask */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-card to-transparent" />
+        <div
+          ref={scrollRef}
+          className="absolute inset-0 overflow-y-auto overscroll-y-contain px-5 lg:px-6"
+          onScroll={scrollHandlers.onScroll}
+          onWheel={scrollHandlers.onWheel}
+          onPointerDown={scrollHandlers.onPointerDown}
+          onPointerUp={scrollHandlers.onPointerUp}
+        >
+          <div
+            className="mx-auto max-w-4xl"
+            onClickCapture={scrollHandlers.onClickCapture}
+          >
+            {messages.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center gap-5 py-12 text-center">
+                <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-b from-accent/30 to-accent/10 shadow-sm ring-1 ring-ring/15">
+                  <MessageSquareText className="size-6 text-muted-foreground" />
                 </div>
-              )}
-              <div ref={bottomRef} />
-            </div>
-          )}
+                <div className="space-y-1.5">
+                  <p className="text-base font-semibold text-foreground">
+                    Ask about this video
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Get answers with timestamps from the transcript.
+                  </p>
+                </div>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => sendMessage({ text: suggestion })}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background py-2 pl-3 pr-3.5 text-xs font-medium text-muted-foreground shadow-sm transition-all hover:border-ring/25 hover:bg-accent/18 hover:text-foreground hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35"
+                    >
+                      <Sparkles className="size-3" />
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2 py-4">
+                {messages.map((message, i) => (
+                  <ChatMessage
+                    key={message.id}
+                    message={message}
+                    isStreaming={
+                      isLoading &&
+                      message.role === 'assistant' &&
+                      i === messages.length - 1
+                    }
+                  />
+                ))}
+                {isLoading && messages.at(-1)?.role !== 'assistant' && (
+                  <div className="flex gap-3 py-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
+                    <AiAvatar />
+                    <div className="flex items-center gap-2 pt-1">
+                      <BrainCircuit className="size-4 shrink-0 text-muted-foreground/45 animate-pulse" />
+                      <ShimmerText
+                        active
+                        className="text-[13px] font-medium text-muted-foreground/65"
+                      >
+                        Thinking
+                      </ShimmerText>
+                      <span className="inline-flex items-center gap-1" aria-hidden>
+                        {[0, 1, 2].map((idx) => (
+                          <span
+                            key={idx}
+                            className="size-1 rounded-full bg-muted-foreground/40 animate-pulse motion-reduce:animate-none"
+                            style={{
+                              animationDelay: `${idx * 160}ms`,
+                              animationDuration: '1s',
+                            }}
+                          />
+                        ))}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </ScrollArea>
 
+        {/* Scroll-to-bottom button */}
+        <div
+          className={`pointer-events-none absolute inset-x-0 bottom-2 z-10 flex justify-center transition-opacity duration-200 ${showScrollToBottom ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+        >
+          <button
+            type="button"
+            onClick={() => scrollToBottom('smooth')}
+            tabIndex={showScrollToBottom ? 0 : -1}
+            className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-border/60 bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <ChevronDown className="size-3.5" />
+            Scroll to bottom
+          </button>
+        </div>
+      </div>
+
+      {/* Composer */}
       <div className="shrink-0 px-3 pb-3 pt-2">
         <form
+          ref={composerRef}
           onSubmit={handleSubmit}
-          className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-ring/15 bg-background/95 shadow-sm transition-[box-shadow,border-color,background-color] duration-200 focus-within:border-ring/45 focus-within:bg-accent/16 focus-within:outline-1 focus-within:outline-ring/60 focus-within:ring-[3px] focus-within:ring-ring/35 focus-within:shadow-md"
+          className="mx-auto max-w-4xl overflow-hidden rounded-2xl border border-ring/15 bg-background/95 shadow-sm transition-[box-shadow,border-color] duration-200 focus-within:border-ring/45 focus-within:outline-1 focus-within:outline-ring/60 focus-within:ring-[3px] focus-within:ring-ring/35 focus-within:shadow-md"
         >
           <Textarea
             ref={textareaRef}
@@ -474,25 +515,37 @@ function ChatPanelContent({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about the video..."
-            className="min-h-[44px] max-h-[140px] resize-none border-0 bg-transparent px-4 pt-3.5 pb-2 text-[15px] shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:outline-none md:text-[15px]"
+            className="min-h-0 max-h-[140px] resize-none border-0 !bg-transparent px-4 pt-3 pb-2 text-[15px] leading-snug shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:outline-none md:text-[15px]"
             rows={1}
-            disabled={isLoading}
           />
-          <div className="flex items-center gap-1.5 px-2.5 pb-2.5">
+          <div className="flex items-center gap-1.5 px-3 pb-3">
             <ModelPicker value={modelId} onChange={setModelId} />
             <WordLimitPicker value={wordLimit} onChange={setWordLimit} />
             <div className="ml-auto flex items-center gap-2">
               <DailyQuota remaining={wordsRemaining} />
-              <Button
-                type="submit"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Send message"
-                className="rounded-xl bg-accent/35 text-foreground hover:bg-accent/50 disabled:bg-muted-foreground/8 disabled:text-muted-foreground"
-                disabled={isLoading || !input.trim()}
-              >
-                <SendHorizonal className="size-4 translate-x-px" />
-              </Button>
+              {isLoading ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Stop generating"
+                  className="shrink-0 rounded-xl bg-destructive/10 text-destructive hover:bg-destructive/20"
+                  onClick={stop}
+                >
+                  <Square className="size-3 fill-current" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Send message"
+                  className="shrink-0 rounded-xl bg-accent/35 text-foreground hover:bg-accent/50 disabled:bg-muted-foreground/8 disabled:text-muted-foreground"
+                  disabled={!input.trim()}
+                >
+                  <ArrowUp className="size-4" />
+                </Button>
+              )}
             </div>
           </div>
         </form>

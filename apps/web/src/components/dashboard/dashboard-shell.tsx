@@ -163,7 +163,7 @@ export function DashboardShell({
         className="h-full bg-background overflow-hidden sm:overflow-x-hidden sm:overflow-y-auto sm:[scrollbar-gutter:stable]"
         data-dashboard-root
       >
-        <div className="mx-auto box-border flex h-full w-full max-w-7xl gap-8 px-0 py-0 sm:px-4 lg:px-6 lg:py-6 sm:h-auto sm:min-h-full">
+        <div className="mx-auto box-border flex h-full w-full max-w-[90rem] gap-8 px-0 py-0 sm:px-4 lg:px-6 lg:py-6 sm:h-auto sm:min-h-full">
           <aside
             className={cn(
               'sticky top-6 hidden h-[calc(100svh-3rem)] shrink-0 flex-col gap-6 self-start pb-4 transition-[width] duration-200 lg:flex lg:h-[calc(100svh-4rem-2px)]',
