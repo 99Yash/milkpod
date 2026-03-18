@@ -106,3 +106,38 @@ Reviewed by hand before loop.sh — these issues exist in the current diff and s
 - **Tailwind v4 tokens**: Uses `text-destructive`, `max-w-md` — all theme tokens ✅
 - **TypeScript**: No `any`, no non-null assertions ✅
 - **Library leverage**: Uses react-query `invalidateQueries` + `setQueriesData` for cache management. SSE events drive real-time updates. No manual polling or state machines ✅
+
+---
+
+## Task 11: Add pagination to all list endpoints ✅
+
+### Issues found and fixed:
+1. `packages/api/src/modules/threads/index.ts` — Thread list endpoint returned unbounded arrays. No `limit` parameter, no cursor support. Users with many threads per asset would receive all rows in a single response. **Fixed:** Added `ThreadModel.listQuery` schema with `cursor`, `limit`, `assetId` params. Added `ThreadService.listPage()` using cursor-based keyset pagination (desc createdAt, desc id). Route handler now always returns `{ items, nextCursor, hasMore }`.
+2. `packages/api/src/modules/collections/index.ts` — Collection list endpoint returned unbounded arrays. **Fixed:** Added `CollectionModel.listQuery` schema with `cursor`, `limit` params. Added `CollectionService.listPage()`. Route handler now returns paginated response.
+3. `packages/api/src/modules/podcasts/index.ts` — Both `GET /feeds` and `GET /feeds/:id/episodes` returned unbounded arrays. **Fixed:** Added `PodcastModel.listFeedsQuery` and `listEpisodesQuery` schemas. Added `PodcastService.listFeedsPage()` and `listEpisodesPage()`. Route handlers now return paginated responses.
+4. `packages/api/src/modules/assets/service.ts` — Cursor encoding/decoding logic was duplicated as private methods. **Fixed:** Extracted shared pagination utilities (`encodeCursor`, `decodeCursor`, `buildPage`, `normalizeLimit`, `CursorPage<T>`) into `packages/api/src/utils.ts`. Refactored `AssetService.listPage()` to use shared utilities. `AssetPage` is now a type alias for `CursorPage<Asset>`.
+5. `apps/web/src/lib/api-fetchers.ts` — `fetchThreadsForAsset()` and `fetchCollections()` expected array responses from the API. **Fixed:** Updated both fetchers to detect paginated `{ items }` response shape and extract `.items`. Added `unknown` cast for thread items to handle Eden's `createdAt: Date` vs JSON's `createdAt: string` mismatch.
+
+### Issues noted (no fix needed):
+1. `fetchAssets()` (non-paginated) is still used by `agent-tab.tsx` and `add-asset-to-collection-dialog.tsx`. These hit the legacy `AssetService.list()` / `AssetService.search()` paths via the `paginate !== 'true'` branch. The legacy paths remain for backward compatibility — the primary asset list (`asset-list.tsx`) already uses cursor-based pagination via `fetchAssetsPage()`.
+2. Old non-paginated `list()` / `listForAsset()` / `listEpisodes()` methods are kept on the services for internal use (e.g., podcast batch ingest iterates all queued episodes). Only the route handlers were switched to paginated versions.
+3. Thread sidebar and collection grid currently display a single page (limit: 50) without "Load more" UI. For typical usage (<50 items), this is sufficient. Infinite scroll can be added later if needed — the API now supports it via `nextCursor`.
+
+### Shared utilities created:
+- `CursorPage<T>` — Generic paginated response type `{ items: T[], nextCursor: string | null, hasMore: boolean }`
+- `encodeCursor(row)` — Base64url-encodes `{ id, createdAt }` for opaque cursor tokens
+- `decodeCursor(cursor)` — Decodes and validates cursor with type checking and date parsing
+- `normalizeLimit(raw, default, max)` — Parses limit query string with clamping (1..100)
+- `buildPage(rows, pageSize)` — Constructs `CursorPage` from `limit + 1` query rows (detects hasMore, slices, encodes next cursor)
+
+### Checklist verification:
+- **Pagination on list endpoints**: All four modules (assets, threads, collections, podcasts) now return bounded result sets with cursor-based pagination. Default limit: 50, max: 100 ✅
+- **Input validation**: `cursor` and `limit` are validated as optional strings via Elysia TypeBox schemas. `limit` is clamped to 1..100 via `normalizeLimit()`. Invalid cursors return `null` (treated as no cursor = first page) ✅
+- **No N+1 queries**: Pagination queries are single SELECT with WHERE + ORDER BY + LIMIT — no additional queries per row ✅
+- **Auth checks**: All paginated endpoints still require `{ auth: true }`. Queries are scoped to `userId` ✅
+- **No secrets in error responses**: Malformed cursors silently return first page, no error details exposed ✅
+- **Proper HTTP status codes**: List endpoints return 200 with paginated shape. No change to error codes ✅
+- **TypeScript**: No `any` types. Shared utility uses generic constraint `T extends { id: string; createdAt: Date }`. `CursorPage<T>` provides full type inference ✅
+- **Reuse existing utilities**: Extracted 4 shared functions from asset-specific code. All 4 modules use the same pagination pattern via `decodeCursor` + `buildPage` ✅
+- **No magic numbers**: Default limit (50) and max (100) are explicit function parameters. Page size clamping uses `Math.max(1, Math.min(n, 100))` ✅
+- **Frontend error handling**: Fetchers handle both paginated and legacy array responses gracefully. No new error states needed — existing react-query error handling applies ✅

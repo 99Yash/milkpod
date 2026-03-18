@@ -12,4 +12,11 @@ export namespace ThreadModel {
     title: t.Optional(t.String()),
   });
   export type Update = typeof update.static;
+
+  export const listQuery = t.Object({
+    assetId: t.Optional(t.String()),
+    cursor: t.Optional(t.String()),
+    limit: t.Optional(t.String()),
+  });
+  export type ListQuery = typeof listQuery.static;
 }

@@ -222,8 +222,13 @@ export async function searchTranscript(
 
 export async function fetchCollections(): Promise<Collection[]> {
   const { data, error } = await api.api.collections.get();
-  if (error || !data || !Array.isArray(data)) return [];
-  return data;
+  if (error || !data) return [];
+  // Paginated response: { items, nextCursor, hasMore }
+  if (!Array.isArray(data) && 'items' in data && Array.isArray((data as { items?: unknown }).items)) {
+    return (data as { items: Collection[] }).items;
+  }
+  if (Array.isArray(data)) return data;
+  return [];
 }
 
 export async function fetchCollectionDetail(
@@ -274,9 +279,20 @@ export async function fetchThreadsForAsset(
   const { data, error } = await api.api.threads.get({
     query: { assetId },
   });
-  if (error || !data || !Array.isArray(data)) return [];
+  if (error || !data) return [];
+
+  type ThreadItem = { id: string; title: string | null; createdAt: string };
+
+  // Paginated response: { items, nextCursor, hasMore }
   // Eden types createdAt as Date but JSON serialization sends it as string
-  return data as unknown as { id: string; title: string | null; createdAt: string }[];
+  if ('items' in data && Array.isArray((data as { items?: unknown }).items)) {
+    return (data as unknown as { items: ThreadItem[] }).items;
+  }
+  // Fallback for array response
+  if (Array.isArray(data)) {
+    return data as unknown as ThreadItem[];
+  }
+  return [];
 }
 
 // Eden doesn't strip `status()` error branches from the data union, so a cast

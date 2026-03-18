@@ -8,6 +8,7 @@ import {
 } from '@milkpod/db/schemas';
 import { and, desc, eq, ilike, inArray, lt, or, type SQL } from 'drizzle-orm';
 import type { Asset, AssetWithTranscript } from '../../types';
+import { decodeCursor, buildPage, type CursorPage } from '../../utils';
 import type { AssetModel } from './model';
 
 const VALID_STATUSES = new Set<string>(assetStatusEnum.enumValues);
@@ -16,11 +17,7 @@ const MAX_SPEAKER_NAME_ENTRIES = 50;
 const MAX_SPEAKER_ID_LENGTH = 64;
 const MAX_SPEAKER_NAME_LENGTH = 80;
 
-export type AssetPage = {
-  items: Asset[];
-  nextCursor: string | null;
-  hasMore: boolean;
-};
+export type AssetPage = CursorPage<Asset>;
 
 export abstract class AssetService {
   private static asRecord(value: unknown): Record<string, unknown> | null {
@@ -117,36 +114,7 @@ export abstract class AssetService {
     return conditions;
   }
 
-  private static encodeCursor(row: Pick<Asset, 'id' | 'createdAt'>): string {
-    const payload = JSON.stringify({
-      id: row.id,
-      createdAt: row.createdAt.toISOString(),
-    });
-    return Buffer.from(payload).toString('base64url');
-  }
 
-  private static decodeCursor(
-    cursor: string | undefined,
-  ): { id: string; createdAt: Date } | null {
-    if (!cursor) return null;
-
-    try {
-      const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
-      const parsed = JSON.parse(decoded) as { id?: string; createdAt?: string };
-      if (typeof parsed.id !== 'string' || typeof parsed.createdAt !== 'string') {
-        return null;
-      }
-
-      const createdAt = new Date(parsed.createdAt);
-      if (Number.isNaN(createdAt.getTime())) {
-        return null;
-      }
-
-      return { id: parsed.id, createdAt };
-    } catch {
-      return null;
-    }
-  }
 
   static async create(userId: string, data: AssetModel.Create): Promise<Asset> {
     const [asset] = await db()
@@ -184,7 +152,7 @@ export abstract class AssetService {
   ): Promise<AssetPage> {
     const pageSize = Math.max(1, Math.min(limit, 100));
     const conditions = AssetService.buildSearchConditions(userId, query);
-    const cursor = AssetService.decodeCursor(query.cursor);
+    const cursor = decodeCursor(query.cursor);
 
     if (cursor) {
       conditions.push(
@@ -205,18 +173,10 @@ export abstract class AssetService {
       .orderBy(desc(mediaAssets.createdAt), desc(mediaAssets.id))
       .limit(pageSize + 1);
 
-    const hasMore = rows.length > pageSize;
-    const pageRows = (hasMore ? rows.slice(0, pageSize) : rows).map(
-      AssetService.sanitize,
-    );
-    const nextCursor = hasMore
-      ? AssetService.encodeCursor(pageRows[pageRows.length - 1]!)
-      : null;
-
+    const page = buildPage(rows, pageSize);
     return {
-      items: pageRows,
-      nextCursor,
-      hasMore,
+      ...page,
+      items: page.items.map(AssetService.sanitize),
     };
   }
 

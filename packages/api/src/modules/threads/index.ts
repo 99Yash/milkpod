@@ -1,6 +1,7 @@
-import { Elysia, status, t } from 'elysia';
+import { Elysia, status } from 'elysia';
 import { generateThreadTitle } from '@milkpod/ai';
 import { authMacro } from '../../middleware/auth';
+import { normalizeLimit } from '../../utils';
 import { ThreadModel } from './model';
 import { ThreadService } from './service';
 import { ChatService } from '../chat/service';
@@ -17,14 +18,12 @@ export const threads = new Elysia({ prefix: '/api/threads' })
   .get(
     '/',
     async ({ query, user }) => {
-      if (query.assetId) {
-        return ThreadService.listForAsset(query.assetId, user.id);
-      }
-      return ThreadService.list(user.id);
+      const limit = normalizeLimit(query.limit, 50);
+      return ThreadService.listPage(user.id, query, limit);
     },
     {
       auth: true,
-      query: t.Object({ assetId: t.Optional(t.String()) }),
+      query: ThreadModel.listQuery,
     }
   )
   .get('/:id', async ({ params, user }) => {

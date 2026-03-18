@@ -18,4 +18,10 @@ export namespace CollectionModel {
     position: t.Optional(t.Number()),
   });
   export type AddItem = typeof addItem.static;
+
+  export const listQuery = t.Object({
+    cursor: t.Optional(t.String()),
+    limit: t.Optional(t.String()),
+  });
+  export type ListQuery = typeof listQuery.static;
 }

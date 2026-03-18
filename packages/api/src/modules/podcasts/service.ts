@@ -4,8 +4,10 @@ import {
   podcastFeeds,
   podcastEpisodes,
 } from '@milkpod/db/schemas';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, lt, or, sql, type SQL } from 'drizzle-orm';
+import { decodeCursor, buildPage } from '../../utils';
 import { parseFeed, type FeedEpisode } from './rss';
+import type { PodcastModel } from './model';
 
 type EpisodeStatus = (typeof episodeStatusEnum.enumValues)[number];
 
@@ -51,6 +53,38 @@ export abstract class PodcastService {
       .from(podcastFeeds)
       .where(eq(podcastFeeds.userId, userId))
       .orderBy(podcastFeeds.createdAt);
+  }
+
+  /** List feeds for a user with cursor-based pagination. */
+  static async listFeedsPage(
+    userId: string,
+    query: PodcastModel.ListFeedsQuery,
+    limit = 50,
+  ) {
+    const pageSize = Math.max(1, Math.min(limit, 100));
+    const conditions: SQL[] = [eq(podcastFeeds.userId, userId)];
+
+    const cursor = decodeCursor(query.cursor);
+    if (cursor) {
+      conditions.push(
+        or(
+          lt(podcastFeeds.createdAt, cursor.createdAt),
+          and(
+            eq(podcastFeeds.createdAt, cursor.createdAt),
+            lt(podcastFeeds.id, cursor.id),
+          ),
+        )!,
+      );
+    }
+
+    const rows = await db()
+      .select()
+      .from(podcastFeeds)
+      .where(and(...conditions))
+      .orderBy(desc(podcastFeeds.createdAt), desc(podcastFeeds.id))
+      .limit(pageSize + 1);
+
+    return buildPage(rows, pageSize);
   }
 
   /** Get a single feed by ID, scoped to user. */
@@ -175,6 +209,43 @@ export abstract class PodcastService {
       .from(podcastEpisodes)
       .where(eq(podcastEpisodes.feedId, feedId))
       .orderBy(podcastEpisodes.createdAt);
+  }
+
+  /** List episodes for a feed with cursor-based pagination. */
+  static async listEpisodesPage(
+    feedId: string,
+    userId: string,
+    query: PodcastModel.ListEpisodesQuery,
+    limit = 50,
+  ) {
+    // Verify feed ownership
+    const feed = await PodcastService.getFeed(feedId, userId);
+    if (!feed) return null;
+
+    const pageSize = Math.max(1, Math.min(limit, 100));
+    const conditions: SQL[] = [eq(podcastEpisodes.feedId, feedId)];
+
+    const cursor = decodeCursor(query.cursor);
+    if (cursor) {
+      conditions.push(
+        or(
+          lt(podcastEpisodes.createdAt, cursor.createdAt),
+          and(
+            eq(podcastEpisodes.createdAt, cursor.createdAt),
+            lt(podcastEpisodes.id, cursor.id),
+          ),
+        )!,
+      );
+    }
+
+    const rows = await db()
+      .select()
+      .from(podcastEpisodes)
+      .where(and(...conditions))
+      .orderBy(desc(podcastEpisodes.createdAt), desc(podcastEpisodes.id))
+      .limit(pageSize + 1);
+
+    return buildPage(rows, pageSize);
   }
 
   /** Get a single episode, verifying feed ownership. */

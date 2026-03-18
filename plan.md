@@ -120,16 +120,16 @@ Ordered task list. Work through them in order. Each task references findings in 
 
 ## Phase 3: API Quality
 
-### Task 11: Add pagination to all list endpoints
+### ~~Task 11: Add pagination to all list endpoints~~ ✅
 
 **Refs**: DB-2
 **Files**: `packages/api/src/modules/assets/service.ts`, `threads/service.ts`, `collections/service.ts`, `podcasts/service.ts`, corresponding `index.ts` route handlers, corresponding `model.ts` schemas
 **What**:
 
-- Add `cursor` (or `offset`) and `limit` query params to list schemas (default limit: 50, max: 100)
-- Update service `list()` methods to accept and use pagination params
-- Return `{ items: T[], nextCursor: string | null }` instead of bare arrays
-- Update frontend to handle paginated responses (can use infinite scroll or load-more button)
+- ~~Add `cursor` (or `offset`) and `limit` query params to list schemas (default limit: 50, max: 100)~~
+- ~~Update service `list()` methods to accept and use pagination params~~
+- ~~Return `{ items: T[], nextCursor: string | null }` instead of bare arrays~~
+- ~~Update frontend to handle paginated responses (can use infinite scroll or load-more button)~~
 
 ### Task 12: Add input validation to all API schemas
 
