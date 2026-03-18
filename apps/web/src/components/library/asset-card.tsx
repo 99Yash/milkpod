@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { FolderPlus } from 'lucide-react';
-import { Badge } from '~/components/ui/badge';
+import { FolderPlus, Play } from 'lucide-react';
 import { route } from '~/lib/routes';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
@@ -132,15 +131,19 @@ export function AssetCard({
         isReady && 'cursor-pointer hover:-translate-y-0.5 card-hover'
       )}
     >
-      {asset.thumbnailUrl && (
-        <div className="aspect-video w-full overflow-hidden rounded-t-xl bg-muted">
+      <div className="aspect-video w-full overflow-hidden rounded-t-xl bg-muted">
+        {asset.thumbnailUrl ? (
           <img
             src={asset.thumbnailUrl}
             alt={asset.title}
             className="h-full w-full object-cover image-inset-outline"
           />
-        </div>
-      )}
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <Play className="size-8 text-muted-foreground/40" />
+          </div>
+        )}
+      </div>
       <DashboardPanelContent className="space-y-2">
         <p className="text-sm font-medium text-foreground line-clamp-2">
           {asset.title}
@@ -156,7 +159,7 @@ export function AssetCard({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-5 w-5 p-0"
+                className="h-6 w-6 p-0 text-muted-foreground"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -169,25 +172,22 @@ export function AssetCard({
             )}
             {isFailed && (
               <Button
-                variant="ghost"
+                variant="destructive"
                 size="sm"
-                className="h-5 px-1.5 text-xs"
+                className="h-6 px-2.5 text-xs"
                 onClick={handleRetry}
                 disabled={retrying}
               >
-                {retrying ? <Spinner className="size-3" /> : 'Retry'}
+                {retrying ? <Spinner className="size-3 mr-1" /> : null}
+                {retrying ? 'Retrying...' : 'Retry'}
               </Button>
             )}
-            <Badge
-              variant={isFailed ? 'destructive' : 'outline'}
-              className={cn(
-                'text-xs',
-                !isFailed && 'border-border/60'
-              )}
-            >
-              {inProgress && <Spinner className="size-3 mr-1" />}
-              {displayLabel}
-            </Badge>
+            {inProgress && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Spinner className="size-3" />
+                {displayLabel}
+              </span>
+            )}
           </div>
         </div>
       </DashboardPanelContent>

@@ -35,7 +35,7 @@ export function WordLimitPicker({ value, onChange }: WordLimitPickerProps) {
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 gap-1.5 rounded-lg px-2.5 text-[13px] text-muted-foreground hover:bg-accent/22 hover:text-foreground data-[state=open]:bg-accent/30 data-[state=open]:text-foreground"
+          className="h-8 gap-1.5 rounded-lg px-3 text-[13px] text-muted-foreground hover:bg-accent/22 hover:text-foreground data-[state=open]:bg-accent/30 data-[state=open]:text-foreground"
         >
           <span className="tabular-nums">{getLabel(value)}</span>
           <ChevronDown className="size-3" />

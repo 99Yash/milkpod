@@ -188,7 +188,7 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
   if (assets.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
-        No videos yet. Paste a YouTube URL above to get started.
+        No media yet. Paste a URL above or upload a file to get started.
       </p>
     );
   }

@@ -4,7 +4,11 @@ import { AssetModel } from './model';
 import { AssetService } from './service';
 import { TranscriptSearchService } from './search-service';
 import { IngestService } from '../ingest/service';
-import { orchestratePipeline, orchestrateUploadPipeline } from '../ingest/pipeline';
+import {
+  orchestrateExternalPipeline,
+  orchestratePipeline,
+  orchestrateUploadPipeline,
+} from '../ingest/pipeline';
 import { assetEvents, emitAssetStatus, type AssetStatusEvent } from '../../events/asset-events';
 import { deleteStoredUpload } from '../ingest/upload-storage';
 
@@ -165,6 +169,11 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     if (asset.status !== 'failed') {
       return status(409, { message: 'Only failed assets can be retried' });
     }
+    if (asset.sourceType === 'podcast') {
+      return status(409, {
+        message: 'Podcast assets must be retried from the podcast episode ingest flow.',
+      });
+    }
     if (!asset.sourceUrl) {
       return status(422, { message: 'Asset has no source URL to retry' });
     }
@@ -179,7 +188,14 @@ export const assets = new Elysia({ prefix: '/api/assets' })
       return { message: 'Retry started' };
     }
 
-    orchestratePipeline(asset.id, asset.sourceUrl, user.id).catch((err) => {
+    if (asset.sourceType === 'youtube') {
+      orchestratePipeline(asset.id, asset.sourceUrl, user.id).catch((err) => {
+        console.error(`Pipeline failed for asset ${asset.id}:`, err instanceof Error ? err.message : String(err));
+      });
+      return { message: 'Retry started' };
+    }
+
+    orchestrateExternalPipeline(asset.id, asset.sourceUrl, user.id, asset.mediaType).catch((err) => {
       console.error(`Pipeline failed for asset ${asset.id}:`, err instanceof Error ? err.message : String(err));
     });
 

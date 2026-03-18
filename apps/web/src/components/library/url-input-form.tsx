@@ -74,18 +74,18 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
         if (handleUpgradeError(error)) return;
         const errVal = error.value;
         toast.error(
-          typeof errVal === 'object' && errVal && 'message' in errVal
-            ? String(errVal.message)
-            : 'Failed to add video'
+            typeof errVal === 'object' && errVal && 'message' in errVal
+              ? String(errVal.message)
+              : 'Failed to add media URL'
         );
         return;
       }
-      const title = data && 'title' in data ? data.title : 'video';
+      const title = data && 'title' in data ? data.title : 'media';
       toast.success(`Added "${title}"`);
       setUrl('');
       onSuccess();
     } catch {
-      toast.error('Failed to add video');
+      toast.error('Failed to add media URL');
     } finally {
       setIsSubmitting(false);
     }
@@ -162,7 +162,7 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
           <Input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="Paste a YouTube URL..."
+            placeholder="Paste a media URL..."
             className="flex-1"
             disabled={isSubmitting}
           />
