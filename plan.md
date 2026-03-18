@@ -152,15 +152,15 @@ Ordered task list. Work through them in order. Each task references findings in 
 - ~~Use consistent HTTP status codes: 400 for validation, 401 for auth, 403 for authorization, 404 for not found, 429 for rate limit~~
 - ~~Update frontend API client to expect this shape~~
 
-### Task 14: Collapse N+1 queries into JOINs
+### ~~Task 14: Collapse N+1 queries into JOINs~~ ✅
 
 **Refs**: DB-3
 **Files**: `packages/api/src/modules/assets/service.ts`, `threads/service.ts`, `shares/service.ts`
 **What**:
 
-- `AssetService.getWithTranscript()`: single query with LEFT JOIN on transcripts and transcript_segments
-- `ThreadService.getWithMessages()`: single query with LEFT JOIN on qa_messages
-- `ShareService.getSharedResource()`: single query joining share_links → assets → transcripts → segments
+- ~~`AssetService.getWithTranscript()`: single query with LEFT JOIN on transcripts and transcript_segments~~
+- ~~`ThreadService.getWithMessages()`: single query with LEFT JOIN on qa_messages~~
+- ~~`ShareService.getSharedResource()`: single query joining share_links → assets → transcripts → segments~~
 
 ### Task 15: Wrap multi-step writes in transactions
 

@@ -213,3 +213,45 @@ Reviewed by hand before loop.sh — these issues exist in the current diff and s
 - **No console.log in production**: None added ✅
 - **TypeScript**: ApiError class hierarchy uses proper inheritance with readonly properties. No type assertions needed ✅
 - **Reuse existing utilities**: Error classes are designed for Task 37's `resolveOwned()` helper. The error handler is a single Elysia plugin, composable via `.use()` ✅
+
+---
+
+## Task 14: Collapse N+1 queries into JOINs ✅
+
+### Issues found and fixed:
+1. `packages/api/src/modules/assets/service.ts:191-223` — `AssetService.getWithTranscript()` made 3 sequential queries: (1) `getById` → SELECT from media_assets, (2) SELECT all transcripts for the asset, (3) SELECT all segments for all transcripts. These 3 round trips are unnecessary since the data can be fetched in a single query. **Fixed:** Replaced with a single SELECT using LEFT JOIN: `media_assets LEFT JOIN transcripts LEFT JOIN transcript_segments`, ordered by `desc(transcripts.createdAt), desc(transcripts.id), transcriptSegments.startTime`. Rows are grouped in JS by transcript ID (Map preserves insertion order = createdAt DESC), then the "prefer transcript with segments" logic iterates the map to find the first transcript with segments — identical behavior to the original 3-query version.
+
+2. `packages/api/src/modules/threads/service.ts:83-94` — `ThreadService.getWithMessages()` made 2 sequential queries: (1) `getById` → SELECT from qa_threads, (2) SELECT all messages for the thread. **Fixed:** Replaced with a single SELECT using LEFT JOIN: `qa_threads LEFT JOIN qa_messages`, ordered by `qaMessages.createdAt`. Messages are extracted from joined rows via `flatMap` with null filtering.
+
+3. `packages/api/src/modules/shares/service.ts:103-131` — `ShareService.getSharedResource()` asset path made 3 sequential queries after token validation: (1) SELECT asset, (2) SELECT transcript, (3) SELECT segments. **Fixed:** Replaced with a single SELECT using LEFT JOIN: `media_assets LEFT JOIN transcripts LEFT JOIN transcript_segments`, ordered by `desc(transcripts.createdAt), desc(transcripts.id), transcriptSegments.startTime`. Uses the latest transcript and filters segments to only those belonging to it. Also fixed non-deterministic transcript selection — old code had no ORDER BY on the transcript query, new code consistently selects the latest.
+
+4. `packages/api/src/modules/shares/service.ts:134-166` — `ShareService.getSharedResource()` collection path made 2 sequential queries after token validation: (1) SELECT collection, (2) SELECT items INNER JOIN assets. **Fixed:** Replaced with a single SELECT using LEFT JOIN: `collections LEFT JOIN collection_items LEFT JOIN media_assets`, ordered by `collectionItems.position`. Items with deleted assets (null asset) are filtered out in JS, matching the old INNER JOIN behavior.
+
+### Query reduction summary:
+| Method | Before | After |
+|--------|--------|-------|
+| `AssetService.getWithTranscript()` | 3 queries | 1 query |
+| `ThreadService.getWithMessages()` | 2 queries | 1 query |
+| `ShareService.getSharedResource()` (asset) | 4 queries | 2 queries (validateToken + JOIN) |
+| `ShareService.getSharedResource()` (collection) | 3 queries | 2 queries (validateToken + JOIN) |
+
+### Issues noted (no fix needed):
+1. `AssetService.getTranscriptLanguage()` (line 225-252) also makes 2 sequential queries with the same "prefer transcript with segments" pattern. Not in the task scope, but could be collapsed into a single LEFT JOIN query with a GROUP BY to detect which transcripts have segments. Listed for Task 34 which will address remaining query patterns via Drizzle relational API.
+2. `ShareService.validateToken()` is kept as a separate query (not merged into the JOIN) because: (a) it determines the share type (asset vs collection), which controls which JOIN structure to use; (b) it's called independently by other methods (`checkRateLimit`, `logQuery`); (c) it performs JS-level expiry checking that must run before any data fetching.
+3. The LEFT JOIN approach for `getWithTranscript` fetches segments for ALL transcripts even though only one transcript's segments are used. For the common case (1 transcript per asset), this is zero overhead. For rare multi-transcript assets (re-transcription), the extra segments are filtered in JS with negligible cost compared to the round-trip savings.
+
+### Library verification:
+- **Drizzle LEFT JOIN types**: Verified via `.d.ts` that `leftJoin()` produces `Table | null` at the table level (not field-level nullability). The `ApplyNullability` type in `select.types.d.ts` wraps the entire table result with `| null`. This means `row.transcript` is `Transcript | null` (not `{ id: string | null, ... }`), enabling clean null checks.
+- **Map insertion order**: ECMAScript guarantees Map iteration follows insertion order. Combined with `ORDER BY desc(transcripts.createdAt), desc(transcripts.id)`, the first Map entry is always the latest transcript. This preserves the "prefer transcript with segments" traversal order.
+- **Drizzle relational queries**: Not used because no `relations()` are defined in the schema yet (Task 34). The standard query builder with LEFT JOINs achieves the same result. Task 34 will define relations and potentially simplify these queries further using `db.query.table.findFirst({ with: { ... } })`.
+
+### Checklist verification:
+- **No N+1 queries**: All multi-query patterns collapsed into single JOIN queries. No loops contain database queries ✅
+- **Auth/authorization**: `getWithTranscript` and `getWithMessages` still enforce userId in WHERE clause. `getSharedResource` uses validated share token ✅
+- **No secrets in error responses**: No changes to error handling paths ✅
+- **TypeScript**: No `any` types. Used `NonNullable<Row['transcript']>` for type-safe null narrowing in Map entries. Local `type Row` alias keeps the generic types readable ✅
+- **No unjustified `!`**: All `!` assertions are guarded: `rows[0]!` after `rows.length === 0` check, `transcriptMap.get(id)!` after `has(id)` check, `latest!` after map confirmed non-empty by the `if (!rows[0]!.transcript)` early return ✅
+- **No console.log in production**: None added ✅
+- **Proper error handling**: Return types unchanged (`AssetWithTranscript | null`, `ThreadWithMessages | null`, `SharedResourceResult | null`). All callers unaffected ✅
+- **No magic numbers**: No new constants needed ✅
+- **Reuse existing utilities**: `desc`, `eq`, `and` from drizzle-orm. No new abstractions — JOIN reconstruction is inline and method-specific ✅

@@ -189,37 +189,53 @@ export abstract class AssetService {
   }
 
   static async getWithTranscript(id: string, userId: string): Promise<AssetWithTranscript | null> {
-    const asset = await AssetService.getById(id, userId);
-    if (!asset) return null;
+    const rows = await db()
+      .select({
+        asset: mediaAssets,
+        transcript: transcripts,
+        segment: transcriptSegments,
+      })
+      .from(mediaAssets)
+      .leftJoin(transcripts, eq(transcripts.assetId, mediaAssets.id))
+      .leftJoin(transcriptSegments, eq(transcriptSegments.transcriptId, transcripts.id))
+      .where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)))
+      .orderBy(desc(transcripts.createdAt), desc(transcripts.id), transcriptSegments.startTime);
 
-    const transcriptRows = await db()
-      .select()
-      .from(transcripts)
-      .where(eq(transcripts.assetId, id))
-      .orderBy(desc(transcripts.createdAt));
+    if (rows.length === 0) return null;
 
-    const latestTranscript = transcriptRows[0];
-    if (!latestTranscript) return { ...asset, transcript: null, segments: [] };
+    const asset = AssetService.sanitize(rows[0]!.asset);
 
-    const transcriptIds = transcriptRows.map((row) => row.id);
-    const allSegments = await db()
-      .select()
-      .from(transcriptSegments)
-      .where(inArray(transcriptSegments.transcriptId, transcriptIds))
-      .orderBy(transcriptSegments.transcriptId, transcriptSegments.startTime);
+    if (!rows[0]!.transcript) {
+      return { ...asset, transcript: null, segments: [] };
+    }
 
-    const segmentsByTranscript = Map.groupBy(
-      allSegments,
-      (segment) => segment.transcriptId,
-    );
+    // Group segments by transcript, preserving insertion order (createdAt DESC)
+    type Row = (typeof rows)[number];
+    const transcriptMap = new Map<string, {
+      transcript: NonNullable<Row['transcript']>;
+      segments: NonNullable<Row['segment']>[];
+    }>();
 
-    const transcript =
-      transcriptRows.find((row) => (segmentsByTranscript.get(row.id)?.length ?? 0) > 0)
-      ?? latestTranscript;
+    for (const row of rows) {
+      if (!row.transcript) continue;
+      if (!transcriptMap.has(row.transcript.id)) {
+        transcriptMap.set(row.transcript.id, { transcript: row.transcript, segments: [] });
+      }
+      if (row.segment) {
+        transcriptMap.get(row.transcript.id)!.segments.push(row.segment);
+      }
+    }
 
-    const segments = segmentsByTranscript.get(transcript.id) ?? [];
+    // Prefer most recent transcript that has segments (Map order = createdAt DESC)
+    for (const entry of transcriptMap.values()) {
+      if (entry.segments.length > 0) {
+        return { ...asset, transcript: entry.transcript, segments: entry.segments };
+      }
+    }
 
-    return { ...asset, transcript, segments };
+    // All transcripts empty — use the latest
+    const latest = transcriptMap.values().next().value!;
+    return { ...asset, transcript: latest.transcript, segments: [] };
   }
 
   static async getTranscriptLanguage(assetId: string): Promise<string | null> {

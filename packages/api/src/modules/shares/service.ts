@@ -9,7 +9,7 @@ import {
   transcriptSegments,
   user,
 } from '@milkpod/db/schemas';
-import { and, eq, gte, isNull, count } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, count } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import type { ShareLink, SharedResourceResult } from '../../types';
 import type { ShareModel } from './model';
@@ -101,62 +101,73 @@ export abstract class ShareService {
     if (!link) return null;
 
     if (link.assetId) {
-      const [asset] = await db()
-        .select()
+      // Single JOIN: asset + transcripts + segments (was 3 sequential queries)
+      const rows = await db()
+        .select({
+          asset: mediaAssets,
+          transcript: transcripts,
+          segment: transcriptSegments,
+        })
         .from(mediaAssets)
-        .where(eq(mediaAssets.id, link.assetId));
-      if (!asset) return null;
+        .leftJoin(transcripts, eq(transcripts.assetId, mediaAssets.id))
+        .leftJoin(transcriptSegments, eq(transcriptSegments.transcriptId, transcripts.id))
+        .where(eq(mediaAssets.id, link.assetId))
+        .orderBy(desc(transcripts.createdAt), desc(transcripts.id), transcriptSegments.startTime);
 
-      // Load transcript + segments for the shared asset
-      const [transcript] = await db()
-        .select()
-        .from(transcripts)
-        .where(eq(transcripts.assetId, link.assetId));
-
-      const segments = transcript
-        ? await db()
-            .select()
-            .from(transcriptSegments)
-            .where(eq(transcriptSegments.transcriptId, transcript.id))
-            .orderBy(transcriptSegments.startTime)
-        : [];
+      if (rows.length === 0) return null;
 
       // Strip internal error details before returning to the client
-      const { lastError: _, visualLastError: __, ...safeAsset } = asset;
+      const { lastError: _, visualLastError: __, ...safeAsset } = rows[0]!.asset;
+      const asset = { ...safeAsset, lastError: null, visualLastError: null };
+
+      const transcript = rows[0]!.transcript ?? null;
+      const transcriptId = transcript?.id;
+      const segments = transcriptId
+        ? rows.flatMap((row) =>
+            row.segment && row.transcript?.id === transcriptId ? [row.segment] : [],
+          )
+        : [];
 
       return {
         link,
-        resource: { ...safeAsset, lastError: null, visualLastError: null, transcript: transcript ?? null, segments },
+        resource: { ...asset, transcript, segments },
         type: 'asset' as const,
       };
     }
 
     if (link.collectionId) {
-      const [collection] = await db()
-        .select()
-        .from(collections)
-        .where(eq(collections.id, link.collectionId));
-      if (!collection) return null;
-
-      // Load collection items with asset info
-      const items = await db()
+      // Single JOIN: collection + items + assets (was 2 sequential queries)
+      const rows = await db()
         .select({
-          id: collectionItems.id,
-          position: collectionItems.position,
-          asset: {
-            id: mediaAssets.id,
-            title: mediaAssets.title,
-            sourceType: mediaAssets.sourceType,
-            mediaType: mediaAssets.mediaType,
-            status: mediaAssets.status,
-            thumbnailUrl: mediaAssets.thumbnailUrl,
-            duration: mediaAssets.duration,
-          },
+          collection: collections,
+          item: collectionItems,
+          asset: mediaAssets,
         })
-        .from(collectionItems)
-        .innerJoin(mediaAssets, eq(collectionItems.assetId, mediaAssets.id))
-        .where(eq(collectionItems.collectionId, link.collectionId))
+        .from(collections)
+        .leftJoin(collectionItems, eq(collectionItems.collectionId, collections.id))
+        .leftJoin(mediaAssets, eq(mediaAssets.id, collectionItems.assetId))
+        .where(eq(collections.id, link.collectionId))
         .orderBy(collectionItems.position);
+
+      if (rows.length === 0) return null;
+
+      const collection = rows[0]!.collection;
+      const items = rows.flatMap((row) => {
+        if (!row.item || !row.asset) return [];
+        return [{
+          id: row.item.id,
+          position: row.item.position,
+          asset: {
+            id: row.asset.id,
+            title: row.asset.title,
+            sourceType: row.asset.sourceType,
+            mediaType: row.asset.mediaType,
+            status: row.asset.status,
+            thumbnailUrl: row.asset.thumbnailUrl,
+            duration: row.asset.duration,
+          },
+        }];
+      });
 
       return {
         link,
