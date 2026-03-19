@@ -3,7 +3,7 @@
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import type { MilkpodMessage } from '@milkpod/ai/types';
 import { isToolUIPart } from 'ai';
-import { BrainCircuit, Languages } from 'lucide-react';
+import { BrainCircuit, Languages, RotateCcw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Components } from 'streamdown';
 import { Streamdown } from 'streamdown';
@@ -87,9 +87,10 @@ function isNonLatinText(text: string): boolean {
 interface ChatMessageProps {
   message: MilkpodMessage;
   isStreaming?: boolean;
+  onRetry?: () => void;
 }
 
-export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
+export function ChatMessage({ message, isStreaming, onRetry }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const assetSource = useAssetSource();
   const [partsRef] = useAutoAnimate({
@@ -434,25 +435,39 @@ export function ChatMessage({ message, isStreaming }: ChatMessageProps) {
           );
         })}
 
-        {/* Translate toggle */}
-        {showTranslateButton && (
-          <button
-            type="button"
-            onClick={handleTranslateToggle}
-            disabled={translationState === 'streaming'}
-            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-50"
-          >
-            {translationState === 'streaming' ? (
-              <Spinner className="size-3" />
-            ) : (
-              <Languages className="size-3" />
+        {/* Message actions (translate + retry) */}
+        {(showTranslateButton || onRetry) && (
+          <div className="flex items-center gap-1">
+            {showTranslateButton && (
+              <button
+                type="button"
+                onClick={handleTranslateToggle}
+                disabled={translationState === 'streaming'}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-50"
+              >
+                {translationState === 'streaming' ? (
+                  <Spinner className="size-3" />
+                ) : (
+                  <Languages className="size-3" />
+                )}
+                {translationState === 'streaming'
+                  ? 'Translating...'
+                  : showTranslation
+                    ? 'Show original'
+                    : 'Translate'}
+              </button>
             )}
-            {translationState === 'streaming'
-              ? 'Translating...'
-              : showTranslation
-                ? 'Show original'
-                : 'Translate'}
-          </button>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+              >
+                <RotateCcw className="size-3" />
+                Retry
+              </button>
+            )}
+          </div>
         )}
 
         {/* Initial thinking state (before any parts arrive) */}
