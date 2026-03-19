@@ -258,7 +258,7 @@ function ChatPanelContent({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { modelId, setModelId, wordLimit, setWordLimit } = useChatSettings();
 
-  const { messages, setMessages, sendMessage, clearError, stop, status, error, threadId: chatThreadId, wordsRemaining, plan: chatPlan, isAdmin: chatIsAdmin } = useMilkpodChat({
+  const { messages, setMessages, sendMessage, clearError, stop, regenerate, status, error, threadId: chatThreadId, wordsRemaining, plan: chatPlan, isAdmin: chatIsAdmin } = useMilkpodChat({
     threadId,
     assetId,
     collectionId,
@@ -508,17 +508,27 @@ function ChatPanelContent({
               </div>
             ) : (
               <div className="space-y-2 py-4">
-                {messages.map((message, i) => (
-                  <ChatMessage
-                    key={message.id}
-                    message={message}
-                    isStreaming={
-                      isLoading &&
-                      message.role === 'assistant' &&
-                      i === messages.length - 1
-                    }
-                  />
-                ))}
+                {messages.map((message, i) => {
+                  const isLast = i === messages.length - 1;
+                  return (
+                    <ChatMessage
+                      key={message.id}
+                      message={message}
+                      isStreaming={
+                        isLoading &&
+                        message.role === 'assistant' &&
+                        isLast
+                      }
+                      onRetry={
+                        !isLoading &&
+                        message.role === 'assistant' &&
+                        isLast
+                          ? () => regenerate({ messageId: message.id })
+                          : undefined
+                      }
+                    />
+                  );
+                })}
                 {isLoading && messages.at(-1)?.role !== 'assistant' && (
                   <div className="flex gap-3 py-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
                     <AiAvatar />
