@@ -16,6 +16,7 @@ import { ShimmerText } from './shimmer-text';
 import { WordLimitPicker } from './word-limit-picker';
 import { DailyQuota } from './daily-quota';
 import type { MilkpodMessage } from '@milkpod/ai/types';
+import { MODEL_REGISTRY, getFallbackModelId, type ModelId } from '@milkpod/ai/models';
 import {
   fetchChatMessages,
   fetchLatestThreadForAsset,
@@ -297,7 +298,30 @@ function ChatPanelContent({
   // Unsend: on error, remove the failed user message and restore it to the input box
   useEffect(() => {
     if (!error) return;
-    toast.error(error.message || 'An error occurred');
+
+    const raw = error.message || 'An error occurred';
+    const suggestFallback = raw.endsWith('[fallback]');
+    const message = suggestFallback ? raw.replace(' [fallback]', '') : raw;
+
+    const fallbackId = suggestFallback
+      ? getFallbackModelId(modelId, allowedModelIds)
+      : null;
+    const fallbackModel = fallbackId
+      ? MODEL_REGISTRY.find((m) => m.id === fallbackId)
+      : null;
+
+    toast.error(message);
+
+    if (fallbackModel) {
+      toast(`${fallbackModel.name} is available`, {
+        description: 'Switch models and resend your message.',
+        action: {
+          label: `Use ${fallbackModel.name}`,
+          onClick: () => setModelId(fallbackId as ModelId),
+        },
+        duration: 8000,
+      });
+    }
 
     const lastMsg = messages.at(-1);
     if (lastMsg?.role === 'user') {
@@ -308,7 +332,7 @@ function ChatPanelContent({
       setMessages(messages.slice(0, -1));
     }
     clearError();
-  }, [error, messages, setMessages, clearError]);
+  }, [error, messages, setMessages, clearError, modelId, allowedModelIds, setModelId]);
 
   useEffect(() => {
     if (!chatThreadId) return;
