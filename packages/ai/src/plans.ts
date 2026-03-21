@@ -56,16 +56,14 @@ export type PlanEntitlements = {
 };
 
 const FREE_MODEL_IDS = [
-  'openai:gpt-4.1-mini',
+  'openai:gpt-5.4-mini',
   'google:gemini-2.5-flash',
   'google:gemini-2.0-flash',
 ];
 
 const ALL_MODEL_IDS = [
-  'openai:gpt-5.2',
-  'openai:gpt-4.1',
-  'openai:gpt-4.1-mini',
-  'openai:o4-mini',
+  'openai:gpt-5.4-mini',
+  'anthropic:claude-sonnet-4-6',
   'google:gemini-2.5-pro',
   'google:gemini-2.5-flash',
   'google:gemini-2.0-flash',

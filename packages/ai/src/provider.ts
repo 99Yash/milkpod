@@ -2,7 +2,7 @@ import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
 import type { EmbeddingModel, LanguageModel } from 'ai';
 
-export const chatModel: LanguageModel = openai('gpt-5.2');
+export const chatModel: LanguageModel = openai('gpt-5.4-mini');
 
 /** Cheap, fast model used for lightweight tasks like title generation. */
 export const fastModel: LanguageModel = google('gemini-2.5-flash-lite');
