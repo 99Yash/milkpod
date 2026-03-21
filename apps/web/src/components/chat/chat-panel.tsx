@@ -12,10 +12,12 @@ import { useChatSettings } from '~/hooks/use-chat-settings';
 import { AiAvatar } from './ai-avatar';
 import { ChatMessage } from './message';
 import { ModelPicker } from './model-picker';
+import { RetrySendButton } from './retry-send-button';
 import { ShimmerText } from './shimmer-text';
 import { WordLimitPicker } from './word-limit-picker';
 import { DailyQuota } from './daily-quota';
 import type { MilkpodMessage } from '@milkpod/ai/types';
+import { MODEL_REGISTRY, getFallbackModelId, type ModelId } from '@milkpod/ai/models';
 import {
   fetchChatMessages,
   fetchLatestThreadForAsset,
@@ -253,6 +255,7 @@ function ChatPanelContent({
   onThreadCreated?: (threadId: string, title?: string | null) => void;
 }) {
   const [input, setInput] = useState('');
+  const [showRetry, setShowRetry] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -297,7 +300,28 @@ function ChatPanelContent({
   // Unsend: on error, remove the failed user message and restore it to the input box
   useEffect(() => {
     if (!error) return;
-    toast.error(error.message || 'An error occurred');
+
+    const raw = error.message || 'An error occurred';
+    const suggestFallback = raw.endsWith('[fallback]');
+    const message = suggestFallback ? raw.replace(' [fallback]', '') : raw;
+
+    if (suggestFallback) {
+      const fallbackId = getFallbackModelId(modelId, allowedModelIds);
+      const fallbackName = fallbackId
+        ? MODEL_REGISTRY.find((m) => m.id === fallbackId)?.name
+        : null;
+
+      toast.error(message, {
+        description: fallbackName
+          ? `${fallbackName} is available — use the retry button to switch.`
+          : undefined,
+        duration: 6000,
+      });
+    } else {
+      toast.error(message);
+    }
+
+    setShowRetry(suggestFallback);
 
     const lastMsg = messages.at(-1);
     if (lastMsg?.role === 'user') {
@@ -308,7 +332,7 @@ function ChatPanelContent({
       setMessages(messages.slice(0, -1));
     }
     clearError();
-  }, [error, messages, setMessages, clearError]);
+  }, [error, messages, setMessages, clearError, modelId, allowedModelIds]);
 
   useEffect(() => {
     if (!chatThreadId) return;
@@ -421,6 +445,7 @@ function ChatPanelContent({
       }
       const trimmed = input.trim();
       if (!trimmed || isLoading) return;
+      setShowRetry(false);
       setInput('');
       sendMessage({ text: trimmed });
     },
@@ -608,6 +633,20 @@ function ChatPanelContent({
                 >
                   <Square className="size-3 fill-current" />
                 </Button>
+              ) : showRetry && input.trim() ? (
+                <RetrySendButton
+                  currentModelId={modelId}
+                  allowedModelIds={allowedModelIds}
+                  disabled={!input.trim()}
+                  onRetry={(switchModelId) => {
+                    if (switchModelId) setModelId(switchModelId);
+                    setShowRetry(false);
+                    const trimmed = input.trim();
+                    if (!trimmed) return;
+                    setInput('');
+                    sendMessage({ text: trimmed });
+                  }}
+                />
               ) : (
                 <Button
                   type="submit"

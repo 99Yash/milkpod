@@ -12,39 +12,21 @@ export interface ModelDescriptor {
 
 export const MODEL_REGISTRY: ModelDescriptor[] = [
   {
-    id: 'openai:gpt-5.2',
-    name: 'GPT-5.2',
+    id: 'openai:gpt-5.4-mini',
+    name: 'GPT-5.4 Mini',
     provider: 'OpenAI',
-    description: 'Most capable model. Best for complex analysis and nuanced questions.',
-    speed: 3,
-    intelligence: 5,
+    description: 'Fast and capable. Great for quick lookups and detailed answers.',
+    speed: 5,
+    intelligence: 4,
     isDefault: true,
   },
   {
-    id: 'openai:gpt-4.1',
-    name: 'GPT-4.1',
-    provider: 'OpenAI',
-    description: 'Strong all-rounder. Great for detailed answers with good speed.',
+    id: 'anthropic:claude-sonnet-4-6',
+    name: 'Claude Sonnet 4.6',
+    provider: 'Anthropic',
+    description: 'Excellent reasoning and analysis. Strong at nuanced questions.',
     speed: 4,
-    intelligence: 4,
-    isDefault: false,
-  },
-  {
-    id: 'openai:gpt-4.1-mini',
-    name: 'GPT-4.1 Mini',
-    provider: 'OpenAI',
-    description: 'Fast and efficient. Great for quick lookups and simple questions.',
-    speed: 5,
-    intelligence: 3,
-    isDefault: false,
-  },
-  {
-    id: 'openai:o4-mini',
-    name: 'o4 Mini',
-    provider: 'OpenAI',
-    description: 'Compact reasoning model. Thinks step-by-step for accurate answers.',
-    speed: 4,
-    intelligence: 4,
+    intelligence: 5,
     isDefault: false,
   },
   {
@@ -84,3 +66,23 @@ export const VALID_MODEL_IDS = MODEL_REGISTRY.map((m) => m.id) as [string, ...st
 export const modelIdSchema = z.enum(VALID_MODEL_IDS);
 
 export type ModelId = z.infer<typeof modelIdSchema>;
+
+/**
+ * Return the best alternative model from a different provider.
+ * Prefers models with the highest intelligence score that the user's plan allows.
+ */
+export function getFallbackModelId(
+  currentId: string,
+  allowedIds?: string[] | null,
+): ModelId | null {
+  const current = MODEL_REGISTRY.find((m) => m.id === currentId);
+  const currentProvider = current?.provider;
+
+  const candidates = MODEL_REGISTRY
+    .filter((m) => m.id !== currentId)
+    .filter((m) => m.provider !== currentProvider)
+    .filter((m) => !allowedIds || allowedIds.includes(m.id))
+    .sort((a, b) => b.intelligence - a.intelligence || b.speed - a.speed);
+
+  return (candidates[0]?.id as ModelId) ?? null;
+}
