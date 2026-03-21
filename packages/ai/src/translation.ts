@@ -1,6 +1,5 @@
 import { streamText } from 'ai';
 import { visualModel } from './provider';
-import { sanitizeStreamError } from './errors';
 
 /**
  * Streams a translation, returning the Response for the client and a promise
@@ -18,10 +17,5 @@ export function streamTranslation(
     },
   });
 
-  return {
-    response: result.toTextStreamResponse({
-      onError: (error) => sanitizeStreamError(error).message,
-    }),
-    text: result.text,
-  };
+  return { response: result.toTextStreamResponse(), text: result.text };
 }
