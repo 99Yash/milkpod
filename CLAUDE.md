@@ -125,6 +125,7 @@ See `review-prompt.md` for the full checklist, library-specific guidance, and hi
 - `UPLOAD_STORAGE_FORCE_PATH_STYLE` - `true` for path-style S3 providers, else `false`
 - `UPLOAD_STORAGE_SIGNED_URL_TTL_SECONDS` - Lifetime for signed download URLs used in ingest
 - `OPENAI_API_KEY` - Used by `@ai-sdk/openai` in `@milkpod/ai` (provider reads from process env)
+- `ANTHROPIC_API_KEY` - Used by `@ai-sdk/anthropic` in `@milkpod/ai` (provider reads from process env)
 - `GOOGLE_GENERATIVE_AI_API_KEY` - Used by `@ai-sdk/google` in `@milkpod/ai` (provider reads from process env)
 - `RESEND_API_KEY` - Required for sending email OTP codes via Resend
 - `AUTH_FROM_EMAIL` - Optional sender identity for OTP emails (defaults to `Milkpod <noreply@croisillies.xyz>`)

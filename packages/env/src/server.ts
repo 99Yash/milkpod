@@ -34,6 +34,7 @@ const serverEnvSchema = z
     RAW_MEDIA_RETENTION_DAYS: z.coerce.number().int().min(1).default(90),
     // AI SDK provider keys
     OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
+    ANTHROPIC_API_KEY: z.string().min(1, 'ANTHROPIC_API_KEY is required'),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1, 'GOOGLE_GENERATIVE_AI_API_KEY is required'),
     // Billing provider — set to 'polar' to enable billing routes
     BILLING_PROVIDER: z.enum(['polar', 'razorpay']).optional(),

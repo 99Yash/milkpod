@@ -18,11 +18,13 @@ import {
 } from '~/components/ui/command';
 import { cn } from '~/lib/utils';
 import { MODEL_REGISTRY, type ModelDescriptor, type ModelId } from '@milkpod/ai/models';
-import { GoogleG, OpenAILogo } from '~/components/ui/icons';
+import { AnthropicLogo, GoogleG, OpenAILogo } from '~/components/ui/icons';
 import { toast } from 'sonner';
 
 function ProviderIcon({ provider, className }: { provider: string; className?: string }) {
   switch (provider) {
+    case 'Anthropic':
+      return <AnthropicLogo className={className} />;
     case 'OpenAI':
       return <OpenAILogo className={className} />;
     case 'Google':
