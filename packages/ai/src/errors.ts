@@ -64,9 +64,9 @@ export function classifyAPICallError(
   const data = error.data as Record<string, unknown> | undefined;
   const inner = data?.error as Record<string, unknown> | undefined;
 
-  const errorType = (inner?.type as string | undefined)?.toLowerCase();
-  const errorCode = String(inner?.code ?? '').toLowerCase();
-  const errorStatus = (inner?.status as string | undefined)?.toUpperCase();
+  const errorType = typeof inner?.type === 'string' ? inner.type.toLowerCase() : undefined;
+  const errorCode = typeof inner?.code === 'string' ? inner.code.toLowerCase() : '';
+  const errorStatus = typeof inner?.status === 'string' ? inner.status.toUpperCase() : undefined;
 
   // Rate-limit / quota (429 or provider-level type)
   if (status === 429) return 'rate_limit';
