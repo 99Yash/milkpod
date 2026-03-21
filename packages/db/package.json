@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@milkpod/config": "workspace:*",
-    "@types/pg": "^8.15.6",
+    "@types/pg": "^8.18.0",
     "ai": "catalog:",
     "drizzle-kit": "^0.31.2",
     "nanoid": "5.1.5",
