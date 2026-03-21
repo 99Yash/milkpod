@@ -10,8 +10,14 @@ export function useChatSettings() {
   const [wordLimit, setWordLimitState] = useState<number | null>(DEFAULT_WORD_LIMIT);
 
   useEffect(() => {
+    // getLocalStorageItem uses safeParse — invalid stored IDs (e.g. removed
+    // models) fall back to DEFAULT_MODEL_ID. Persist the resolved value so
+    // stale entries don't linger.
     const storedModel = getLocalStorageItem('CHAT_MODEL_ID', DEFAULT_MODEL_ID);
-    if (storedModel != null) setModelIdState(storedModel);
+    if (storedModel != null) {
+      setModelIdState(storedModel);
+      setLocalStorageItem('CHAT_MODEL_ID', storedModel);
+    }
 
     const storedLimit = getLocalStorageItem('CHAT_WORD_LIMIT', DEFAULT_WORD_LIMIT);
     if (storedLimit !== undefined) setWordLimitState(storedLimit);
