@@ -78,7 +78,7 @@ export function buildSystemPrompt(context: SystemPromptContext = {}): string {
     !context.transcriptLanguage.toLowerCase().startsWith('en')
   ) {
     parts.push(
-      `<language_guidance>The transcript is in "${context.transcriptLanguage}". Match the language of the user's message when responding. If the user writes in this language, respond in the same language. Only switch languages if the user explicitly requests it.</language_guidance>`
+      `<language_guidance>The transcript is in "${context.transcriptLanguage}". By default, respond in this language using its native script (e.g. Devanagari for Hindi, Arabic script for Arabic, Hangul for Korean — never romanized transliterations). This applies to your entire response — both quoted transcript content and your own commentary. Do not auto-translate into English just because the user writes in English; a separate translate button is available for that. However, if the user explicitly asks you to respond in a specific language, honour that request.</language_guidance>`
     );
   }
 
