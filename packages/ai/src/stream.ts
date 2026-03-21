@@ -3,17 +3,18 @@ import {
   convertToModelMessages,
   stepCountIs,
   validateUIMessages,
-  RetryError,
+  APICallError,
   generateId,
 } from 'ai';
 import type { LanguageModel } from 'ai';
+import { anthropic } from '@ai-sdk/anthropic';
 import { openai } from '@ai-sdk/openai';
 import { google } from '@ai-sdk/google';
 import type { MilkpodMessage } from './types';
 import { createQAToolSet } from './tools';
 import { buildSystemPrompt } from './system-prompt';
 import { chatMetadataSchema } from './schemas';
-import { AIError } from './errors';
+import { sanitizeStreamError } from './errors';
 import { checkInput, createRefusalResponse } from './guardrails';
 import { DEFAULT_MODEL_ID, modelIdSchema, type ModelId } from './models';
 import { HARD_WORD_CAP, wordLimitToMaxTokens } from './limits';
@@ -24,6 +25,8 @@ function resolveModel(id: ModelId): LanguageModel {
   const model = id.slice(sep + 1);
 
   switch (provider) {
+    case 'anthropic':
+      return anthropic(model);
     case 'openai':
       return openai(model);
     case 'google':
@@ -128,16 +131,12 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
       ? Math.max(1, Math.min(req.wordLimit, HARD_WORD_CAP))
       : HARD_WORD_CAP;
 
-  const formatStreamError = (error: unknown) =>
-    error instanceof Error && error.name === 'AbortError'
-      ? 'Response timed out. Please try again.'
-      : RetryError.isInstance(error)
-        ? 'Unable to complete the request. Please try again.'
-        : error instanceof AIError
-          ? error.message
-          : error instanceof Error
-            ? error.message
-            : 'An error occurred.';
+  const formatStreamError = (error: unknown): string => {
+    const sanitized = sanitizeStreamError(error);
+    return sanitized.suggestFallback
+      ? `${sanitized.message} [fallback]`
+      : sanitized.message;
+  };
 
   const result = streamText({
     model,
@@ -153,8 +152,12 @@ export async function createChatStream(req: ChatRequest): Promise<Response> {
     maxOutputTokens: wordLimitToMaxTokens(effectiveWordLimit),
     stopWhen: [stepCountIs(5)],
     timeout: { totalMs: 120_000, chunkMs: 30_000 },
-    onError: (error) => {
-      console.error('[AI Stream Error]', error);
+    onError: ({ error }) => {
+      if (APICallError.isInstance(error)) {
+        console.error('[AI Stream Error]', error.statusCode, error.message);
+      } else {
+        console.error('[AI Stream Error]', error instanceof Error ? error.message : 'Unknown error');
+      }
     },
     onFinish: async ({ steps, text, finishReason }) => {
       if (!req.onFinish) return;

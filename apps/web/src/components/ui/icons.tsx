@@ -173,6 +173,22 @@ export function GoogleG(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+export const AnthropicLogo: React.FC<{ className?: string }> = ({ className }) => (
+  <svg
+    width="14"
+    height="14"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 46 32"
+    className={cn('fill-current', className)}
+  >
+    <path
+      d="M32.73 0H26.17l7.27 32h6.56L32.73 0ZM13.27 0 0 32h6.77l2.72-6.95h13.27L25.5 32h6.77L19.04 0h-5.77Zm-.36 19.57 4.22-10.79 4.22 10.79H12.9Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
 export const OpenAILogo: React.FC<{ className?: string }> = ({ className }) => (
   <svg
     width="14"

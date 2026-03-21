@@ -23,6 +23,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "catalog:",
     "@ai-sdk/openai": "catalog:",
     "@ai-sdk/google": "catalog:",
     "@milkpod/db": "workspace:*",
