@@ -101,6 +101,7 @@ async function finalizePipeline(
   provider: string,
   retry: ReturnType<typeof makeRetry>,
   metadata?: { transcriptionMethod: TranscriptionMethod; fallbackReason?: string },
+  onHeartbeat?: () => Promise<void>,
 ) {
   // Ensure we never finalize an empty transcript
   const source: 'audio' | 'captions' =
@@ -133,6 +134,7 @@ async function finalizePipeline(
     assetId,
     storedSegments,
     retry,
+    onHeartbeat,
   });
 
   // Mark as ready
@@ -378,7 +380,7 @@ export async function orchestratePipeline(
       const { language, segments, provider } = await transcribeViaCaptions(sourceUrl, retry);
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'captions',
-      });
+      }, heartbeat);
       triggerVisualExtraction(assetId, sourceUrl, userId, segments);
       return;
     }
@@ -390,7 +392,7 @@ export async function orchestratePipeline(
       const { language, segments, provider } = await transcribeViaAudio(sourceUrl, retry, heartbeat);
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'audio',
-      });
+      }, heartbeat);
       triggerVisualExtraction(assetId, sourceUrl, userId, segments);
       return;
     } catch (err) {
@@ -406,7 +408,7 @@ export async function orchestratePipeline(
     await finalizePipeline(assetId, userId, language, segments, provider, retry, {
       transcriptionMethod: 'audio_fallback_to_captions',
       fallbackReason: audioError,
-    });
+    }, heartbeat);
     triggerVisualExtraction(assetId, sourceUrl, userId, segments);
   } catch (error) {
     await handlePipelineError(assetId, userId, error);
@@ -436,7 +438,7 @@ export async function orchestrateExternalPipeline(
 
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'captions',
-      });
+      }, heartbeat);
 
       if (mediaType === 'video') {
         triggerVisualExtraction(assetId, sourceUrl, userId, segments, {
@@ -458,7 +460,7 @@ export async function orchestrateExternalPipeline(
 
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'audio',
-      });
+      }, heartbeat);
 
       if (mediaType === 'video') {
         triggerVisualExtraction(assetId, sourceUrl, userId, segments, {
@@ -484,7 +486,7 @@ export async function orchestrateExternalPipeline(
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'audio_fallback_to_captions',
         fallbackReason: audioError,
-      });
+      }, heartbeat);
 
       if (mediaType === 'video') {
         triggerVisualExtraction(assetId, sourceUrl, userId, segments, {
@@ -529,7 +531,7 @@ export async function orchestrateUploadPipeline(
 
     await finalizePipeline(assetId, userId, result.language_code, segments, 'assemblyai', retry, {
       transcriptionMethod: 'audio',
-    });
+    }, heartbeat);
 
     // Set raw media retention deadline for upload assets
     await IngestService.setRetentionDeadline(assetId);

@@ -165,11 +165,14 @@ export async function fetchSafeExternalResponse(
 
   await assertSafeExternalParsedUrl(currentUrl);
 
+  // Use a single overall timeout for the entire redirect chain
+  const overallSignal = init.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS);
+
   for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
     const response = await fetch(currentUrl, {
       ...init,
       redirect: 'manual',
-      signal: init.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      signal: overallSignal,
     });
 
     if (!REDIRECT_STATUSES.has(response.status)) {

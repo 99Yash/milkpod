@@ -10,7 +10,11 @@ await warmPool();
 
 // Recover assets that were stuck in a processing state when the
 // previous server instance went down (crash, deploy, OOM, etc.).
-await IngestService.recoverStaleAssets();
+try {
+  await IngestService.recoverStaleAssets();
+} catch (err) {
+  console.error('[startup] Failed to recover stale assets:', err instanceof Error ? err.message : err);
+}
 
 const server = new Elysia({ adapter: node() })
   .use(
