@@ -29,3 +29,8 @@ export function useAssetContext() {
   if (!ctx) throw new Error('useAssetContext must be used within AssetProvider');
   return ctx;
 }
+
+/** Returns the asset context if available, or null when outside AssetProvider. */
+export function useOptionalAssetContext() {
+  return useContext(AssetContext);
+}
