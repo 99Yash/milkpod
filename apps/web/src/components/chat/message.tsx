@@ -69,7 +69,13 @@ const streamdownComponents: Components = {
       return <TimestampLink seconds={seconds}>{children}</TimestampLink>;
     }
     if (typeof href === 'string' && href.startsWith('#speaker=')) {
-      const speakerId = decodeURIComponent(href.slice('#speaker='.length));
+      const raw = href.slice('#speaker='.length);
+      let speakerId = raw;
+      try {
+        speakerId = decodeURIComponent(raw);
+      } catch {
+        // Malformed percent-encoding — use the raw value rather than crashing
+      }
       return <SpeakerLabel speakerId={speakerId} />;
     }
     return (

@@ -9,6 +9,7 @@ import {
   videoContextSegments,
 } from '@milkpod/db/schemas';
 import { generateEmbedding, generateEmbeddingWith } from './embeddings';
+import { EmbeddingError } from './errors';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,10 +125,15 @@ async function queryEmbeddingFor(
 ): Promise<number[]> {
   try {
     return await generateEmbeddingWith(modelId, query);
-  } catch {
-    // Unknown model (legacy data?) — use default fallback chain
-    const result = await generateEmbedding(query);
-    return result.embedding;
+  } catch (err) {
+    // Only fall back for unknown models (legacy data). Transient API errors
+    // should propagate so the caller can retry with the correct model rather
+    // than silently generating a mismatched embedding.
+    if (err instanceof EmbeddingError && !err.retryable) {
+      const result = await generateEmbedding(query);
+      return result.embedding;
+    }
+    throw err;
   }
 }
 
