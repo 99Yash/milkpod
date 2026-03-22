@@ -1,7 +1,6 @@
 import {
   chunkTranscript,
   generateEmbeddings,
-  EMBEDDING_MODEL_NAME,
   EMBEDDING_DIMENSIONS,
 } from '@milkpod/ai/embeddings';
 import { emitAssetProgress } from '../../events/asset-events';
@@ -39,11 +38,11 @@ export async function embedSegments(opts: {
 
   for (let i = 0; i < chunkItems.length; i += EMBED_BATCH) {
     const batch = chunkItems.slice(i, i + EMBED_BATCH);
-    const vectors = await retry('embedding', () =>
+    const result = await retry('embedding', () =>
       generateEmbeddings(batch.map((c) => c.content))
     );
     for (const [j, chunk] of batch.entries()) {
-      const vector = vectors[j];
+      const vector = result.embeddings[j];
       if (!vector) {
         console.warn(`Missing embedding vector at index ${j} for ${entityId}`);
         continue;
@@ -52,7 +51,7 @@ export async function embedSegments(opts: {
         segmentId: chunk.segmentId,
         content: chunk.content,
         embedding: vector,
-        model: EMBEDDING_MODEL_NAME,
+        model: result.model,
         dimensions: EMBEDDING_DIMENSIONS,
       });
     }
