@@ -24,8 +24,9 @@ export async function embedSegments(opts: {
   assetId: string;
   storedSegments: StoredSegment[];
   retry: <T>(stage: string, fn: () => Promise<T>) => Promise<T>;
+  onHeartbeat?: () => Promise<void>;
 }): Promise<void> {
-  const { entityId, userId, assetId, storedSegments, retry } = opts;
+  const { entityId, userId, assetId, storedSegments, retry, onHeartbeat } = opts;
 
   const chunkItems = chunkTranscript(storedSegments);
   const embeddingItems: {
@@ -59,6 +60,10 @@ export async function embedSegments(opts: {
     const done = Math.min(i + EMBED_BATCH, chunkItems.length);
     const pct = (done / chunkItems.length) * 100;
     emitAssetProgress(userId, assetId, 'embedding', pct, `Embedding chunks (${done}/${chunkItems.length})`);
+
+    if (onHeartbeat) {
+      await onHeartbeat();
+    }
   }
 
   if (embeddingItems.length > 0) {
