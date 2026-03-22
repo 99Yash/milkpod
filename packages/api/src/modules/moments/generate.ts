@@ -109,6 +109,7 @@ async function extractCandidatesFromChunk(
       description: `Up to ${maxCandidates} best moment candidates from this chunk`,
     }),
     maxOutputTokens: 1024,
+    timeout: { totalMs: 60_000 },
   });
 
   const candidates = result.output ?? [];
