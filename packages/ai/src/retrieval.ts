@@ -1,4 +1,4 @@
-import { and, asc, cosineDistance, count, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, cosineDistance, count, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '@milkpod/db';
 import {
   embeddings,
@@ -65,7 +65,7 @@ async function distinctTranscriptModels(
     .innerJoin(transcriptSegments, eq(embeddings.segmentId, transcriptSegments.id))
     .innerJoin(transcripts, eq(transcriptSegments.transcriptId, transcripts.id));
 
-  const conditions = [];
+  const conditions: SQL[] = [];
   if (assetId) conditions.push(eq(transcripts.assetId, assetId));
 
   if (collectionId) {
@@ -92,7 +92,7 @@ async function distinctVisualModels(
       eq(videoContextEmbeddings.segmentId, videoContextSegments.id),
     );
 
-  const conditions = [];
+  const conditions: SQL[] = [];
   if (assetId) conditions.push(eq(videoContextSegments.assetId, assetId));
 
   if (collectionId) {

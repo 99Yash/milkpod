@@ -344,10 +344,13 @@ export function ChatMessage({ message, isStreaming, onRetry }: ChatMessageProps)
               >
                 {/* Blurred original underneath */}
                 <div
-                  className="col-start-1 row-start-1 select-none blur-[3px] opacity-20 transition-[filter,opacity] duration-500"
+                  className="pointer-events-none col-start-1 row-start-1 select-none blur-[3px] opacity-20 transition-[filter,opacity] duration-500"
                   aria-hidden
                 >
-                  <Streamdown className={TEXT_CLASS}>
+                  <Streamdown
+                    className={TEXT_CLASS}
+                    components={streamdownComponents}
+                  >
                     {originalMarkdown}
                   </Streamdown>
                 </div>
