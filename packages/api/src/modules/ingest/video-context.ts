@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { visualModel } from '@milkpod/ai/provider';
 import {
   generateEmbeddings,
-  EMBEDDING_MODEL_NAME,
   EMBEDDING_DIMENSIONS,
 } from '@milkpod/ai/embeddings';
 import { withRetry } from './retry';
@@ -201,18 +200,18 @@ export async function extractVideoContext(
 
     for (let i = 0; i < textsToEmbed.length; i += EMBED_BATCH) {
       const batch = textsToEmbed.slice(i, i + EMBED_BATCH);
-      const vectors = await retry('visual-embedding', () =>
+      const result = await retry('visual-embedding', () =>
         generateEmbeddings(batch.map((t) => t.text))
       );
 
       for (const [j, item] of batch.entries()) {
-        const vector = vectors[j];
+        const vector = result.embeddings[j];
         if (!vector) continue;
         embeddingItems.push({
           segmentId: item.id,
           content: item.text,
           embedding: vector,
-          model: EMBEDDING_MODEL_NAME,
+          model: result.model,
           dimensions: EMBEDDING_DIMENSIONS,
         });
       }

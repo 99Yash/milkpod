@@ -15,6 +15,7 @@ import { ActivitySteps } from './activity-steps';
 import { AiAvatar } from './ai-avatar';
 import { useAssetSource } from './asset-source-context';
 import { ShimmerText } from './shimmer-text';
+import { SpeakerLabel } from './speaker-label';
 import { TimestampLink } from './timestamp-link';
 
 // Matches [MM:SS], [HH:MM:SS], and ranges like [MM:SS–MM:SS] or [MM:SS-MM:SS]
@@ -45,6 +46,15 @@ function linkifyTimestamps(text: string): string {
   );
 }
 
+// Matches [@speakerId] — speaker references emitted by the AI
+const SPEAKER_RE = /\[@([\w.-]+)\]/g;
+
+function linkifySpeakers(text: string): string {
+  return text.replace(SPEAKER_RE, (_match, id: string) => {
+    return `[${id}](#speaker=${encodeURIComponent(id)})`;
+  });
+}
+
 const streamdownComponents: Components = {
   a: ({ href, children, node: _, ...rest }) => {
     if (typeof href === 'string' && href.startsWith('#t=')) {
@@ -57,6 +67,16 @@ const streamdownComponents: Components = {
         );
       }
       return <TimestampLink seconds={seconds}>{children}</TimestampLink>;
+    }
+    if (typeof href === 'string' && href.startsWith('#speaker=')) {
+      const raw = href.slice('#speaker='.length);
+      let speakerId = raw;
+      try {
+        speakerId = decodeURIComponent(raw);
+      } catch {
+        // Malformed percent-encoding — use the raw value rather than crashing
+      }
+      return <SpeakerLabel speakerId={speakerId} />;
     }
     return (
       <a href={href} {...rest}>
@@ -306,17 +326,17 @@ export function ChatMessage({ message, isStreaming, onRetry }: ChatMessageProps)
         {message.parts.map((part, i) => {
           if (part.type !== 'text') return null;
 
-          const originalMarkdown = shouldLinkify
-            ? linkifyTimestamps(part.text)
-            : part.text;
+          let originalMarkdown = part.text;
+          if (shouldLinkify) originalMarkdown = linkifyTimestamps(originalMarkdown);
+          originalMarkdown = linkifySpeakers(originalMarkdown);
           const cached = translationCache.current.get(i);
           const isPartStreaming = streamingPartIndex === i;
 
           // Currently streaming this part — grid overlay with blur dissolve
           if (isPartStreaming) {
-            const streamed = shouldLinkify
-              ? linkifyTimestamps(streamedText)
-              : streamedText;
+            let streamed = streamedText;
+            if (shouldLinkify) streamed = linkifyTimestamps(streamed);
+            streamed = linkifySpeakers(streamed);
             return (
               <div
                 key={i}
@@ -324,10 +344,13 @@ export function ChatMessage({ message, isStreaming, onRetry }: ChatMessageProps)
               >
                 {/* Blurred original underneath */}
                 <div
-                  className="col-start-1 row-start-1 select-none blur-[3px] opacity-20 transition-[filter,opacity] duration-500"
+                  className="pointer-events-none col-start-1 row-start-1 select-none blur-[3px] opacity-20 transition-[filter,opacity] duration-500"
                   aria-hidden
                 >
-                  <Streamdown className={TEXT_CLASS}>
+                  <Streamdown
+                    className={TEXT_CLASS}
+                    components={streamdownComponents}
+                  >
                     {originalMarkdown}
                   </Streamdown>
                 </div>
@@ -337,9 +360,7 @@ export function ChatMessage({ message, isStreaming, onRetry }: ChatMessageProps)
                     <Streamdown
                       isAnimating
                       className={TEXT_CLASS}
-                      components={
-                        shouldLinkify ? streamdownComponents : undefined
-                      }
+                      components={streamdownComponents}
                     >
                       {streamed}
                     </Streamdown>
@@ -358,9 +379,9 @@ export function ChatMessage({ message, isStreaming, onRetry }: ChatMessageProps)
 
           // Has cached translation — animate height between original ↔ translated
           if (cached) {
-            const translated = shouldLinkify
-              ? linkifyTimestamps(cached)
-              : cached;
+            let translated = cached;
+            if (shouldLinkify) translated = linkifyTimestamps(translated);
+            translated = linkifySpeakers(translated);
             return (
               <div
                 key={i}
@@ -378,11 +399,7 @@ export function ChatMessage({ message, isStreaming, onRetry }: ChatMessageProps)
                     <div className="px-4 py-3">
                       <Streamdown
                         className={TEXT_CLASS}
-                        components={
-                          shouldLinkify
-                            ? streamdownComponents
-                            : undefined
-                        }
+                        components={streamdownComponents}
                       >
                         {originalMarkdown}
                       </Streamdown>
@@ -401,11 +418,7 @@ export function ChatMessage({ message, isStreaming, onRetry }: ChatMessageProps)
                     <div className="px-4 py-3">
                       <Streamdown
                         className={TEXT_CLASS}
-                        components={
-                          shouldLinkify
-                            ? streamdownComponents
-                            : undefined
-                        }
+                        components={streamdownComponents}
                       >
                         {translated}
                       </Streamdown>
@@ -427,7 +440,7 @@ export function ChatMessage({ message, isStreaming, onRetry }: ChatMessageProps)
               <Streamdown
                 isAnimating={isStreaming}
                 className={TEXT_CLASS}
-                components={shouldLinkify ? streamdownComponents : undefined}
+                components={streamdownComponents}
               >
                 {originalMarkdown}
               </Streamdown>
