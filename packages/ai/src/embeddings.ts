@@ -1,26 +1,117 @@
 import { embed, embedMany } from 'ai';
-import { embeddingModel, EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSIONS } from './provider';
+import { EMBEDDING_PROVIDERS, EMBEDDING_DIMENSIONS } from './provider';
+import type { EmbeddingProvider } from './provider';
+import { EmbeddingError } from './errors';
 
-export { EMBEDDING_MODEL_NAME, EMBEDDING_DIMENSIONS };
+export { EMBEDDING_DIMENSIONS };
 
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const input = text.replaceAll('\n', ' ');
+// ---------------------------------------------------------------------------
+// Result types
+// ---------------------------------------------------------------------------
+
+export interface EmbeddingResult {
+  embedding: number[];
+  /** The provider id that produced this embedding (stored in the `model` column). */
+  model: string;
+}
+
+export interface BatchEmbeddingResult {
+  embeddings: number[][];
+  /** The provider id that produced these embeddings. */
+  model: string;
+}
+
+// ---------------------------------------------------------------------------
+// Fallback helpers
+// ---------------------------------------------------------------------------
+
+function normalise(text: string): string {
+  return text.replaceAll('\n', ' ');
+}
+
+/**
+ * Try each provider in `EMBEDDING_PROVIDERS` order.
+ * On transient failure the next provider is attempted; the last provider's
+ * error is re-thrown so upstream retry logic (e.g. `withRetry`) still works.
+ */
+async function withFallback<T>(
+  fn: (provider: EmbeddingProvider) => Promise<T>,
+): Promise<T> {
+  let lastError: unknown;
+  for (const provider of EMBEDDING_PROVIDERS) {
+    try {
+      return await fn(provider);
+    } catch (err) {
+      lastError = err;
+      const isLast = provider === EMBEDDING_PROVIDERS[EMBEDDING_PROVIDERS.length - 1];
+      if (isLast) break;
+      console.warn(
+        `[embedding] ${provider.id} failed, falling back to next provider:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  throw lastError;
+}
+
+// ---------------------------------------------------------------------------
+// Public API — generation with automatic fallback
+// ---------------------------------------------------------------------------
+
+/** Embed a single text, trying providers in priority order. */
+export async function generateEmbedding(text: string): Promise<EmbeddingResult> {
+  const input = normalise(text);
+  return withFallback(async (provider) => {
+    const { embedding } = await embed({
+      model: provider.model,
+      value: input,
+      providerOptions: provider.providerOptions,
+    });
+    return { embedding, model: provider.id };
+  });
+}
+
+/** Embed multiple texts in one call, trying providers in priority order. */
+export async function generateEmbeddings(texts: string[]): Promise<BatchEmbeddingResult> {
+  const values = texts.map(normalise);
+  return withFallback(async (provider) => {
+    const { embeddings } = await embedMany({
+      model: provider.model,
+      values,
+      providerOptions: provider.providerOptions,
+    });
+    return { embeddings, model: provider.id };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Targeted API — query-time model matching
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate an embedding with a specific provider (identified by model id).
+ * Used at query time to match the model that produced the stored embeddings.
+ */
+export async function generateEmbeddingWith(
+  modelId: string,
+  text: string,
+): Promise<number[]> {
+  const provider = EMBEDDING_PROVIDERS.find((p) => p.id === modelId);
+  if (!provider) {
+    throw new EmbeddingError(`Unknown embedding model: ${modelId}`, false);
+  }
+
   const { embedding } = await embed({
-    model: embeddingModel,
-    value: input,
+    model: provider.model,
+    value: normalise(text),
+    providerOptions: provider.providerOptions,
   });
   return embedding;
 }
 
-export async function generateEmbeddings(
-  texts: string[]
-): Promise<number[][]> {
-  const { embeddings } = await embedMany({
-    model: embeddingModel,
-    values: texts.map((t) => t.replaceAll('\n', ' ')),
-  });
-  return embeddings;
-}
+// ---------------------------------------------------------------------------
+// Text chunking (unchanged)
+// ---------------------------------------------------------------------------
 
 const DEFAULT_SEPARATORS = [
   '\n\n',

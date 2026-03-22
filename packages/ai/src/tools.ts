@@ -6,7 +6,6 @@ import {
   getTranscriptContext,
   getTranscriptOverview,
 } from './retrieval';
-import { generateEmbedding } from './embeddings';
 import type {
   ToolContext,
   RetrieveSegmentsOutput,
@@ -66,11 +65,9 @@ export function createQAToolSet(context: ToolContext = {}) {
         return;
       }
 
-      const queryEmbedding = await generateEmbedding(query);
       const retrievalOpts = {
         assetId: context.assetId,
         collectionId: context.collectionId,
-        queryEmbedding,
       };
 
       const [segments, visualSegments] = await Promise.all([

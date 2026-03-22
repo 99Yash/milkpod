@@ -1,15 +1,16 @@
 // Provider
-export { chatModel, embeddingModel } from './provider';
+export { chatModel, EMBEDDING_PROVIDERS, EMBEDDING_DIMENSIONS } from './provider';
+export type { EmbeddingProvider } from './provider';
 
 // Embeddings
 export {
   generateEmbedding,
   generateEmbeddings,
+  generateEmbeddingWith,
   chunkSegmentText,
   chunkTranscript,
-  EMBEDDING_MODEL_NAME,
-  EMBEDDING_DIMENSIONS,
 } from './embeddings';
+export type { EmbeddingResult, BatchEmbeddingResult } from './embeddings';
 
 // Retrieval
 export { findRelevantSegments, findRelevantVisualSegments, getTranscriptContext } from './retrieval';
