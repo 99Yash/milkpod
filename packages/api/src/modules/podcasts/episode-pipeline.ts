@@ -83,7 +83,12 @@ export async function orchestrateEpisodePipeline(
     await PodcastService.updateEpisodeStatus(episodeId, 'transcribing');
     emitAssetStatus(userId, assetId, 'transcribing');
 
-    const onHeartbeat = () => IngestService.touchHeartbeat(assetId!);
+    const resolvedAssetId = assetId;
+    if (!resolvedAssetId) {
+      throw new Error(`Asset ID missing after creation for episode ${episodeId}`);
+    }
+
+    const onHeartbeat = () => IngestService.touchHeartbeat(resolvedAssetId);
     const result = await retry('transcribing', () =>
       transcribeAudio(episode.sourceUrl, { onHeartbeat })
     );
