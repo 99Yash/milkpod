@@ -13,6 +13,7 @@ import { and, eq, inArray, lt, sql } from 'drizzle-orm';
 import { serverEnv } from '@milkpod/env/server';
 import type { Segment } from './segments';
 import type { VisualSegment } from './video-context';
+import { STALE_ASSET_THRESHOLD_MS } from '../../types';
 
 type AssetStatus = (typeof assetStatusEnum.enumValues)[number];
 type VisualStatus = (typeof visualStatusEnum.enumValues)[number];
@@ -200,6 +201,18 @@ export abstract class IngestService {
       .where(eq(mediaAssets.id, assetId));
   }
 
+  /**
+   * Touch the asset row so `updatedAt` is refreshed via Drizzle's `$onUpdate`.
+   * Called as a heartbeat during long-running pipeline stages to prevent the
+   * stale-asset recovery from marking a live pipeline as stuck.
+   */
+  static async touchHeartbeat(assetId: string) {
+    await db()
+      .update(mediaAssets)
+      .set({ attempts: sql`${mediaAssets.attempts}` }) // no-op value change triggers $onUpdate
+      .where(eq(mediaAssets.id, assetId));
+  }
+
   static async findBySourceId(sourceId: string, userId: string) {
     const [existing] = await db()
       .select()
@@ -210,17 +223,14 @@ export abstract class IngestService {
     return existing ?? null;
   }
 
-  /** How long an asset can sit in a processing state before we consider it stale. */
-  static readonly STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
-
   /**
    * Find all assets stuck in a processing state whose `updatedAt` is older
-   * than `STALE_THRESHOLD_MS` and mark them as `failed` so they become retryable.
+   * than `STALE_ASSET_THRESHOLD_MS` and mark them as `failed` so they become retryable.
    *
    * Intended to run once at server startup to recover from crashes / deploys.
    */
   static async recoverStaleAssets() {
-    const cutoff = new Date(Date.now() - IngestService.STALE_THRESHOLD_MS);
+    const cutoff = new Date(Date.now() - STALE_ASSET_THRESHOLD_MS);
 
     const stale = await db()
       .update(mediaAssets)

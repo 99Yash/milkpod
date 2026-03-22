@@ -14,7 +14,7 @@ import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
 import { toast } from 'sonner';
 import type { Asset, AssetStatus } from '@milkpod/api/types';
-import { isProcessingStatus } from '@milkpod/api/types';
+import { isProcessingStatus, STALE_ASSET_THRESHOLD_MS } from '@milkpod/api/types';
 import { AddToCollectionDialog } from './add-to-collection-dialog';
 
 interface AssetCardProps {
@@ -95,12 +95,11 @@ export function AssetCard({
   const isFailed = status === 'failed';
   const inProgress = isProcessingStatus(status);
 
-  // Show retry for assets stuck in a processing state for >30 minutes
-  const STALE_MS = 30 * 60 * 1000;
+  // Show retry for assets stuck in a processing state beyond the threshold
   const isStale =
     inProgress &&
     asset.updatedAt != null &&
-    Date.now() - new Date(asset.updatedAt).getTime() > STALE_MS;
+    Date.now() - new Date(asset.updatedAt).getTime() > STALE_ASSET_THRESHOLD_MS;
 
   const overallProgress = computeOverallProgress(status, progress);
   const displayLabel = progressMessage || statusLabels[status] || status;
