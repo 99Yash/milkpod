@@ -95,6 +95,13 @@ export function AssetCard({
   const isFailed = status === 'failed';
   const inProgress = isProcessingStatus(status);
 
+  // Show retry for assets stuck in a processing state for >30 minutes
+  const STALE_MS = 30 * 60 * 1000;
+  const isStale =
+    inProgress &&
+    asset.updatedAt != null &&
+    Date.now() - new Date(asset.updatedAt).getTime() > STALE_MS;
+
   const overallProgress = computeOverallProgress(status, progress);
   const displayLabel = progressMessage || statusLabels[status] || status;
 
@@ -173,7 +180,7 @@ export function AssetCard({
                 <FolderPlus className="size-3.5" />
               </Button>
             )}
-            {isFailed && (
+            {(isFailed || isStale) && (
               <Button
                 variant="destructive"
                 size="sm"
@@ -186,11 +193,14 @@ export function AssetCard({
                 {retrying ? 'Retrying...' : 'Retry'}
               </Button>
             )}
-            {inProgress && (
+            {inProgress && !isStale && (
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Spinner className="size-3" />
                 {displayLabel}
               </span>
+            )}
+            {isStale && (
+              <span className="text-xs text-destructive">Stuck</span>
             )}
           </div>
         </div>

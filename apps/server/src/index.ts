@@ -1,12 +1,16 @@
 import { cors } from '@elysiajs/cors';
 import { node } from '@elysiajs/node';
-import { app, closeConnections, warmPool } from '@milkpod/api';
+import { app, closeConnections, warmPool, IngestService } from '@milkpod/api';
 import { serverEnv } from '@milkpod/env/server';
 import { Elysia } from 'elysia';
 
 // Pre-warm the DB pool before accepting requests so the first
 // requests don't pay the TCP + SSL handshake cost to Neon.
 await warmPool();
+
+// Recover assets that were stuck in a processing state when the
+// previous server instance went down (crash, deploy, OOM, etc.).
+await IngestService.recoverStaleAssets();
 
 const server = new Elysia({ adapter: node() })
   .use(
