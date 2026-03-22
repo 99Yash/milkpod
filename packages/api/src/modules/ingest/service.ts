@@ -9,10 +9,11 @@ import {
   videoContextSegments,
   videoContextEmbeddings,
 } from '@milkpod/db/schemas';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, lt, sql } from 'drizzle-orm';
 import { serverEnv } from '@milkpod/env/server';
 import type { Segment } from './segments';
 import type { VisualSegment } from './video-context';
+import { STALE_ASSET_THRESHOLD_MS } from '../../types';
 
 type AssetStatus = (typeof assetStatusEnum.enumValues)[number];
 type VisualStatus = (typeof visualStatusEnum.enumValues)[number];
@@ -200,6 +201,18 @@ export abstract class IngestService {
       .where(eq(mediaAssets.id, assetId));
   }
 
+  /**
+   * Touch the asset row so `updatedAt` is refreshed via Drizzle's `$onUpdate`.
+   * Called as a heartbeat during long-running pipeline stages to prevent the
+   * stale-asset recovery from marking a live pipeline as stuck.
+   */
+  static async touchHeartbeat(assetId: string) {
+    await db()
+      .update(mediaAssets)
+      .set({ attempts: sql`${mediaAssets.attempts}` }) // no-op value change triggers $onUpdate
+      .where(eq(mediaAssets.id, assetId));
+  }
+
   static async findBySourceId(sourceId: string, userId: string) {
     const [existing] = await db()
       .select()
@@ -208,5 +221,37 @@ export abstract class IngestService {
         and(eq(mediaAssets.sourceId, sourceId), eq(mediaAssets.userId, userId))
       );
     return existing ?? null;
+  }
+
+  /**
+   * Find all assets stuck in a processing state whose `updatedAt` is older
+   * than `STALE_ASSET_THRESHOLD_MS` and mark them as `failed` so they become retryable.
+   *
+   * Intended to run once at server startup to recover from crashes / deploys.
+   */
+  static async recoverStaleAssets() {
+    const cutoff = new Date(Date.now() - STALE_ASSET_THRESHOLD_MS);
+
+    const stale = await db()
+      .update(mediaAssets)
+      .set({
+        status: 'failed',
+        lastError: 'Pipeline interrupted — the server restarted while this asset was processing. Retry to continue.',
+      })
+      .where(
+        and(
+          inArray(mediaAssets.status, ['queued', 'fetching', 'transcribing', 'embedding']),
+          lt(mediaAssets.updatedAt, cutoff),
+        ),
+      )
+      .returning({ id: mediaAssets.id, userId: mediaAssets.userId });
+
+    if (stale.length > 0) {
+      console.info(
+        `[ingest] Recovered ${stale.length} stale asset(s): ${stale.map((a) => a.id).join(', ')}`
+      );
+    }
+
+    return stale;
   }
 }

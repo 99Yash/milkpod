@@ -57,6 +57,10 @@ function makeRetry(assetId: string) {
     );
 }
 
+function makeHeartbeat(assetId: string) {
+  return () => IngestService.touchHeartbeat(assetId);
+}
+
 function isNonRetryableDirectAudioError(error: unknown, safeMessage: string): boolean {
   const raw = error instanceof Error ? error.message : '';
   const merged = `${raw} ${safeMessage}`.toLowerCase();
@@ -97,6 +101,7 @@ async function finalizePipeline(
   provider: string,
   retry: ReturnType<typeof makeRetry>,
   metadata?: { transcriptionMethod: TranscriptionMethod; fallbackReason?: string },
+  onHeartbeat?: () => Promise<void>,
 ) {
   // Ensure we never finalize an empty transcript
   const source: 'audio' | 'captions' =
@@ -129,6 +134,7 @@ async function finalizePipeline(
     assetId,
     storedSegments,
     retry,
+    onHeartbeat,
   });
 
   // Mark as ready
@@ -191,6 +197,7 @@ async function handlePipelineError(assetId: string, userId: string, error: unkno
 async function transcribeViaAudio(
   sourceUrl: string,
   retry: ReturnType<typeof makeRetry>,
+  onHeartbeat: () => Promise<void>,
 ) {
   const audioUrl = await retry('resolving-audio', () =>
     resolveYouTubeAudioUrl(sourceUrl)
@@ -202,6 +209,7 @@ async function transcribeViaAudio(
       () =>
         transcribeAudio(audioUrl, {
           allowRemoteFetchFallback: true,
+          onHeartbeat,
         }),
       {
         shouldRetry: (error, message) =>
@@ -232,7 +240,7 @@ async function transcribeViaAudio(
           const streamHandle = await streamAudioViaYtDlp(sourceUrl);
 
           try {
-            const streamedResult = await transcribeAudioStream(streamHandle.stream);
+            const streamedResult = await transcribeAudioStream(streamHandle.stream, onHeartbeat);
             await streamHandle.waitForExit();
             return streamedResult;
           } finally {
@@ -273,11 +281,12 @@ async function transcribeViaCaptions(
 async function transcribeViaExternalAudio(
   sourceUrl: string,
   retry: ReturnType<typeof makeRetry>,
+  onHeartbeat: () => Promise<void>,
 ) {
   try {
     const result = await retry(
       'transcribing-external-url',
-      () => transcribeAudio(sourceUrl),
+      () => transcribeAudio(sourceUrl, { onHeartbeat }),
       {
         shouldRetry: (error, message) =>
           !isNonRetryableDirectAudioError(error, message),
@@ -310,7 +319,7 @@ async function transcribeViaExternalAudio(
         const streamHandle = await streamAudioViaYtDlp(sourceUrl);
 
         try {
-          const streamedResult = await transcribeAudioStream(streamHandle.stream);
+          const streamedResult = await transcribeAudioStream(streamHandle.stream, onHeartbeat);
           await streamHandle.waitForExit();
           return streamedResult;
         } finally {
@@ -361,6 +370,7 @@ export async function orchestratePipeline(
   strategy: TranscriptionStrategy = 'audio-first',
 ): Promise<void> {
   const retry = makeRetry(assetId);
+  const heartbeat = makeHeartbeat(assetId);
 
   try {
     await IngestService.updateStatus(assetId, 'transcribing');
@@ -370,7 +380,7 @@ export async function orchestratePipeline(
       const { language, segments, provider } = await transcribeViaCaptions(sourceUrl, retry);
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'captions',
-      });
+      }, heartbeat);
       triggerVisualExtraction(assetId, sourceUrl, userId, segments);
       return;
     }
@@ -379,10 +389,10 @@ export async function orchestratePipeline(
     let audioError: string | undefined;
 
     try {
-      const { language, segments, provider } = await transcribeViaAudio(sourceUrl, retry);
+      const { language, segments, provider } = await transcribeViaAudio(sourceUrl, retry, heartbeat);
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'audio',
-      });
+      }, heartbeat);
       triggerVisualExtraction(assetId, sourceUrl, userId, segments);
       return;
     } catch (err) {
@@ -398,7 +408,7 @@ export async function orchestratePipeline(
     await finalizePipeline(assetId, userId, language, segments, provider, retry, {
       transcriptionMethod: 'audio_fallback_to_captions',
       fallbackReason: audioError,
-    });
+    }, heartbeat);
     triggerVisualExtraction(assetId, sourceUrl, userId, segments);
   } catch (error) {
     await handlePipelineError(assetId, userId, error);
@@ -413,6 +423,7 @@ export async function orchestrateExternalPipeline(
   strategy: TranscriptionStrategy = 'audio-first',
 ): Promise<void> {
   const retry = makeRetry(assetId);
+  const heartbeat = makeHeartbeat(assetId);
 
   try {
     await IngestService.updateStatus(assetId, 'transcribing');
@@ -427,7 +438,7 @@ export async function orchestrateExternalPipeline(
 
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'captions',
-      });
+      }, heartbeat);
 
       if (mediaType === 'video') {
         triggerVisualExtraction(assetId, sourceUrl, userId, segments, {
@@ -444,11 +455,12 @@ export async function orchestrateExternalPipeline(
       const { language, segments, provider } = await transcribeViaExternalAudio(
         sourceUrl,
         retry,
+        heartbeat,
       );
 
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'audio',
-      });
+      }, heartbeat);
 
       if (mediaType === 'video') {
         triggerVisualExtraction(assetId, sourceUrl, userId, segments, {
@@ -474,7 +486,7 @@ export async function orchestrateExternalPipeline(
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'audio_fallback_to_captions',
         fallbackReason: audioError,
-      });
+      }, heartbeat);
 
       if (mediaType === 'video') {
         triggerVisualExtraction(assetId, sourceUrl, userId, segments, {
@@ -499,6 +511,7 @@ export async function orchestrateUploadPipeline(
   mediaType: 'audio' | 'video'
 ): Promise<void> {
   const retry = makeRetry(assetId);
+  const heartbeat = makeHeartbeat(assetId);
 
   try {
     await IngestService.updateStatus(assetId, 'transcribing');
@@ -511,13 +524,14 @@ export async function orchestrateUploadPipeline(
     const result = await retry('transcribing', () =>
       transcribeAudio(transcriptionUrl, {
         allowRemoteFetchFallback: true,
+        onHeartbeat: heartbeat,
       })
     );
     const segments = groupWordsIntoSegments(result.words);
 
     await finalizePipeline(assetId, userId, result.language_code, segments, 'assemblyai', retry, {
       transcriptionMethod: 'audio',
-    });
+    }, heartbeat);
 
     // Set raw media retention deadline for upload assets
     await IngestService.setRetentionDeadline(assetId);

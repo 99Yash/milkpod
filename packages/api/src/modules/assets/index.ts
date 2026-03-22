@@ -11,6 +11,7 @@ import {
 } from '../ingest/pipeline';
 import { assetEvents, emitAssetStatus, type AssetStatusEvent } from '../../events/asset-events';
 import { deleteStoredUpload } from '../ingest/upload-storage';
+import { isProcessingStatus, STALE_ASSET_THRESHOLD_MS } from '../../types';
 
 export const assets = new Elysia({ prefix: '/api/assets' })
   .use(authMacro)
@@ -165,8 +166,13 @@ export const assets = new Elysia({ prefix: '/api/assets' })
   .post('/:id/retry', async ({ params, user }) => {
     const asset = await AssetService.getById(params.id, user.id);
     if (!asset) return status(404, { message: 'Asset not found' });
-    if (asset.status !== 'failed') {
-      return status(409, { message: 'Only failed assets can be retried' });
+    const isStaleProcessing =
+      isProcessingStatus(asset.status) &&
+      asset.updatedAt != null &&
+      Date.now() - new Date(asset.updatedAt).getTime() > STALE_ASSET_THRESHOLD_MS;
+
+    if (asset.status !== 'failed' && !isStaleProcessing) {
+      return status(409, { message: 'Only failed or stale assets can be retried' });
     }
     if (asset.sourceType === 'podcast') {
       return status(409, {
