@@ -32,6 +32,7 @@ export function useAssetTabContext() {
 }
 
 function buildUrl(assetId: string, tab: AssetTab, threadId?: string): string {
+  if (typeof window === 'undefined') return `/asset/${assetId}`;
   const url = new URL(window.location.href);
   url.pathname = `/asset/${assetId}`;
 

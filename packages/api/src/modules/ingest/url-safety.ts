@@ -2,6 +2,7 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
 const DNS_LOOKUP_TIMEOUT_MS = 5_000;
+const FETCH_TIMEOUT_MS = 30_000;
 const MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
@@ -168,6 +169,7 @@ export async function fetchSafeExternalResponse(
     const response = await fetch(currentUrl, {
       ...init,
       redirect: 'manual',
+      signal: init.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
     if (!REDIRECT_STATUSES.has(response.status)) {

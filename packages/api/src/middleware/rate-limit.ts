@@ -87,7 +87,9 @@ function categorize(path: string): RateCategory | null {
     path.startsWith('/api/threads') ||
     path.startsWith('/api/shares') ||
     path.startsWith('/api/quota') ||
-    path.startsWith('/api/usage')
+    path.startsWith('/api/usage') ||
+    path.startsWith('/api/moments') ||
+    path.startsWith('/api/podcasts')
   ) {
     return 'crud';
   }

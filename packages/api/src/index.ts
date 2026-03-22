@@ -78,6 +78,7 @@ export const app = new Elysia({ name: 'api' })
             Origin: env.CORS_ORIGIN,
           },
           body: JSON.stringify({ provider, callbackURL }),
+          signal: AbortSignal.timeout(30_000),
         },
       );
 

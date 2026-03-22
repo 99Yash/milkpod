@@ -133,7 +133,7 @@ export function AssetCard({
   const card = (
     <DashboardPanel
       className={cn(
-        'transition',
+        'flex h-full flex-col transition',
         isReady && 'cursor-pointer hover:-translate-y-0.5 card-hover'
       )}
     >
@@ -150,14 +150,14 @@ export function AssetCard({
           </div>
         )}
       </div>
-      <DashboardPanelContent className="space-y-2">
+      <DashboardPanelContent className="flex flex-1 flex-col space-y-2">
         <p className="text-sm font-medium text-foreground line-clamp-2">
           {asset.title}
         </p>
         {isFailed && asset.lastError && (
           <p className="text-xs text-destructive line-clamp-2">{asset.lastError}</p>
         )}
-        <div className="flex items-center justify-between gap-2">
+        <div className="mt-auto flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground truncate">
             {asset.channelName ?? ''}
             {asset.channelName && asset.duration ? ' · ' : ''}
@@ -218,7 +218,7 @@ export function AssetCard({
   return (
     <>
       {isReady ? (
-        <Link href={route(`/asset/${asset.id}`)}>{card}</Link>
+        <Link href={route(`/asset/${asset.id}`)} className="h-full">{card}</Link>
       ) : (
         card
       )}

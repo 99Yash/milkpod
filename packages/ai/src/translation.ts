@@ -12,6 +12,7 @@ export function streamTranslation(
   const result = streamText({
     model: visualModel,
     prompt: `Translate the following text to ${targetLanguage}. Preserve markdown formatting, timestamps in [MM:SS] format, and bullet point structure. Output ONLY the translation, nothing else.\n\n${text}`,
+    timeout: { totalMs: 60_000 },
     onError: ({ error }) => {
       console.error('[Translation Error]', error instanceof Error ? error.message : 'Unknown error');
     },
