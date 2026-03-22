@@ -57,6 +57,10 @@ function makeRetry(assetId: string) {
     );
 }
 
+function makeHeartbeat(assetId: string) {
+  return () => IngestService.touchHeartbeat(assetId);
+}
+
 function isNonRetryableDirectAudioError(error: unknown, safeMessage: string): boolean {
   const raw = error instanceof Error ? error.message : '';
   const merged = `${raw} ${safeMessage}`.toLowerCase();
@@ -191,6 +195,7 @@ async function handlePipelineError(assetId: string, userId: string, error: unkno
 async function transcribeViaAudio(
   sourceUrl: string,
   retry: ReturnType<typeof makeRetry>,
+  onHeartbeat: () => Promise<void>,
 ) {
   const audioUrl = await retry('resolving-audio', () =>
     resolveYouTubeAudioUrl(sourceUrl)
@@ -202,6 +207,7 @@ async function transcribeViaAudio(
       () =>
         transcribeAudio(audioUrl, {
           allowRemoteFetchFallback: true,
+          onHeartbeat,
         }),
       {
         shouldRetry: (error, message) =>
@@ -232,7 +238,7 @@ async function transcribeViaAudio(
           const streamHandle = await streamAudioViaYtDlp(sourceUrl);
 
           try {
-            const streamedResult = await transcribeAudioStream(streamHandle.stream);
+            const streamedResult = await transcribeAudioStream(streamHandle.stream, onHeartbeat);
             await streamHandle.waitForExit();
             return streamedResult;
           } finally {
@@ -273,11 +279,12 @@ async function transcribeViaCaptions(
 async function transcribeViaExternalAudio(
   sourceUrl: string,
   retry: ReturnType<typeof makeRetry>,
+  onHeartbeat: () => Promise<void>,
 ) {
   try {
     const result = await retry(
       'transcribing-external-url',
-      () => transcribeAudio(sourceUrl),
+      () => transcribeAudio(sourceUrl, { onHeartbeat }),
       {
         shouldRetry: (error, message) =>
           !isNonRetryableDirectAudioError(error, message),
@@ -310,7 +317,7 @@ async function transcribeViaExternalAudio(
         const streamHandle = await streamAudioViaYtDlp(sourceUrl);
 
         try {
-          const streamedResult = await transcribeAudioStream(streamHandle.stream);
+          const streamedResult = await transcribeAudioStream(streamHandle.stream, onHeartbeat);
           await streamHandle.waitForExit();
           return streamedResult;
         } finally {
@@ -361,6 +368,7 @@ export async function orchestratePipeline(
   strategy: TranscriptionStrategy = 'audio-first',
 ): Promise<void> {
   const retry = makeRetry(assetId);
+  const heartbeat = makeHeartbeat(assetId);
 
   try {
     await IngestService.updateStatus(assetId, 'transcribing');
@@ -379,7 +387,7 @@ export async function orchestratePipeline(
     let audioError: string | undefined;
 
     try {
-      const { language, segments, provider } = await transcribeViaAudio(sourceUrl, retry);
+      const { language, segments, provider } = await transcribeViaAudio(sourceUrl, retry, heartbeat);
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
         transcriptionMethod: 'audio',
       });
@@ -413,6 +421,7 @@ export async function orchestrateExternalPipeline(
   strategy: TranscriptionStrategy = 'audio-first',
 ): Promise<void> {
   const retry = makeRetry(assetId);
+  const heartbeat = makeHeartbeat(assetId);
 
   try {
     await IngestService.updateStatus(assetId, 'transcribing');
@@ -444,6 +453,7 @@ export async function orchestrateExternalPipeline(
       const { language, segments, provider } = await transcribeViaExternalAudio(
         sourceUrl,
         retry,
+        heartbeat,
       );
 
       await finalizePipeline(assetId, userId, language, segments, provider, retry, {
@@ -499,6 +509,7 @@ export async function orchestrateUploadPipeline(
   mediaType: 'audio' | 'video'
 ): Promise<void> {
   const retry = makeRetry(assetId);
+  const heartbeat = makeHeartbeat(assetId);
 
   try {
     await IngestService.updateStatus(assetId, 'transcribing');
@@ -511,6 +522,7 @@ export async function orchestrateUploadPipeline(
     const result = await retry('transcribing', () =>
       transcribeAudio(transcriptionUrl, {
         allowRemoteFetchFallback: true,
+        onHeartbeat: heartbeat,
       })
     );
     const segments = groupWordsIntoSegments(result.words);

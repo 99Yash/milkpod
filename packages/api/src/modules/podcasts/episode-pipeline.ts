@@ -83,8 +83,9 @@ export async function orchestrateEpisodePipeline(
     await PodcastService.updateEpisodeStatus(episodeId, 'transcribing');
     emitAssetStatus(userId, assetId, 'transcribing');
 
+    const onHeartbeat = () => IngestService.touchHeartbeat(assetId!);
     const result = await retry('transcribing', () =>
-      transcribeAudio(episode.sourceUrl)
+      transcribeAudio(episode.sourceUrl, { onHeartbeat })
     );
     const segments = groupWordsIntoSegments(result.words);
     const { segments: storedSegments } = await IngestService.storeTranscript(

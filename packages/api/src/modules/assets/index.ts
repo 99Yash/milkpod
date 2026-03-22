@@ -11,7 +11,7 @@ import {
 } from '../ingest/pipeline';
 import { assetEvents, emitAssetStatus, type AssetStatusEvent } from '../../events/asset-events';
 import { deleteStoredUpload } from '../ingest/upload-storage';
-import { isProcessingStatus } from '../../types';
+import { isProcessingStatus, STALE_ASSET_THRESHOLD_MS } from '../../types';
 
 export const assets = new Elysia({ prefix: '/api/assets' })
   .use(authMacro)
@@ -169,7 +169,7 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     const isStaleProcessing =
       isProcessingStatus(asset.status) &&
       asset.updatedAt != null &&
-      Date.now() - new Date(asset.updatedAt).getTime() > IngestService.STALE_THRESHOLD_MS;
+      Date.now() - new Date(asset.updatedAt).getTime() > STALE_ASSET_THRESHOLD_MS;
 
     if (asset.status !== 'failed' && !isStaleProcessing) {
       return status(409, { message: 'Only failed or stale assets can be retried' });
