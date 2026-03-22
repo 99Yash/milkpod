@@ -225,7 +225,12 @@ async function pollTranscript(
 
     // Touch the DB row periodically so the asset doesn't look stale
     if (onHeartbeat && Date.now() - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
-      await onHeartbeat().catch(() => {});
+      await onHeartbeat().catch((err) => {
+        console.warn(
+          '[assemblyai] heartbeat failed:',
+          err instanceof Error ? err.message : String(err),
+        );
+      });
       lastHeartbeat = Date.now();
     }
 
