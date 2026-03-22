@@ -65,6 +65,9 @@ export function isProcessingStatus(
   return PROCESSING_STATUSES.has(s);
 }
 
+/** How long an asset can sit in a processing state before it is considered stale (ms). */
+export const STALE_ASSET_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+
 // ---------------------------------------------------------------------------
 // Composite response types (matching what services return)
 // ---------------------------------------------------------------------------

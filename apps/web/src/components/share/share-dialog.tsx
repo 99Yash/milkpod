@@ -70,7 +70,8 @@ function getExpiryDate(value: string): string | undefined {
 }
 
 function getShareUrl(token: string): string {
-  return `${window.location.origin}/share/${token}`;
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}/share/${token}`;
 }
 
 function formatExpiry(expiresAt: Date | string | null): string {

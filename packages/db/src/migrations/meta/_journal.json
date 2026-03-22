@@ -204,6 +204,13 @@
       "when": 1773820954865,
       "tag": "0028_giant_shen",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1774189299581,
+      "tag": "0029_stale-asset-recovery-index",
+      "breakpoints": true
     }
   ]
 }

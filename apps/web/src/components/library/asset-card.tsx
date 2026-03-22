@@ -14,7 +14,7 @@ import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
 import { toast } from 'sonner';
 import type { Asset, AssetStatus } from '@milkpod/api/types';
-import { isProcessingStatus } from '@milkpod/api/types';
+import { isProcessingStatus, STALE_ASSET_THRESHOLD_MS } from '@milkpod/api/types';
 import { AddToCollectionDialog } from './add-to-collection-dialog';
 
 interface AssetCardProps {
@@ -95,6 +95,12 @@ export function AssetCard({
   const isFailed = status === 'failed';
   const inProgress = isProcessingStatus(status);
 
+  // Show retry for assets stuck in a processing state beyond the threshold
+  const isStale =
+    inProgress &&
+    asset.updatedAt != null &&
+    Date.now() - new Date(asset.updatedAt).getTime() > STALE_ASSET_THRESHOLD_MS;
+
   const overallProgress = computeOverallProgress(status, progress);
   const displayLabel = progressMessage || statusLabels[status] || status;
 
@@ -127,7 +133,7 @@ export function AssetCard({
   const card = (
     <DashboardPanel
       className={cn(
-        'transition',
+        'flex h-full flex-col transition',
         isReady && 'cursor-pointer hover:-translate-y-0.5 card-hover'
       )}
     >
@@ -144,14 +150,14 @@ export function AssetCard({
           </div>
         )}
       </div>
-      <DashboardPanelContent className="space-y-2">
+      <DashboardPanelContent className="flex flex-1 flex-col space-y-2">
         <p className="text-sm font-medium text-foreground line-clamp-2">
           {asset.title}
         </p>
         {isFailed && asset.lastError && (
           <p className="text-xs text-destructive line-clamp-2">{asset.lastError}</p>
         )}
-        <div className="flex items-center justify-between gap-2">
+        <div className="mt-auto flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground truncate">
             {asset.channelName ?? ''}
             {asset.channelName && asset.duration ? ' · ' : ''}
@@ -173,7 +179,7 @@ export function AssetCard({
                 <FolderPlus className="size-3.5" />
               </Button>
             )}
-            {isFailed && (
+            {(isFailed || isStale) && (
               <Button
                 variant="destructive"
                 size="sm"
@@ -186,11 +192,14 @@ export function AssetCard({
                 {retrying ? 'Retrying...' : 'Retry'}
               </Button>
             )}
-            {inProgress && (
+            {inProgress && !isStale && (
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Spinner className="size-3" />
                 {displayLabel}
               </span>
+            )}
+            {isStale && (
+              <span className="text-xs text-destructive">Stuck</span>
             )}
           </div>
         </div>
@@ -209,7 +218,7 @@ export function AssetCard({
   return (
     <>
       {isReady ? (
-        <Link href={route(`/asset/${asset.id}`)}>{card}</Link>
+        <Link href={route(`/asset/${asset.id}`)} className="h-full">{card}</Link>
       ) : (
         card
       )}
