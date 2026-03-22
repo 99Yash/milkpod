@@ -1,4 +1,4 @@
-import { and, asc, cosineDistance, count, desc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
+import { and, asc, cosineDistance, count, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
 import { db } from '@milkpod/db';
 import {
   embeddings,
@@ -8,7 +8,12 @@ import {
   videoContextEmbeddings,
   videoContextSegments,
 } from '@milkpod/db/schemas';
-import { generateEmbedding, EMBEDDING_MODEL_NAME } from './embeddings';
+import { generateEmbedding, generateEmbeddingWith } from './embeddings';
+import { EmbeddingError } from './errors';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 const segmentFields = {
   id: transcriptSegments.id,
@@ -44,128 +49,251 @@ export interface RetrievalOptions {
   collectionId?: string;
   limit?: number;
   minSimilarity?: number;
-  queryEmbedding?: number[];
 }
 
-export async function findRelevantSegments(
-  query: string,
-  options: RetrievalOptions = {}
-): Promise<RelevantSegment[]> {
-  const { assetId, collectionId, limit = 10, minSimilarity = 0.3 } = options;
+// ---------------------------------------------------------------------------
+// Distinct-model helpers
+// ---------------------------------------------------------------------------
 
-  // Require at least one scope to prevent cross-tenant retrieval
-  if (!assetId && !collectionId) return [];
-
-  const queryEmbedding = options.queryEmbedding ?? await generateEmbedding(query);
-
-  const similarity = sql<number>`1 - (${cosineDistance(embeddings.embedding, queryEmbedding)})`;
-
-  const conditions = [gt(similarity, minSimilarity)];
-
-  if (assetId) {
-    conditions.push(eq(transcripts.assetId, assetId));
-  }
-
-  let queryBuilder = db()
-    .select({
-      segmentId: transcriptSegments.id,
-      text: transcriptSegments.text,
-      startTime: transcriptSegments.startTime,
-      endTime: transcriptSegments.endTime,
-      speaker: transcriptSegments.speaker,
-      transcriptId: transcriptSegments.transcriptId,
-      similarity,
-    })
+async function distinctTranscriptModels(
+  assetId?: string,
+  collectionId?: string,
+): Promise<string[]> {
+  let q = db()
+    .selectDistinct({ model: embeddings.model })
     .from(embeddings)
-    .innerJoin(
-      transcriptSegments,
-      eq(embeddings.segmentId, transcriptSegments.id)
-    )
-    .innerJoin(
-      transcripts,
-      eq(transcriptSegments.transcriptId, transcripts.id)
-    );
+    .innerJoin(transcriptSegments, eq(embeddings.segmentId, transcriptSegments.id))
+    .innerJoin(transcripts, eq(transcriptSegments.transcriptId, transcripts.id));
+
+  const conditions: SQL[] = [];
+  if (assetId) conditions.push(eq(transcripts.assetId, assetId));
 
   if (collectionId) {
-    queryBuilder = queryBuilder.innerJoin(
-      collectionItems,
-      eq(collectionItems.assetId, transcripts.assetId)
-    );
+    q = q.innerJoin(collectionItems, eq(collectionItems.assetId, transcripts.assetId));
     conditions.push(eq(collectionItems.collectionId, collectionId));
   }
 
-  const results = await queryBuilder
-    .where(and(...conditions))
-    .orderBy(desc(similarity))
-    .limit(limit);
+  const rows = conditions.length > 0
+    ? await q.where(and(...conditions))
+    : await q;
 
-  // Warn if any stored embeddings were generated with a different model
-  if (results.length > 0) {
-    const [mismatch] = await db()
-      .select({ model: embeddings.model })
-      .from(embeddings)
-      .where(ne(embeddings.model, EMBEDDING_MODEL_NAME))
-      .limit(1);
-
-    if (mismatch) {
-      console.warn(
-        `[retrieval] Embedding model mismatch: query uses "${EMBEDDING_MODEL_NAME}" but stored embeddings include "${mismatch.model}". Results may be degraded.`
-      );
-    }
-  }
-
-  return results;
+  return rows.map((r) => r.model);
 }
 
-export async function findRelevantVisualSegments(
-  query: string,
-  options: RetrievalOptions = {}
-): Promise<RelevantVisualSegment[]> {
-  const { assetId, collectionId, limit = 5, minSimilarity = 0.3 } = options;
-
-  // Require at least one scope to prevent cross-tenant retrieval
-  if (!assetId && !collectionId) return [];
-
-  const queryEmbedding = options.queryEmbedding ?? await generateEmbedding(query);
-
-  const similarity = sql<number>`1 - (${cosineDistance(videoContextEmbeddings.embedding, queryEmbedding)})`;
-
-  const conditions = [gt(similarity, minSimilarity)];
-
-  if (assetId) {
-    conditions.push(eq(videoContextSegments.assetId, assetId));
-  }
-
-  let queryBuilder = db()
-    .select({
-      segmentId: videoContextSegments.id,
-      summary: videoContextSegments.summary,
-      ocrText: videoContextSegments.ocrText,
-      entities: videoContextSegments.entities,
-      startTime: videoContextSegments.startTime,
-      endTime: videoContextSegments.endTime,
-      confidence: videoContextSegments.confidence,
-      similarity,
-    })
+async function distinctVisualModels(
+  assetId?: string,
+  collectionId?: string,
+): Promise<string[]> {
+  let q = db()
+    .selectDistinct({ model: videoContextEmbeddings.model })
     .from(videoContextEmbeddings)
     .innerJoin(
       videoContextSegments,
-      eq(videoContextEmbeddings.segmentId, videoContextSegments.id)
+      eq(videoContextEmbeddings.segmentId, videoContextSegments.id),
     );
 
+  const conditions: SQL[] = [];
+  if (assetId) conditions.push(eq(videoContextSegments.assetId, assetId));
+
   if (collectionId) {
-    queryBuilder = queryBuilder.innerJoin(
+    q = q.innerJoin(
       collectionItems,
-      eq(collectionItems.assetId, videoContextSegments.assetId)
+      eq(collectionItems.assetId, videoContextSegments.assetId),
     );
     conditions.push(eq(collectionItems.collectionId, collectionId));
   }
 
-  return queryBuilder
-    .where(and(...conditions))
-    .orderBy(desc(similarity))
-    .limit(limit);
+  const rows = conditions.length > 0
+    ? await q.where(and(...conditions))
+    : await q;
+
+  return rows.map((r) => r.model);
 }
+
+// ---------------------------------------------------------------------------
+// Query-embedding resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate a query embedding that matches the given model id.
+ * Uses `generateEmbeddingWith` for targeted generation; if the model is
+ * unknown (e.g. legacy data), falls back to the default provider chain.
+ */
+async function queryEmbeddingFor(
+  modelId: string,
+  query: string,
+): Promise<number[]> {
+  try {
+    return await generateEmbeddingWith(modelId, query);
+  } catch (err) {
+    // Only fall back for unknown models (legacy data). Transient API errors
+    // should propagate so the caller can retry with the correct model rather
+    // than silently generating a mismatched embedding.
+    if (err instanceof EmbeddingError && !err.retryable) {
+      const result = await generateEmbedding(query);
+      return result.embedding;
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Transcript retrieval
+// ---------------------------------------------------------------------------
+
+export async function findRelevantSegments(
+  query: string,
+  options: RetrievalOptions = {},
+): Promise<RelevantSegment[]> {
+  const { assetId, collectionId, limit = 10, minSimilarity = 0.3 } = options;
+
+  if (!assetId && !collectionId) return [];
+
+  const models = await distinctTranscriptModels(assetId, collectionId);
+  if (models.length === 0) return [];
+
+  // Generate query embeddings per model in parallel
+  const modelEmbeddings = await Promise.all(
+    models.map(async (modelId) => ({
+      modelId,
+      embedding: await queryEmbeddingFor(modelId, query),
+    })),
+  );
+
+  // Run per-model similarity queries in parallel
+  const perModelResults = await Promise.all(
+    modelEmbeddings.map(({ modelId, embedding: qe }) => {
+      const similarity = sql<number>`1 - (${cosineDistance(embeddings.embedding, qe)})`;
+
+      const conditions = [
+        gt(similarity, minSimilarity),
+        eq(embeddings.model, modelId),
+      ];
+
+      if (assetId) conditions.push(eq(transcripts.assetId, assetId));
+
+      let qb = db()
+        .select({
+          segmentId: transcriptSegments.id,
+          text: transcriptSegments.text,
+          startTime: transcriptSegments.startTime,
+          endTime: transcriptSegments.endTime,
+          speaker: transcriptSegments.speaker,
+          transcriptId: transcriptSegments.transcriptId,
+          similarity,
+        })
+        .from(embeddings)
+        .innerJoin(transcriptSegments, eq(embeddings.segmentId, transcriptSegments.id))
+        .innerJoin(transcripts, eq(transcriptSegments.transcriptId, transcripts.id));
+
+      if (collectionId) {
+        qb = qb.innerJoin(
+          collectionItems,
+          eq(collectionItems.assetId, transcripts.assetId),
+        );
+        conditions.push(eq(collectionItems.collectionId, collectionId));
+      }
+
+      return qb
+        .where(and(...conditions))
+        .orderBy(desc(similarity))
+        .limit(limit);
+    }),
+  );
+
+  // Merge, deduplicate by segmentId, sort by similarity, take top N
+  const seen = new Set<string>();
+  return perModelResults
+    .flat()
+    .sort((a, b) => b.similarity - a.similarity)
+    .filter((r) => {
+      if (seen.has(r.segmentId)) return false;
+      seen.add(r.segmentId);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+// ---------------------------------------------------------------------------
+// Visual retrieval
+// ---------------------------------------------------------------------------
+
+export async function findRelevantVisualSegments(
+  query: string,
+  options: RetrievalOptions = {},
+): Promise<RelevantVisualSegment[]> {
+  const { assetId, collectionId, limit = 5, minSimilarity = 0.3 } = options;
+
+  if (!assetId && !collectionId) return [];
+
+  const models = await distinctVisualModels(assetId, collectionId);
+  if (models.length === 0) return [];
+
+  const modelEmbeddings = await Promise.all(
+    models.map(async (modelId) => ({
+      modelId,
+      embedding: await queryEmbeddingFor(modelId, query),
+    })),
+  );
+
+  const perModelResults = await Promise.all(
+    modelEmbeddings.map(({ modelId, embedding: qe }) => {
+      const similarity = sql<number>`1 - (${cosineDistance(videoContextEmbeddings.embedding, qe)})`;
+
+      const conditions = [
+        gt(similarity, minSimilarity),
+        eq(videoContextEmbeddings.model, modelId),
+      ];
+
+      if (assetId) conditions.push(eq(videoContextSegments.assetId, assetId));
+
+      let qb = db()
+        .select({
+          segmentId: videoContextSegments.id,
+          summary: videoContextSegments.summary,
+          ocrText: videoContextSegments.ocrText,
+          entities: videoContextSegments.entities,
+          startTime: videoContextSegments.startTime,
+          endTime: videoContextSegments.endTime,
+          confidence: videoContextSegments.confidence,
+          similarity,
+        })
+        .from(videoContextEmbeddings)
+        .innerJoin(
+          videoContextSegments,
+          eq(videoContextEmbeddings.segmentId, videoContextSegments.id),
+        );
+
+      if (collectionId) {
+        qb = qb.innerJoin(
+          collectionItems,
+          eq(collectionItems.assetId, videoContextSegments.assetId),
+        );
+        conditions.push(eq(collectionItems.collectionId, collectionId));
+      }
+
+      return qb
+        .where(and(...conditions))
+        .orderBy(desc(similarity))
+        .limit(limit);
+    }),
+  );
+
+  const seen = new Set<string>();
+  return perModelResults
+    .flat()
+    .sort((a, b) => b.similarity - a.similarity)
+    .filter((r) => {
+      if (seen.has(r.segmentId)) return false;
+      seen.add(r.segmentId);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+// ---------------------------------------------------------------------------
+// Transcript overview & context (unchanged — no embedding involved)
+// ---------------------------------------------------------------------------
 
 export interface TranscriptOverview {
   transcriptId: string;
