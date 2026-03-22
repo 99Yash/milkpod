@@ -31,7 +31,7 @@ function normalise(text: string): string {
 
 /**
  * Try each provider in `EMBEDDING_PROVIDERS` order.
- * On transient failure the next provider is attempted; the last provider's
+ * If a provider call fails, the next provider is attempted; the last provider's
  * error is re-thrown so upstream retry logic (e.g. `withRetry`) still works.
  */
 async function withFallback<T>(
