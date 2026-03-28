@@ -127,6 +127,7 @@ See `review-prompt.md` for the full checklist, library-specific guidance, and hi
 - `OPENAI_API_KEY` - Used by `@ai-sdk/openai` in `@milkpod/ai` (provider reads from process env)
 - `ANTHROPIC_API_KEY` - Used by `@ai-sdk/anthropic` in `@milkpod/ai` (provider reads from process env)
 - `GOOGLE_GENERATIVE_AI_API_KEY` - Used by `@ai-sdk/google` in `@milkpod/ai` (provider reads from process env)
+- `REDIS_URL` - Redis connection string; required for BullMQ durable job queue and Redis pub/sub SSE events
 - `RESEND_API_KEY` - Required for sending email OTP codes via Resend
 - `AUTH_FROM_EMAIL` - Optional sender identity for OTP emails (defaults to `Milkpod <noreply@croisillies.xyz>`)
 - `COOKIE_DOMAIN` - Better Auth cookie domain (required in production, optional in development/test)
