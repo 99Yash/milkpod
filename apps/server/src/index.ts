@@ -1,6 +1,17 @@
 import { cors } from '@elysiajs/cors';
 import { node } from '@elysiajs/node';
-import { app, closeConnections, warmPool, IngestService } from '@milkpod/api';
+import {
+  app,
+  closeConnections,
+  warmPool,
+  IngestService,
+  initEventBridge,
+  closeEventBridge,
+  startWorkers,
+  stopWorkers,
+  closeQueues,
+  closeRedis,
+} from '@milkpod/api';
 import { serverEnv } from '@milkpod/env/server';
 import { Elysia } from 'elysia';
 
@@ -10,11 +21,19 @@ await warmPool();
 
 // Recover assets that were stuck in a processing state when the
 // previous server instance went down (crash, deploy, OOM, etc.).
+// This remains useful even with BullMQ as a safety net for edge cases
+// (e.g. Redis was unavailable, or jobs were fire-and-forget).
 try {
   await IngestService.recoverStaleAssets();
 } catch (err) {
   console.error('[startup] Failed to recover stale assets:', err instanceof Error ? err.message : err);
 }
+
+// Initialize Redis pub/sub bridge for cross-replica SSE events.
+await initEventBridge();
+
+// Start BullMQ workers for durable job processing.
+await startWorkers();
 
 const server = new Elysia({ adapter: node() })
   .use(
@@ -37,7 +56,7 @@ const server = new Elysia({ adapter: node() })
     },
   );
 
-// Graceful shutdown: drain in-flight requests, then close DB pool
+// Graceful shutdown: drain workers, close connections
 async function shutdown(signal: string) {
   console.log(`\n${signal} received, shutting down gracefully...`);
 
@@ -46,6 +65,27 @@ async function shutdown(signal: string) {
   console.log('Server stopped accepting connections');
 
   try {
+    // 1. Stop BullMQ workers (lets in-progress jobs finish)
+    await stopWorkers();
+    console.log('BullMQ workers stopped');
+  } catch (err) {
+    console.error('Error stopping workers:', err);
+  }
+
+  try {
+    // 2. Close Redis event bridge
+    await closeEventBridge();
+    // 3. Close BullMQ queue connections
+    await closeQueues();
+    // 4. Close remaining Redis connections
+    await closeRedis();
+    console.log('Redis connections closed');
+  } catch (err) {
+    console.error('Error closing Redis:', err);
+  }
+
+  try {
+    // 5. Close DB pool last — workers may need it during drain
     await closeConnections();
     console.log('Database pool closed');
   } catch (err) {

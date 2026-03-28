@@ -43,7 +43,7 @@ function assertHasSegments(
   );
 }
 
-function makeRetry(assetId: string) {
+export function makeRetry(assetId: string) {
   return <T>(stage: string, fn: () => Promise<T>, control?: RetryControl) =>
     withRetry(
       {
@@ -57,7 +57,7 @@ function makeRetry(assetId: string) {
     );
 }
 
-function makeHeartbeat(assetId: string) {
+export function makeHeartbeat(assetId: string) {
   return () => IngestService.touchHeartbeat(assetId);
 }
 
@@ -73,7 +73,7 @@ function isNonRetryableDirectAudioError(error: unknown, safeMessage: string): bo
   );
 }
 
-function isDirectVideoFileUrl(sourceUrl: string): boolean {
+export function isDirectVideoFileUrl(sourceUrl: string): boolean {
   try {
     const parsed = new URL(sourceUrl);
     const extension = parsed.pathname.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
@@ -93,7 +93,7 @@ function isDirectVideoFileUrl(sourceUrl: string): boolean {
   }
 }
 
-async function finalizePipeline(
+export async function finalizePipeline(
   assetId: string,
   userId: string,
   language: string,
@@ -156,7 +156,7 @@ async function finalizePipeline(
 }
 
 /** Fire visual context extraction without blocking the transcript pipeline (FR9). */
-function triggerVisualExtraction(
+export function triggerVisualExtraction(
   assetId: string,
   sourceUrl: string,
   userId: string,
@@ -185,7 +185,7 @@ function triggerVisualExtraction(
   });
 }
 
-async function handlePipelineError(assetId: string, userId: string, error: unknown) {
+export async function handlePipelineError(assetId: string, userId: string, error: unknown) {
   const message = toSafeErrorMessage(error);
   console.error(`[ingest] Pipeline failed for asset ${assetId}:`, message);
   await IngestService.updateStatus(assetId, 'failed', {
@@ -194,7 +194,7 @@ async function handlePipelineError(assetId: string, userId: string, error: unkno
   emitAssetStatus(userId, assetId, 'failed', message);
 }
 
-async function transcribeViaAudio(
+export async function transcribeViaAudio(
   sourceUrl: string,
   retry: ReturnType<typeof makeRetry>,
   onHeartbeat: () => Promise<void>,
@@ -266,7 +266,7 @@ async function transcribeViaAudio(
   }
 }
 
-async function transcribeViaCaptions(
+export async function transcribeViaCaptions(
   sourceUrl: string,
   retry: ReturnType<typeof makeRetry>,
 ) {
@@ -278,7 +278,7 @@ async function transcribeViaCaptions(
   return { language: result.language, segments, provider: 'youtube' as const };
 }
 
-async function transcribeViaExternalAudio(
+export async function transcribeViaExternalAudio(
   sourceUrl: string,
   retry: ReturnType<typeof makeRetry>,
   onHeartbeat: () => Promise<void>,
@@ -345,7 +345,7 @@ async function transcribeViaExternalAudio(
   }
 }
 
-async function transcribeViaExternalCaptions(
+export async function transcribeViaExternalCaptions(
   sourceUrl: string,
   retry: ReturnType<typeof makeRetry>,
 ) {

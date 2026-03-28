@@ -12,6 +12,8 @@ import {
 import { assetEvents, emitAssetStatus, type AssetStatusEvent } from '../../events/asset-events';
 import { deleteStoredUpload } from '../ingest/upload-storage';
 import { isProcessingStatus, STALE_ASSET_THRESHOLD_MS } from '../../types';
+import { isQueueEnabled } from '../../queue/connection';
+import { enqueueIngestJob } from '../../queue/ingest-queue';
 
 export const assets = new Elysia({ prefix: '/api/assets' })
   .use(authMacro)
@@ -171,8 +173,13 @@ export const assets = new Elysia({ prefix: '/api/assets' })
       asset.updatedAt != null &&
       Date.now() - new Date(asset.updatedAt).getTime() > STALE_ASSET_THRESHOLD_MS;
 
-    if (asset.status !== 'failed' && !isStaleProcessing) {
-      return status(409, { message: 'Only failed or stale assets can be retried' });
+    const isRetryable =
+      asset.status === 'failed' ||
+      asset.status === 'queued' ||
+      isStaleProcessing;
+
+    if (!isRetryable) {
+      return status(409, { message: 'Only failed, queued, or stale assets can be retried' });
     }
     if (asset.sourceType === 'podcast') {
       return status(409, {
@@ -186,6 +193,23 @@ export const assets = new Elysia({ prefix: '/api/assets' })
     await IngestService.resetForRetry(asset.id);
     emitAssetStatus(user.id, asset.id, 'queued', 'Retrying...');
 
+    if (isQueueEnabled()) {
+      try {
+        await enqueueIngestJob({
+          assetId: asset.id,
+          sourceUrl: asset.sourceUrl,
+          userId: user.id,
+          sourceType: asset.sourceType === 'youtube' ? 'youtube' : asset.sourceType === 'upload' ? 'upload' : 'external',
+          mediaType: asset.mediaType,
+        });
+        return { message: 'Retry started' };
+      } catch (err) {
+        console.error(`[retry] Failed to enqueue job for ${asset.id}, falling back to in-process:`, err instanceof Error ? err.message : String(err));
+        // Fall through to fire-and-forget below
+      }
+    }
+
+    // Fallback: fire-and-forget when Redis is unavailable or enqueue failed
     if (asset.sourceType === 'upload') {
       orchestrateUploadPipeline(asset.id, asset.sourceUrl, user.id, asset.mediaType).catch((err) => {
         console.error(`Upload pipeline failed for asset ${asset.id}:`, err instanceof Error ? err.message : String(err));
