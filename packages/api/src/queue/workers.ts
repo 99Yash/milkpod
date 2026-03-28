@@ -21,9 +21,16 @@ export async function startWorkers(): Promise<void> {
       try {
         await processIngestJob(job);
       } catch (error) {
-        // Persist failure to DB so the UI shows the error
-        await handlePipelineError(job.data.assetId, job.data.userId, error);
-        throw error; // re-throw so BullMQ marks the job as failed
+        const isFinalAttempt =
+          job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+
+        if (isFinalAttempt) {
+          // Persist failure to DB only on the last attempt so intermediate
+          // retries don't flash a false "failed" status to the user.
+          await handlePipelineError(job.data.assetId, job.data.userId, error);
+        }
+
+        throw error; // re-throw so BullMQ marks the job as failed / retries
       }
     },
     {
