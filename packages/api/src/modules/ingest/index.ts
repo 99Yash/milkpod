@@ -13,6 +13,8 @@ import { isUploadStorageConfigured, storeUploadedMedia } from './upload-storage'
 import { QuotaService } from '../quota/service';
 import { isAdminEmail } from '../usage/service';
 import { toSafeErrorMessage } from './error-message';
+import { isQueueEnabled } from '../../queue/connection';
+import { enqueueIngestJob } from '../../queue/ingest-queue';
 
 /** 2 GB */
 const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024;
@@ -32,7 +34,7 @@ async function checkVideoQuota(userId: string, email: string) {
   });
 }
 
-function startUrlIngestPipeline(
+function fireAndForgetPipeline(
   assetId: string,
   sourceType: 'youtube' | 'external',
   sourceUrl: string,
@@ -41,22 +43,41 @@ function startUrlIngestPipeline(
   mediaType: 'audio' | 'video',
 ) {
   if (sourceType === 'youtube') {
-    const nextStrategy = strategy ?? 'audio-first';
-    orchestratePipeline(assetId, sourceUrl, userId, nextStrategy).catch((err) => {
+    orchestratePipeline(assetId, sourceUrl, userId, strategy ?? 'audio-first').catch((err) => {
       console.error(`Pipeline failed for asset ${assetId}:`, toSafeErrorMessage(err));
     });
     return;
   }
 
-  orchestrateExternalPipeline(
-    assetId,
-    sourceUrl,
-    userId,
-    mediaType,
-    strategy ?? 'audio-first'
-  ).catch((err) => {
+  orchestrateExternalPipeline(assetId, sourceUrl, userId, mediaType, strategy ?? 'audio-first').catch((err) => {
     console.error(`Pipeline failed for asset ${assetId}:`, toSafeErrorMessage(err));
   });
+}
+
+function startUrlIngestPipeline(
+  assetId: string,
+  sourceType: 'youtube' | 'external',
+  sourceUrl: string,
+  userId: string,
+  strategy: IngestModel.Ingest['transcriptionStrategy'],
+  mediaType: 'audio' | 'video',
+) {
+  if (isQueueEnabled()) {
+    enqueueIngestJob({
+      assetId,
+      sourceUrl,
+      userId,
+      sourceType,
+      mediaType,
+      transcriptionStrategy: strategy ?? 'audio-first',
+    }).catch((err) => {
+      console.error(`Failed to enqueue job for ${assetId}, falling back to in-process:`, toSafeErrorMessage(err));
+      fireAndForgetPipeline(assetId, sourceType, sourceUrl, userId, strategy, mediaType);
+    });
+    return;
+  }
+
+  fireAndForgetPipeline(assetId, sourceType, sourceUrl, userId, strategy, mediaType);
 }
 
 export const ingest = new Elysia({ prefix: '/api/ingest' })
@@ -193,10 +214,27 @@ export const ingest = new Elysia({ prefix: '/api/ingest' })
         return status(500, { message: 'Failed to create asset' });
       }
 
-      // Fire-and-forget pipeline
-      orchestrateUploadPipeline(asset.id, storedUpload.canonicalUrl, userId, mediaType).catch((err) => {
-        console.error(`Upload pipeline failed for asset ${asset.id}:`, toSafeErrorMessage(err));
-      });
+      // Enqueue via BullMQ when Redis is available, otherwise fire-and-forget
+      const startUploadFallback = () => {
+        orchestrateUploadPipeline(asset.id, storedUpload.canonicalUrl, userId, mediaType).catch((err) => {
+          console.error(`Upload pipeline failed for asset ${asset.id}:`, toSafeErrorMessage(err));
+        });
+      };
+
+      if (isQueueEnabled()) {
+        enqueueIngestJob({
+          assetId: asset.id,
+          sourceUrl: storedUpload.canonicalUrl,
+          userId,
+          sourceType: 'upload',
+          mediaType,
+        }).catch((err) => {
+          console.error(`Failed to enqueue upload job for ${asset.id}, falling back to in-process:`, toSafeErrorMessage(err));
+          startUploadFallback();
+        });
+      } else {
+        startUploadFallback();
+      }
 
       return asset;
     },

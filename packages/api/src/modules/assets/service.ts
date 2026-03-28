@@ -1,6 +1,7 @@
 import { db } from '@milkpod/db';
 import {
   assetStatusEnum,
+  embeddings,
   mediaAssets,
   sourceTypeEnum,
   transcripts,
@@ -280,6 +281,39 @@ export abstract class AssetService {
       .limit(1);
 
     return !!row;
+  }
+
+  /** Check whether embeddings have already been generated for this asset's transcript. */
+  static async hasEmbeddings(assetId: string): Promise<boolean> {
+    const [row] = await db()
+      .select({ id: embeddings.id })
+      .from(embeddings)
+      .innerJoin(transcriptSegments, eq(embeddings.segmentId, transcriptSegments.id))
+      .innerJoin(transcripts, eq(transcriptSegments.transcriptId, transcripts.id))
+      .where(eq(transcripts.assetId, assetId))
+      .limit(1);
+
+    return !!row;
+  }
+
+  /**
+   * Load stored transcript segments for an asset.
+   * Used by the BullMQ worker to resume embedding after a checkpoint.
+   */
+  static async getStoredSegmentsForEmbedding(assetId: string): Promise<
+    { id: string; text: string; startTime: number; endTime: number }[]
+  > {
+    return db()
+      .select({
+        id: transcriptSegments.id,
+        text: transcriptSegments.text,
+        startTime: transcriptSegments.startTime,
+        endTime: transcriptSegments.endTime,
+      })
+      .from(transcriptSegments)
+      .innerJoin(transcripts, eq(transcriptSegments.transcriptId, transcripts.id))
+      .where(eq(transcripts.assetId, assetId))
+      .orderBy(transcriptSegments.segmentIndex);
   }
 
   static async updateSpeakerNames(
