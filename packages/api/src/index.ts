@@ -1,7 +1,12 @@
 import { auth } from '@milkpod/auth';
 import { db } from '@milkpod/db';
+import { isQueueEnabled, createRedisConnection } from './queue/connection';
 export { closeConnections, warmPool } from '@milkpod/db';
 export { IngestService } from './modules/ingest/service';
+export { startWorkers, stopWorkers } from './queue/workers';
+export { initEventBridge, closeEventBridge } from './events/asset-events';
+export { closeRedis } from './queue/connection';
+export { closeQueues } from './queue/ingest-queue';
 import { serverEnv } from '@milkpod/env/server';
 import { sql } from 'drizzle-orm';
 import { Elysia, t } from 'elysia';
@@ -47,6 +52,17 @@ export const app = new Elysia({ name: 'api' })
       checks.db = 'ok';
     } catch {
       checks.db = 'error';
+    }
+
+    if (isQueueEnabled()) {
+      try {
+        const conn = createRedisConnection();
+        await conn.ping();
+        await conn.quit();
+        checks.redis = 'ok';
+      } catch {
+        checks.redis = 'error';
+      }
     }
 
     const allOk = Object.values(checks).every((v) => v === 'ok');
