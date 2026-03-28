@@ -32,7 +32,7 @@ try {
 // Initialize Redis pub/sub bridge for cross-replica SSE events.
 await initEventBridge();
 
-// Start BullMQ workers for durable job processing (no-op without REDIS_URL).
+// Start BullMQ workers for durable job processing.
 await startWorkers();
 
 const server = new Elysia({ adapter: node() })

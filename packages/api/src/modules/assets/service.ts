@@ -296,6 +296,17 @@ export abstract class AssetService {
     return !!row;
   }
 
+  /** Delete all embeddings for an asset's transcript (used to clear partial state on retry). */
+  static async deleteEmbeddingsForAsset(assetId: string): Promise<void> {
+    const segmentIds = db()
+      .select({ id: transcriptSegments.id })
+      .from(transcriptSegments)
+      .innerJoin(transcripts, eq(transcriptSegments.transcriptId, transcripts.id))
+      .where(eq(transcripts.assetId, assetId));
+
+    await db().delete(embeddings).where(inArray(embeddings.segmentId, segmentIds));
+  }
+
   /**
    * Load stored transcript segments for an asset.
    * Used by the BullMQ worker to resume embedding after a checkpoint.

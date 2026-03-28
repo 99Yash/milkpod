@@ -1,6 +1,6 @@
 import { auth } from '@milkpod/auth';
 import { db } from '@milkpod/db';
-import { isQueueEnabled, createRedisConnection } from './queue/connection';
+import { isQueueEnabled, createUntrackedRedisConnection } from './queue/connection';
 export { closeConnections, warmPool } from '@milkpod/db';
 export { IngestService } from './modules/ingest/service';
 export { startWorkers, stopWorkers } from './queue/workers';
@@ -56,7 +56,7 @@ export const app = new Elysia({ name: 'api' })
 
     if (isQueueEnabled()) {
       try {
-        const conn = createRedisConnection();
+        const conn = createUntrackedRedisConnection();
         await conn.ping();
         await conn.quit();
         checks.redis = 'ok';
