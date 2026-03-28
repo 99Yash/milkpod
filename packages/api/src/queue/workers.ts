@@ -9,7 +9,7 @@ let ingestWorker: Worker<IngestJobData> | undefined;
 let visualWorker: Worker<VisualJobData> | undefined;
 
 /**
- * Start BullMQ workers. No-op when `REDIS_URL` is not set.
+ * Start BullMQ workers.
  * Should be called once at server startup.
  */
 export async function startWorkers(): Promise<void> {

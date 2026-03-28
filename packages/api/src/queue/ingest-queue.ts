@@ -70,13 +70,16 @@ export async function enqueueIngestJob(data: IngestJobData): Promise<void> {
   const jobId = `ingest_${data.assetId}`;
   const queue = getIngestQueue();
 
-  // Remove any stale completed/failed job for this asset so we can re-use the jobId
+  // Remove any stale completed/failed job for this asset so we can re-use the jobId.
+  // If the job is still active/waiting/delayed, skip — it's already being processed.
   try {
     const existing = await queue.getJob(jobId);
     if (existing) {
       const state = await existing.getState();
       if (state === 'completed' || state === 'failed') {
         await existing.remove();
+      } else if (state === 'active' || state === 'waiting' || state === 'delayed') {
+        return;
       }
     }
   } catch {
@@ -98,6 +101,8 @@ export async function enqueueVisualJob(data: VisualJobData): Promise<void> {
       const state = await existing.getState();
       if (state === 'completed' || state === 'failed') {
         await existing.remove();
+      } else if (state === 'active' || state === 'waiting' || state === 'delayed') {
+        return;
       }
     }
   } catch {

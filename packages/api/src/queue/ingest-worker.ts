@@ -171,9 +171,14 @@ export async function processIngestJob(job: Job<IngestJobData>): Promise<void> {
   }
 
   // ── Stage 2: Embedding (checkpoint-gated) ───────────────────────────
+  // On retry, partial embeddings may remain from a failed batch insert.
+  // Delete them so the stage is fully idempotent.
   const hasEmb = await AssetService.hasEmbeddings(assetId);
 
-  if (!hasEmb) {
+  if (!hasEmb || job.attemptsMade > 0) {
+    if (hasEmb) {
+      await AssetService.deleteEmbeddingsForAsset(assetId);
+    }
     await IngestService.updateStatus(assetId, 'embedding');
     emitAssetStatus(userId, assetId, 'embedding');
 

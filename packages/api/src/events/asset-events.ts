@@ -48,20 +48,32 @@ export async function initEventBridge(): Promise<void> {
 
   if (!isQueueEnabled()) return;
 
-  publisher = createRedisConnection();
-  subscriber = createRedisConnection();
+  try {
+    publisher = createRedisConnection();
+    subscriber = createRedisConnection();
 
-  subscriber.on('message', (_channel: string, raw: string) => {
-    try {
-      const event = JSON.parse(raw) as AssetStatusEvent;
-      assetEvents.emit('status', event);
-    } catch {
-      // malformed message — skip
+    subscriber.on('message', (_channel: string, raw: string) => {
+      try {
+        const event = JSON.parse(raw) as AssetStatusEvent;
+        assetEvents.emit('status', event);
+      } catch {
+        // malformed message — skip
+      }
+    });
+
+    await subscriber.subscribe(CHANNEL);
+    console.info('[events] Redis pub/sub bridge initialized');
+  } catch (err) {
+    console.warn(
+      '[events] Redis pub/sub bridge disabled (Redis unavailable):',
+      err instanceof Error ? err.message : err,
+    );
+    if (subscriber) {
+      try { await subscriber.unsubscribe(CHANNEL); } catch { /* ignore */ }
     }
-  });
-
-  await subscriber.subscribe(CHANNEL);
-  console.info('[events] Redis pub/sub bridge initialized');
+    publisher = undefined;
+    subscriber = undefined;
+  }
 }
 
 /** Tear down the Redis pub/sub bridge. */
@@ -81,7 +93,8 @@ export async function closeEventBridge(): Promise<void> {
 function publish(event: AssetStatusEvent): void {
   if (publisher) {
     publisher.publish(CHANNEL, JSON.stringify(event)).catch(() => {
-      // Redis unavailable — fall through to local emit below
+      // Redis unavailable — emit locally so this replica still works
+      assetEvents.emit('status', event);
     });
     return;
   }
