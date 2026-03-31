@@ -5,11 +5,11 @@ export const siteConfig = {
   description:
     'Milkpod is an AI video transcription and Q&A workspace that turns meetings, lectures, and interviews into searchable transcripts, highlights, and timestamped answers.',
   links: {
-    x: 'https://x.com/milkpodai',
-    github: 'https://github.com/milkpod',
-    githubAccount: 'https://github.com/milkpod',
+    x: 'https://dub.sh/twtter',
+    github: 'https://git.new/milkpod',
+    githubAccount: 'https://git.new/milkpod',
     web: 'https://www.croisillies.xyz',
-    linkedin: 'https://www.linkedin.com/company/milkpod',
+    linkedin: 'https://dub.sh/lnkedin',
     mail: 'iamdevyash@gmail.com',
   },
 } as const;
