@@ -1,139 +1,23 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Milkpod is an AI video transcription and Q&A workspace: users upload or link videos to get timestamped transcripts with speaker labels, ask questions with timestamped answers, and generate highlights.
 
-## Project Overview
-
-Milkpod is an AI video transcription and Q&A workspace. Users upload or link videos to get transcripts with timestamps and speaker labels, ask questions with timestamped answers, and generate highlights/summaries.
-
-## Tech Stack
-
-- **Frontend**: Next.js 16 App Router + React 19 (`apps/web`, port 3000)
-- **Backend**: Elysia (`apps/server`, port 3001)
-- **API Types**: Eden Treaty for type-safe client-server communication
-- **Auth**: Better Auth with Drizzle adapter (`packages/auth`)
-- **Database**: PostgreSQL + Drizzle ORM (`packages/db`)
-- **UI**: Tailwind CSS v4 + shadcn/ui
-- **Monorepo**: Turborepo + pnpm
+It's a `pnpm` + Turborepo monorepo with a Next.js App Router frontend (`apps/web`, port 3000) and an Elysia backend (`apps/server`, port 3001).
 
 ## Commands
 
-```bash
-pnpm dev              # Run all dev servers (web + server)
-pnpm build            # Build all packages and apps
-pnpm check-types      # Type-check entire monorepo
-pnpm dev:web          # Run only web app
-pnpm dev:server       # Run only backend
-pnpm db:push          # Legacy command (do not use)
-pnpm db:studio        # Open Drizzle Studio (database GUI)
-pnpm db:generate      # Generate Drizzle migrations
-pnpm db:migrate       # Run migrations
-```
+`pnpm dev`, `pnpm build`, and `pnpm check-types` behave as you'd expect. Two non-standard notes:
 
-## Architecture
+- Use `pnpm db:generate` then `pnpm db:migrate` for schema changes. `pnpm db:push` is legacy — see `docs/database.md`.
+- After editing schema files, run `pnpm build` before `pnpm check-types`. Downstream packages resolve types from `dist/`, so stale `.d.ts` files surface as phantom type errors.
 
-### Workspace Structure
+## Guides
 
-- `apps/web` - Next.js frontend
-- `apps/server` - Elysia backend (mounts `@milkpod/api`)
-- `packages/api` - Elysia routes + Eden types
-- `packages/auth` - Better Auth config + server client
-- `packages/db` - Drizzle schema + database utilities
-- `packages/config` - Shared TypeScript configuration
-
-### Data Flow
-
-1. **Frontend → API**: Web app uses Eden treaty client (`apps/web/src/lib/api.ts`) with `credentials: "include"` for auth cookies
-2. **Frontend → Auth**: Client-side uses `authClient` from `apps/web/src/lib/auth/client.ts`; server-side (RSC) uses `authServer` from `apps/web/src/lib/auth/server.ts`
-3. **Backend → Auth**: `/api/auth/*` routes handled by Better Auth from `@milkpod/auth`
-4. **Session Derivation**: Backend derives session via `auth.api.getSession` on every request
-
-### Path Aliases
-
-- `apps/web` uses `~/` for `apps/web/src/*`
-- `apps/server` uses `~/` for `apps/server/src/*`
-- Shared packages consumed via `@milkpod/*` imports
-
-## Conventions
-
-- Avoid editing `apps/web/src/components/ui/` unless fixing bugs or fulfilling explicit requirements (shadcn/ui components)
-- Shared logic belongs in `packages/*`, consumed via `@milkpod/*` imports
-- Avoid deep relative imports across packages
-- Environment files: `apps/server/.env` and `apps/web/.env`
-- **Guard browser-only APIs in code that runs during SSR.** Next.js App Router server-renders `'use client'` components. Any access to `localStorage`, `window`, `document`, `navigator`, etc. must be behind a `typeof window !== 'undefined'` check or deferred to a `useEffect`. `useState` initializers run on the server too — never call browser APIs from them without a guard.
-
-## Tree-Shaking & Package Boundaries
-
-`@milkpod/ai` has server-only dependencies (`@ai-sdk/openai`, `@ai-sdk/google`, `drizzle-orm`, `@milkpod/db`). The barrel export (`@milkpod/ai`) re-exports everything, including modules that import these server packages. **Importing from `@milkpod/ai` in `apps/web` will pull Node.js modules (like `pg` → `dns`) into the Next.js bundle and break the build.**
-
-Rules:
-- **Frontend code must use subpath imports** — `@milkpod/ai/models`, `@milkpod/ai/limits`, `@milkpod/ai/types`, `@milkpod/ai/schemas`, etc. Never `@milkpod/ai`.
-- **Keep client-safe modules free of server imports.** If a file is used on the frontend (e.g. `models.ts`, `limits.ts`, `types.ts`), it must not import `@ai-sdk/openai`, `@ai-sdk/google`, `drizzle-orm`, or any `@milkpod/db` module. Move server-only functions (like provider constructors) into server-only files (e.g. `stream.ts`).
-- The same principle applies to all `@milkpod/*` packages — always check whether the subpath you're importing transitively pulls in Node.js-only code.
-- Package exports use the `./*` wildcard pattern (`"types": "./dist/*.d.ts"`, `"default": "./src/*.ts"`), so any `src/*.ts` file is importable as `@milkpod/ai/*`.
-
-## AI SDK (v6 / `ai` package)
-
-This project uses AI SDK v6 (`ai@^6.0.0`) with `@ai-sdk/openai@^3.0.0`, `@ai-sdk/google@^3.0.0`, and `@ai-sdk/react@^3.0.0`. The API surface differs significantly from v3/v4 docs you may have been trained on. **When unsure about a type or function signature, check the actual `.d.ts` files in `node_modules/.pnpm/ai@*/node_modules/ai/dist/index.d.ts`** — do not guess from memory.
-
-Key differences from older versions:
-- `maxTokens` → `maxOutputTokens` in `streamText`/`generateText`
-- `maxSteps` → `stopWhen: [stepCountIs(n)]`
-- `tool()`: `parameters` → `inputSchema`
-- `LanguageModel` type = `GlobalProviderModelId | LanguageModelV3 | LanguageModelV2` (union, not just a model instance)
-- `streamText.onFinish` callback receives `StepResult<TOOLS> & { steps, totalUsage }` — `text`, `steps`, `toolCalls` etc. are all top-level properties
-- Provider model ID types (`OpenAIChatModelId`, `GoogleGenerativeAIModelId`) are declared locally in their packages but **not exported** — use plain `string` and validate at runtime
-- Provider functions (`openai()`, `google()`) accept any string via `(string & {})` in their union types
-
-## Database Workflow
-
-- **Never** use `db:push` — always `db:generate` then `db:migrate`
-- For schema changes drizzle-kit can't auto-detect (renames vs creates), use `drizzle-kit generate --custom --name <name>` and write SQL manually
-- After creating/modifying schema files, run `pnpm build` before `pnpm check-types` — downstream packages (`@milkpod/api`) resolve types from `dist/` via the `types` field in package.json exports. Stale `.d.ts` files cause phantom type errors.
-
-## Code Review Standards
-
-`review-prompt.md` contains the comprehensive code review checklist for this project. When reviewing code or writing new code, follow its standards:
-
-- **Backend**: N+1 queries, input validation, auth/authz on every route, rate limiting coverage, timeouts on all external calls, safe error logging (`err.message` not `err`), proper HTTP status codes, transactions for atomic ops, exhaustive switches
-- **Frontend**: No redundant state, useEffect cleanup, stable keys, SSR guards, no `any`, ARIA/keyboard accessibility, `toast.error()` not silent catches, Tailwind v4 theme tokens
-- **Library leverage**: Before writing manual logic, verify the library doesn't already provide it. Read `.d.ts` files in `node_modules/.pnpm/` for actual type signatures. Search library GitHub repos via `mcp__grep__searchGitHub` (elysiajs/elysia, drizzle-team/drizzle-orm, vercel/ai) for API examples. Prefer Drizzle relational queries over manual joins, Elysia `.guard()`/`.onError()` over per-route boilerplate, AI SDK `Output` over manual JSON parsing.
-- **Composability**: Extract shared patterns (admin checks, ownership resolution, quota enforcement) into typed utilities. Functions should be generic over dependencies. Keep module interfaces narrow.
-
-See `review-prompt.md` for the full checklist, library-specific guidance, and high-signal nudges from prior reviews. See `docs/typescript-patterns.md` for TypeScript patterns reference (discriminated unions, branded types, type guards, generics, `satisfies`, mapped types, React component typing). See `docs/ai-sdk-v6-patterns.md` for AI SDK v6 API patterns (tools, streaming, structured output, workflows, error handling).
-
-## Keeping Agent Docs Useful
-
-- Treat `packages/env/src/server.ts` and `packages/env/src/client.ts` as source of truth for app-level env validation
-- Prefer `serverEnv()` / `clientEnv()` over direct `process.env` usage in app code
-- When adding/changing env vars, update: env schema (`packages/env/src/*`), `apps/server/.env.example`, `apps/web/.env.example`, plus both `AGENTS.md` and `CLAUDE.md`
-- If a package uses SDK-native env lookups (for example AI provider API keys), explicitly document those keys in the env section even if they are not validated in `@milkpod/env`
-
-## Environment Variables
-
-- `NEXT_PUBLIC_SERVER_URL` - API URL for web app (e.g., `http://localhost:3001`)
-- `CORS_ORIGIN` - Allowed origin for Elysia CORS
-- `DATABASE_URL` - PostgreSQL connection string
-- `BETTER_AUTH_SECRET` / `BETTER_AUTH_URL` - Better Auth configuration
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` - OAuth provider
-- `NODE_ENV` - Runtime mode (`development`, `production`, `test`)
-- `ASSEMBLYAI_API_KEY` - Required for AssemblyAI transcription in ingest flows
-- `UPLOAD_STORAGE_BUCKET` - S3-compatible bucket for durable manual uploads
-- `UPLOAD_STORAGE_REGION` - Region for the upload bucket (`auto` works for providers like R2)
-- `UPLOAD_STORAGE_ENDPOINT` - Optional custom S3 endpoint (for R2/MinIO/etc.)
-- `UPLOAD_STORAGE_ACCESS_KEY_ID` / `UPLOAD_STORAGE_SECRET_ACCESS_KEY` - Credentials for upload storage
-- `UPLOAD_STORAGE_FORCE_PATH_STYLE` - `true` for path-style S3 providers, else `false`
-- `UPLOAD_STORAGE_SIGNED_URL_TTL_SECONDS` - Lifetime for signed download URLs used in ingest
-- `OPENAI_API_KEY` - Used by `@ai-sdk/openai` in `@milkpod/ai` (provider reads from process env)
-- `ANTHROPIC_API_KEY` - Used by `@ai-sdk/anthropic` in `@milkpod/ai` (provider reads from process env)
-- `GOOGLE_GENERATIVE_AI_API_KEY` - Used by `@ai-sdk/google` in `@milkpod/ai` (provider reads from process env)
-- `REDIS_URL` - Redis connection string; required for BullMQ durable job queue and Redis pub/sub SSE events
-- `RESEND_API_KEY` - Required for sending email OTP codes via Resend
-- `AUTH_FROM_EMAIL` - Optional sender identity for OTP emails (defaults to `Milkpod <noreply@croisillies.xyz>`)
-- `COOKIE_DOMAIN` - Better Auth cookie domain (required in production, optional in development/test)
-- `ADMIN_EMAILS` - Comma-separated list of admin email addresses; these users bypass daily word quota limits
-- `BILLING_PROVIDER` - Optional, set to `polar` (or `razorpay`) to enable billing routes; omit to disable billing
-- `POLAR_ACCESS_TOKEN` - Polar organization access token (required when `BILLING_PROVIDER=polar`)
-- `POLAR_WEBHOOK_SECRET` - Polar webhook signing secret, prefixed with `whsec_` (required when `BILLING_PROVIDER=polar`)
-- `POLAR_PRODUCT_PRO` - Comma-separated Polar product UUIDs for Pro plan (monthly,yearly)
-- `POLAR_PRODUCT_TEAM` - Comma-separated Polar product UUIDs for Team plan (monthly,yearly)
+- For the workspace layout, data flow, and path aliases, see `docs/architecture.md`.
+- For day-to-day conventions (SSR guards, shadcn, shared-package hygiene, library leverage), see `docs/conventions.md`.
+- For `@milkpod/*` tree-shaking and subpath-import rules, see `docs/package-boundaries.md`.
+- For AI SDK v6 API differences, see `docs/ai-sdk-v6-patterns.md`.
+- For the database migration workflow, see `docs/database.md`.
+- For environment variables and env-var hygiene, see `docs/environment.md`.
+- For TypeScript patterns (discriminated unions, branded types, generics, `satisfies`, mapped types), see `docs/typescript-patterns.md`.
+- For the full code review checklist, see `review-prompt.md`.
