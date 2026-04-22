@@ -10,7 +10,7 @@ export const moments = new Elysia({ prefix: '/api/moments' })
   .post(
     '/generate',
     async ({ body, user }) => {
-      const asset = await AssetService.getById(body.assetId, user.id);
+      const asset = await AssetService.getByIdAsMember(body.assetId, user.id);
       if (!asset) return status(404, { message: 'Asset not found' });
       if (asset.status !== 'ready') {
         return status(422, { message: 'Asset is not ready for moment extraction' });
@@ -38,7 +38,7 @@ export const moments = new Elysia({ prefix: '/api/moments' })
   .get(
     '/',
     async ({ user, query }) => {
-      const asset = await AssetService.getById(query.assetId, user.id);
+      const asset = await AssetService.getByIdAsMember(query.assetId, user.id);
       if (!asset) return status(404, { message: 'Asset not found' });
 
       return MomentService.list(
