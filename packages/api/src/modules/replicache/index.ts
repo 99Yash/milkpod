@@ -1,0 +1,90 @@
+import { Elysia, status, t } from 'elysia';
+import { authMacro } from '../../middleware/auth';
+import {
+  replicacheEvents,
+  type ReplicachePoke,
+} from '../../events/replicache-events';
+import { handlePull, type PullRequestBody } from './pull';
+
+export const replicache = new Elysia({ prefix: '/api/replicache' })
+  .use(authMacro)
+  .post(
+    '/pull',
+    async ({ body, user }) => {
+      const result = await handlePull(user.id, body as PullRequestBody);
+      if ('forbidden' in result) {
+        return status(403, {
+          message: 'Client group is bound to another user',
+        });
+      }
+      return result;
+    },
+    {
+      auth: true,
+      body: t.Object({
+        pullVersion: t.Literal(1),
+        clientGroupID: t.String({ minLength: 1, maxLength: 200 }),
+        cookie: t.Nullable(t.Number()),
+        profileID: t.Optional(t.String()),
+        schemaVersion: t.Optional(t.String()),
+      }),
+    },
+  )
+  .post(
+    '/push',
+    () =>
+      status(501, {
+        message: 'Push not implemented in Phase 2 — writes go through REST',
+      }),
+    { auth: true },
+  )
+  .get(
+    '/events',
+    ({ user }) => {
+      const userId = user.id;
+      const encoder = new TextEncoder();
+      let cleanup: (() => void) | undefined;
+
+      const stream = new ReadableStream({
+        start(controller) {
+          const write = (text: string) => {
+            try {
+              controller.enqueue(encoder.encode(text));
+            } catch {
+              // stream already closed
+            }
+          };
+
+          const listener = (event: ReplicachePoke) => {
+            if (event.userId !== userId) return;
+            write(`event: poke\ndata: ${JSON.stringify({ assetId: event.assetId })}\n\n`);
+          };
+
+          replicacheEvents.on('poke', listener);
+
+          const heartbeat = setInterval(() => {
+            write(': heartbeat\n\n');
+          }, 30_000);
+
+          write(': connected\n\n');
+
+          cleanup = () => {
+            replicacheEvents.off('poke', listener);
+            clearInterval(heartbeat);
+          };
+        },
+        cancel() {
+          cleanup?.();
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
+      }) as Response;
+    },
+    { auth: true },
+  );

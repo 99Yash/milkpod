@@ -1,12 +1,15 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Moment } from '@milkpod/api/types';
+import type { SyncedMoment } from '@milkpod/sync';
 import { api } from '~/lib/api';
 import { checkQuotaLocal, incrementMonthlyUsage } from '~/lib/plan-cache';
 import { handleUpgradeError } from '~/lib/upgrade-prompt';
+import { useReplicache } from '~/lib/replicache/context';
+import { useSubscribedMoments } from '~/lib/replicache/hooks';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
 import { MomentCard } from './moment-card';
@@ -20,34 +23,46 @@ interface MomentsTabProps {
   initialMoments: Moment[];
 }
 
+function syncedToMoment(s: SyncedMoment): Moment {
+  return {
+    id: s.id,
+    assetId: s.assetId,
+    userId: s.authorId,
+    preset: s.preset,
+    title: s.title,
+    rationale: s.rationale,
+    startTime: s.startTime,
+    endTime: s.endTime,
+    score: s.score,
+    scoreBreakdown: null,
+    source: s.source,
+    isSaved: s.isSaved,
+    dismissedAt: null,
+    deletedAt: null,
+    rowVersion: s.rowVersion,
+    createdAt: new Date(s.createdAt),
+    updatedAt: null,
+  };
+}
+
 export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
   const [preset, setPreset] = useState<MomentPreset>('default');
-  const [moments, setMoments] = useState<Moment[]>(initialMoments);
-  const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [hasLoaded, setHasLoaded] = useState(true);
 
-  const fetchMoments = useCallback(
-    async (p: MomentPreset) => {
-      setLoading(true);
-      try {
-        const { data, error } = await api.api.moments.get({
-          query: { assetId, preset: p },
-        });
-        if (error) throw new Error(String(error));
-        setMoments((data as Moment[]) ?? []);
-      } catch {
-        // Error is surfaced by the global query cache error handler
-      } finally {
-        setLoading(false);
-        setHasLoaded(true);
-      }
-    },
-    [assetId],
-  );
+  const rep = useReplicache();
+  const { items: syncedMoments, ready: syncReady } =
+    useSubscribedMoments(assetId);
+
+  // Replicache drives the list once its subscription has fired. The SSR
+  // payload is only used in the brief window before that.
+  const moments = useMemo<Moment[]>(() => {
+    const source =
+      rep && syncReady ? syncedMoments.map(syncedToMoment) : initialMoments;
+    const filtered = source.filter((m) => m.preset === preset);
+    return filtered.sort((a, b) => b.score - a.score);
+  }, [rep, syncReady, syncedMoments, initialMoments, preset]);
 
   async function handleGenerate(regenerate = false) {
-    // Client-side quota pre-check — avoid the round-trip when we already know
     const quota = checkQuotaLocal('visual_segments');
     if (quota && !quota.allowed) {
       handleUpgradeError({ status: 402, value: { code: 'QUOTA_EXCEEDED' } });
@@ -66,8 +81,6 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
         throw new Error(String(error));
       }
       const generated = (data as Moment[]) ?? [];
-      setMoments(generated);
-      // Optimistically bump the local counter so subsequent generates are gated
       if (generated.length > 0) {
         incrementMonthlyUsage('visual_segments', generated.length);
       }
@@ -79,40 +92,23 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
   }
 
   async function handleSave(momentId: string) {
-    const { error } = await api.api.moments({ id: momentId }).feedback.post({
-      action: 'save',
-    });
-    if (!error) {
-      setMoments((prev) =>
-        prev.map((m) => (m.id === momentId ? { ...m, isSaved: true } : m)),
-      );
-    }
+    await api.api.moments({ id: momentId }).feedback.post({ action: 'save' });
   }
 
   async function handleDismiss(momentId: string) {
-    const { error } = await api.api.moments({ id: momentId }).feedback.post({
+    await api.api.moments({ id: momentId }).feedback.post({
       action: 'dismiss',
     });
-    if (!error) {
-      setMoments((prev) => prev.filter((m) => m.id !== momentId));
-    }
   }
 
-  function handlePresetChange(p: MomentPreset) {
-    setPreset(p);
-    setHasLoaded(false);
-    fetchMoments(p);
-  }
-
-  const isEmpty = hasLoaded && !loading && moments.length === 0;
+  const isEmpty = !generating && moments.length === 0;
 
   return (
     <div className="flex flex-col gap-4 p-5">
-      {/* Header row: preset switcher + regenerate */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <MomentPresetSwitcher
           value={preset}
-          onChange={handlePresetChange}
+          onChange={setPreset}
           disabled={generating}
         />
         {moments.length > 0 && (
@@ -132,14 +128,11 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
         )}
       </div>
 
-      {/* Content */}
-      {loading || generating ? (
+      {generating ? (
         <div className="flex flex-col items-center gap-2 py-12">
           <Spinner className="size-5" />
           <p className="text-sm text-muted-foreground">
-            {generating
-              ? 'Extracting best moments...'
-              : 'Loading moments...'}
+            Extracting best moments...
           </p>
         </div>
       ) : isEmpty ? (
@@ -168,7 +161,11 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
             <div
               key={moment.id}
               className="animate-enter"
-              style={index > 0 ? { animationDelay: `${Math.min(index, 8) * 60}ms` } : undefined}
+              style={
+                index > 0
+                  ? { animationDelay: `${Math.min(index, 8) * 60}ms` }
+                  : undefined
+              }
             >
               <MomentCard
                 moment={moment}

@@ -38,6 +38,7 @@ import {
   DialogTrigger,
 } from '~/components/ui/dialog';
 import type { ShareLink } from '@milkpod/api/types';
+import { CollaboratorsSection } from './collaborators-section';
 
 interface ShareDialogProps {
   assetId?: string;
@@ -208,6 +209,12 @@ export function ShareDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {assetId ? (
+            <>
+              <CollaboratorsSection assetId={assetId} />
+              <div className="border-t" />
+            </>
+          ) : null}
           {/* Create new link section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">

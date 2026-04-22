@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { getServerSession, assertAuthenticated } from '~/lib/auth/session';
 import { getAssetWithTranscript } from '~/lib/data/queries';
 import { AssetShell } from '~/components/asset/asset-shell';
+import { ReplicacheProvider } from '~/lib/replicache/context';
 
 export default async function AssetPage({
   params,
@@ -17,5 +18,9 @@ export default async function AssetPage({
   const asset = await getAssetWithTranscript(id, session.user.id);
   if (!asset) notFound();
 
-  return <AssetShell assetId={id} initialAsset={asset} />;
+  return (
+    <ReplicacheProvider userId={session.user.id}>
+      <AssetShell assetId={id} initialAsset={asset} />
+    </ReplicacheProvider>
+  );
 }
