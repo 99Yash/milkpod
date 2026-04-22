@@ -2,6 +2,7 @@ import { db } from '@milkpod/db';
 import { assetComments, commentSourceEnum } from '@milkpod/db/schemas';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { Comment } from '../../types';
+import { AssetMemberService } from '../asset-members/service';
 
 type SourceValue = (typeof commentSourceEnum.enumValues)[number];
 
@@ -42,6 +43,7 @@ export abstract class CommentService {
           eq(assetComments.userId, userId),
         ),
       );
+    await AssetMemberService.pokeMembers(assetId);
   }
 
   static async insertMany(
@@ -59,7 +61,12 @@ export abstract class CommentService {
     }>,
   ): Promise<Comment[]> {
     if (rows.length === 0) return [];
-    return db().insert(assetComments).values(rows).returning();
+    const inserted = await db().insert(assetComments).values(rows).returning();
+    const assetIds = new Set(inserted.map((r) => r.assetId));
+    for (const assetId of assetIds) {
+      await AssetMemberService.pokeMembers(assetId);
+    }
+    return inserted;
   }
 
   static async dismissComment(
@@ -73,6 +80,7 @@ export abstract class CommentService {
         and(eq(assetComments.id, commentId), eq(assetComments.userId, userId)),
       )
       .returning();
+    if (updated) await AssetMemberService.pokeMembers(updated.assetId);
     return updated ?? null;
   }
 }

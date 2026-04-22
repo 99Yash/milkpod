@@ -7,6 +7,8 @@ import {
   IngestService,
   initEventBridge,
   closeEventBridge,
+  initReplicachePokeBridge,
+  closeReplicachePokeBridge,
   startWorkers,
   stopWorkers,
   closeQueues,
@@ -31,6 +33,7 @@ try {
 
 // Initialize Redis pub/sub bridge for cross-replica SSE events.
 await initEventBridge();
+await initReplicachePokeBridge();
 
 // Start BullMQ workers for durable job processing.
 await startWorkers();
@@ -75,6 +78,7 @@ async function shutdown(signal: string) {
   try {
     // 2. Close Redis event bridge
     await closeEventBridge();
+    await closeReplicachePokeBridge();
     // 3. Close BullMQ queue connections
     await closeQueues();
     // 4. Close remaining Redis connections

@@ -1,5 +1,6 @@
 import {
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -38,10 +39,13 @@ export const assetComments = pgTable(
       visualSegmentIds: string[];
     }>(),
     dismissedAt: timestamp('dismissed_at'),
+    deletedAt: timestamp('deleted_at'),
+    rowVersion: integer('row_version').notNull().default(0),
     ...lifecycle_dates,
   },
   (t) => [
     index('asset_comment_asset_start_idx').on(t.assetId, t.startTime),
     index('asset_comment_user_asset_idx').on(t.userId, t.assetId),
+    index('asset_comment_asset_row_version_idx').on(t.assetId, t.rowVersion),
   ],
 );

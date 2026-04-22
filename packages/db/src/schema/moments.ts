@@ -1,6 +1,7 @@
 import {
   boolean,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -50,6 +51,8 @@ export const assetMoments = pgTable(
     source: momentSourceEnum('source').notNull(),
     isSaved: boolean('is_saved').default(false).notNull(),
     dismissedAt: timestamp('dismissed_at'),
+    deletedAt: timestamp('deleted_at'),
+    rowVersion: integer('row_version').notNull().default(0),
     ...lifecycle_dates,
   },
   (t) => [
@@ -59,6 +62,7 @@ export const assetMoments = pgTable(
       t.score,
     ),
     index('asset_moment_asset_start_idx').on(t.assetId, t.startTime),
+    index('asset_moment_asset_row_version_idx').on(t.assetId, t.rowVersion),
   ],
 );
 
