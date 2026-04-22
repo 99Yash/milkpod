@@ -9,14 +9,34 @@ import { api } from '~/lib/api';
 import { checkQuotaLocal, incrementMonthlyUsage } from '~/lib/plan-cache';
 import { handleUpgradeError } from '~/lib/upgrade-prompt';
 import { useReplicache } from '~/lib/replicache/context';
-import { useSubscribedMoments } from '~/lib/replicache/hooks';
+import {
+  useRecentlyChanged,
+  useSubscribedMoments,
+} from '~/lib/replicache/hooks';
+import { cn } from '~/lib/utils';
 import { Button } from '~/components/ui/button';
 import { Spinner } from '~/components/ui/spinner';
-import { MomentCard } from './moment-card';
+import { MomentCard, type MomentAuthor } from './moment-card';
 import {
   MomentPresetSwitcher,
   type MomentPreset,
 } from './moment-preset-switcher';
+
+interface MomentRow {
+  moment: Moment;
+  author?: MomentAuthor;
+}
+
+function syncedToRow(s: SyncedMoment): MomentRow {
+  return {
+    moment: syncedToMoment(s),
+    author: {
+      name: s.authorName,
+      image: s.authorImage,
+      email: s.authorEmail,
+    },
+  };
+}
 
 interface MomentsTabProps {
   assetId: string;
@@ -52,15 +72,19 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
   const rep = useReplicache();
   const { items: syncedMoments, ready: syncReady } =
     useSubscribedMoments(assetId);
+  const recentlyChanged = useRecentlyChanged(syncedMoments);
 
   // Replicache drives the list once its subscription has fired. The SSR
   // payload is only used in the brief window before that.
-  const moments = useMemo<Moment[]>(() => {
-    const source =
-      rep && syncReady ? syncedMoments.map(syncedToMoment) : initialMoments;
-    const filtered = source.filter((m) => m.preset === preset);
-    return filtered.sort((a, b) => b.score - a.score);
+  const rows = useMemo<MomentRow[]>(() => {
+    const source: MomentRow[] =
+      rep && syncReady
+        ? syncedMoments.map(syncedToRow)
+        : initialMoments.map((moment) => ({ moment }));
+    const filtered = source.filter((r) => r.moment.preset === preset);
+    return filtered.sort((a, b) => b.moment.score - a.moment.score);
   }, [rep, syncReady, syncedMoments, initialMoments, preset]);
+  const moments = rows.map((r) => r.moment);
 
   async function handleGenerate(regenerate = false) {
     const quota = checkQuotaLocal('visual_segments');
@@ -92,10 +116,23 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
   }
 
   async function handleSave(momentId: string) {
+    if (rep) {
+      await rep.mutate.momentUpdate({
+        id: momentId,
+        assetId,
+        isSaved: true,
+      });
+      return;
+    }
+    // Fallback for contexts outside the ReplicacheProvider.
     await api.api.moments({ id: momentId }).feedback.post({ action: 'save' });
   }
 
   async function handleDismiss(momentId: string) {
+    if (rep) {
+      await rep.mutate.momentDelete({ id: momentId, assetId });
+      return;
+    }
     await api.api.moments({ id: momentId }).feedback.post({
       action: 'dismiss',
     });
@@ -157,10 +194,13 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
-          {moments.map((moment, index) => (
+          {rows.map(({ moment, author }, index) => (
             <div
               key={moment.id}
-              className="animate-enter"
+              className={cn(
+                'animate-enter rounded-lg',
+                recentlyChanged.has(moment.id) && 'sync-pulse',
+              )}
               style={
                 index > 0
                   ? { animationDelay: `${Math.min(index, 8) * 60}ms` }
@@ -169,6 +209,7 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
             >
               <MomentCard
                 moment={moment}
+                author={author}
                 onSave={handleSave}
                 onDismiss={handleDismiss}
               />

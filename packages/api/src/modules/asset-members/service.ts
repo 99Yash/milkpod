@@ -199,6 +199,19 @@ export abstract class AssetMemberService {
           eq(assetMembers.userId, userIdToRemove),
         ),
       );
+
+    // Poke the removed user so their Replicache pulls immediately and CVR
+    // diffing emits `del` ops for every row on this asset. Without this, the
+    // removed user's client would keep showing the asset's rows until their
+    // next manual pull or page reload.
+    try {
+      emitReplicachePokes([userIdToRemove], assetId);
+    } catch (err) {
+      console.warn(
+        '[asset-members] revocation poke failed:',
+        err instanceof Error ? err.message : err,
+      );
+    }
     return { removed: true };
   }
 

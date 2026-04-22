@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   commentPrefix,
   momentPrefix,
@@ -58,4 +58,50 @@ export function useSubscribedComments(
   assetId: string,
 ): SubscriptionResult<SyncedComment> {
   return usePrefixSubscription<SyncedComment>(commentPrefix(assetId));
+}
+
+/**
+ * Track which synced rows have arrived or changed `rowVersion` since the last
+ * render. Useful for flashing a subtle highlight when sync brings something
+ * in. Skips the initial population so the whole list doesn't light up at once.
+ */
+export function useRecentlyChanged(
+  items: ReadonlyArray<{ id: string; rowVersion: number }>,
+  highlightMs = 1200,
+): Set<string> {
+  const prevRef = useRef<Map<string, number>>(new Map());
+  const [recent, setRecent] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const prev = prevRef.current;
+    const now = new Map<string, number>();
+    const newlyChanged: string[] = [];
+    for (const it of items) {
+      now.set(it.id, it.rowVersion);
+      const prevV = prev.get(it.id);
+      if (prevV === undefined || prevV !== it.rowVersion) {
+        newlyChanged.push(it.id);
+      }
+    }
+    const isInitialPopulation = prev.size === 0 && items.length > 0;
+    prevRef.current = now;
+
+    if (isInitialPopulation || newlyChanged.length === 0) return;
+
+    setRecent((cur) => {
+      const next = new Set(cur);
+      for (const id of newlyChanged) next.add(id);
+      return next;
+    });
+    const timer = setTimeout(() => {
+      setRecent((cur) => {
+        const next = new Set(cur);
+        for (const id of newlyChanged) next.delete(id);
+        return next;
+      });
+    }, highlightMs);
+    return () => clearTimeout(timer);
+  }, [items, highlightMs]);
+
+  return recent;
 }

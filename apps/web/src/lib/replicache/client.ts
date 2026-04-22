@@ -1,5 +1,6 @@
 import { Replicache, TEST_LICENSE_KEY, type PullerResultV1 } from 'replicache';
 import { clientEnv } from '@milkpod/env/client';
+import { clientMutators } from '@milkpod/sync';
 
 const serverUrl = clientEnv().NEXT_PUBLIC_SERVER_URL;
 
@@ -9,9 +10,9 @@ const serverUrl = clientEnv().NEXT_PUBLIC_SERVER_URL;
  * separate IndexedDB store (sign-out clears nothing — worst case, a
  * different user's cache stays isolated).
  *
- * Phase 2: push is a 501 stub; all writes still go through REST. The Replicache
- * instance is pull-only for now. Pull is triggered explicitly via pokes; no
- * polling interval.
+ * Writes go through `rep.mutate.<name>(args)`; they run optimistically
+ * against the local IDB first, then push to the server. Pull is triggered
+ * explicitly via SSE pokes (no polling interval).
  */
 export function createMilkpodReplicache(userId: string) {
   return new Replicache({
@@ -20,6 +21,7 @@ export function createMilkpodReplicache(userId: string) {
     pullURL: `${serverUrl}/api/replicache/pull`,
     pushURL: `${serverUrl}/api/replicache/push`,
     pullInterval: null,
+    mutators: clientMutators,
     puller: async (request) => {
       const res = await fetch(`${serverUrl}/api/replicache/pull`, {
         method: 'POST',

@@ -413,6 +413,9 @@ importers:
       '@milkpod/env':
         specifier: workspace:*
         version: link:../env
+      '@milkpod/sync':
+        specifier: workspace:*
+        version: link:../sync
       ai:
         specifier: 'catalog:'
         version: 6.0.77(zod@4.1.12)
@@ -543,6 +546,9 @@ importers:
       '@milkpod/config':
         specifier: workspace:*
         version: link:../config
+      replicache:
+        specifier: ^15.3.0
+        version: 15.3.0
       tsdown:
         specifier: 'catalog:'
         version: 0.15.12(typescript@5.9.3)

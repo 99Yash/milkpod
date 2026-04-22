@@ -17,10 +17,17 @@
   },
   "devDependencies": {
     "@milkpod/config": "workspace:*",
+    "replicache": "^15.3.0",
     "tsdown": "catalog:"
   },
   "peerDependencies": {
+    "replicache": "^15",
     "typescript": "^5"
+  },
+  "peerDependenciesMeta": {
+    "replicache": {
+      "optional": true
+    }
   },
   "dependencies": {
     "zod": "catalog:"
