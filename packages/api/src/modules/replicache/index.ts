@@ -5,6 +5,7 @@ import {
   type ReplicachePoke,
 } from '../../events/replicache-events';
 import { handlePull, type PullRequestBody } from './pull';
+import { handlePush, type PushRequestBody } from './push';
 
 export const replicache = new Elysia({ prefix: '/api/replicache' })
   .use(authMacro)
@@ -32,11 +33,33 @@ export const replicache = new Elysia({ prefix: '/api/replicache' })
   )
   .post(
     '/push',
-    () =>
-      status(501, {
-        message: 'Push not implemented in Phase 2 — writes go through REST',
+    async ({ body, user }) => {
+      const result = await handlePush(user.id, body as PushRequestBody);
+      if ('forbidden' in result) {
+        return status(403, {
+          message: 'Client group is bound to another user',
+        });
+      }
+      return result;
+    },
+    {
+      auth: true,
+      body: t.Object({
+        pushVersion: t.Literal(1),
+        clientGroupID: t.String({ minLength: 1, maxLength: 200 }),
+        mutations: t.Array(
+          t.Object({
+            id: t.Number(),
+            clientID: t.String(),
+            name: t.String(),
+            args: t.Unknown(),
+            timestamp: t.Number(),
+          }),
+        ),
+        profileID: t.Optional(t.String()),
+        schemaVersion: t.Optional(t.String()),
       }),
-    { auth: true },
+    },
   )
   .get(
     '/events',

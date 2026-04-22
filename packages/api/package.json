@@ -33,6 +33,7 @@
     "@milkpod/auth": "workspace:*",
     "@milkpod/db": "workspace:*",
     "@milkpod/env": "workspace:*",
+    "@milkpod/sync": "workspace:*",
     "ai": "catalog:",
     "drizzle-orm": "^0.44.2",
     "elysia": "catalog:",

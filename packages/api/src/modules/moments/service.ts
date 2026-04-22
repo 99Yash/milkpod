@@ -21,6 +21,9 @@ export abstract class MomentService {
       eq(assetMoments.assetId, assetId),
       eq(assetMoments.userId, userId),
       isNull(assetMoments.dismissedAt),
+      // Sync mutators use `deletedAt` for soft-delete; keep parity so REST
+      // SSR payloads don't briefly show rows that Replicache has removed.
+      isNull(assetMoments.deletedAt),
     ];
 
     if (preset) {

@@ -241,6 +241,12 @@ export function CollaboratorsSection({ assetId }: CollaboratorsSectionProps) {
               </Button>
             </div>
           ))}
+
+          {members.length === 1 && pendingInvites.length === 0 ? (
+            <p className="pt-1 text-[11px] text-muted-foreground">
+              Only you can see this video. Invite someone above to collaborate.
+            </p>
+          ) : null}
         </div>
       )}
     </div>

@@ -6,13 +6,34 @@ import type { Moment } from '@milkpod/api/types';
 import { formatTime } from '~/lib/format';
 import { useTimestampAction } from '~/components/chat/use-timestamp-action';
 import { VideoMomentDialog } from '~/components/chat/video-moment-dialog';
+import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar';
 import { Badge } from '~/components/ui/badge';
 import { cn } from '~/lib/utils';
 
+export interface MomentAuthor {
+  name: string | null;
+  image: string | null;
+  email: string | null;
+}
+
 interface MomentCardProps {
   moment: Moment;
+  author?: MomentAuthor;
   onSave: (id: string) => Promise<void>;
   onDismiss: (id: string) => Promise<void>;
+}
+
+function authorInitials(author: MomentAuthor): string {
+  const source = (author.name || author.email || '').trim();
+  if (!source) return '?';
+  const parts = source.split(/[\s@.]+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? '';
+  const second = parts[1]?.[0] ?? '';
+  return (first + second).toUpperCase() || source[0]?.toUpperCase() || '?';
+}
+
+function authorDisplayName(author: MomentAuthor): string {
+  return author.name || author.email?.split('@')[0] || 'Unknown';
 }
 
 const sourceLabels: Record<string, string> = {
@@ -21,7 +42,12 @@ const sourceLabels: Record<string, string> = {
   qa: 'Ask AI',
 };
 
-export function MomentCard({ moment, onSave, onDismiss }: MomentCardProps) {
+export function MomentCard({
+  moment,
+  author,
+  onSave,
+  onDismiss,
+}: MomentCardProps) {
   const { isClickable, handleClick, momentDialog, clearDialog } =
     useTimestampAction();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -49,8 +75,8 @@ export function MomentCard({ moment, onSave, onDismiss }: MomentCardProps) {
           </Badge>
         </div>
 
-        {/* Timestamp range */}
-        <div className="flex items-center gap-2">
+        {/* Timestamp range + author */}
+        <div className="flex items-center justify-between gap-2">
           {isClickable ? (
             <button
               type="button"
@@ -65,6 +91,25 @@ export function MomentCard({ moment, onSave, onDismiss }: MomentCardProps) {
               {formatTime(moment.startTime)} – {formatTime(moment.endTime)}
             </span>
           )}
+          {author ? (
+            <div
+              className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+              title={author.email ?? undefined}
+            >
+              <Avatar className="size-4 shrink-0">
+                {author.image ? (
+                  <AvatarImage
+                    src={author.image}
+                    alt={authorDisplayName(author)}
+                  />
+                ) : null}
+                <AvatarFallback className="text-[8px] font-semibold">
+                  {authorInitials(author)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="truncate">{authorDisplayName(author)}</span>
+            </div>
+          ) : null}
         </div>
 
         {/* Rationale */}

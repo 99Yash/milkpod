@@ -32,6 +32,8 @@ export function ReplicacheProvider({
 
     const instance = createMilkpodReplicache(userId);
     setRep(instance);
+    // Kick an initial pull — pullInterval:null disables the startup one too.
+    void instance.pull();
 
     return () => {
       void instance.close();

@@ -16,6 +16,7 @@ export abstract class CommentService {
           eq(assetComments.assetId, assetId),
           eq(assetComments.userId, userId),
           isNull(assetComments.dismissedAt),
+          isNull(assetComments.deletedAt),
         ),
       )
       .orderBy(asc(assetComments.startTime));
