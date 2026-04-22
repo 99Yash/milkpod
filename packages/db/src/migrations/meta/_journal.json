@@ -239,6 +239,13 @@
       "when": 1776851723876,
       "tag": "0033_sync_row_version_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1776866713941,
+      "tag": "0034_asset_invite_role_not_owner",
+      "breakpoints": true
     }
   ]
 }
