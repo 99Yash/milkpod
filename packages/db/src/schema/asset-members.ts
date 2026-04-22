@@ -48,7 +48,10 @@ export const assetInvites = pgTable(
       .notNull()
       .references(() => mediaAssets.id, { onDelete: 'cascade' }),
     email: text('email').notNull(),
-    role: assetMemberRoleEnum('role').notNull(),
+    // Reuses the shared enum but narrowed at the TS layer — DB also enforces
+    // this via a CHECK constraint (see migration) so owner invites are
+    // rejected at the schema level regardless of caller.
+    role: assetMemberRoleEnum('role').$type<'editor' | 'viewer'>().notNull(),
     invitedBy: text('invited_by')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),

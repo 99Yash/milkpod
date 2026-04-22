@@ -108,11 +108,17 @@ export async function handlePull(
         return { forbidden: true };
       }
     } else {
-      await tx.insert(replicacheClientGroup).values({
-        id: clientGroupID,
-        userId,
-        cvrVersion: 0,
-      });
+      // Advisory lock (acquired above) serializes concurrent pulls for this
+      // clientGroup, but `onConflictDoNothing` guards against the advisory
+      // lock ever failing silently — cheap belt-and-suspenders.
+      await tx
+        .insert(replicacheClientGroup)
+        .values({
+          id: clientGroupID,
+          userId,
+          cvrVersion: 0,
+        })
+        .onConflictDoNothing();
     }
 
     // 3. Load previous snapshot. If cookie is null or the stored CVR expired,

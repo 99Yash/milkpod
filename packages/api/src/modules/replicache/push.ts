@@ -77,11 +77,15 @@ export async function handlePush(
   if (group) {
     if (group.userId !== userId) return { forbidden: true };
   } else {
-    await db().insert(replicacheClientGroup).values({
-      id: clientGroupID,
-      userId,
-      cvrVersion: 0,
-    });
+    // Push can race with the first pull — either may create the client group.
+    await db()
+      .insert(replicacheClientGroup)
+      .values({
+        id: clientGroupID,
+        userId,
+        cvrVersion: 0,
+      })
+      .onConflictDoNothing();
   }
 
   const affectedAssetIds = new Set<string>();
