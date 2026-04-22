@@ -12,7 +12,7 @@ export const comments = new Elysia({ prefix: '/api/comments' })
   .post(
     '/generate',
     async ({ body, user }) => {
-      const asset = await AssetService.getById(body.assetId, user.id);
+      const asset = await AssetService.getByIdAsMember(body.assetId, user.id);
       if (!asset) return status(404, { message: 'Asset not found' });
       if (asset.status !== 'ready') {
         return status(422, {
@@ -54,7 +54,7 @@ export const comments = new Elysia({ prefix: '/api/comments' })
   .get(
     '/',
     async ({ user, query }) => {
-      const asset = await AssetService.getById(query.assetId, user.id);
+      const asset = await AssetService.getByIdAsMember(query.assetId, user.id);
       if (!asset) return status(404, { message: 'Asset not found' });
 
       return CommentService.list(user.id, query.assetId);

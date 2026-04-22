@@ -1,5 +1,6 @@
 import { db } from '@milkpod/db';
 import {
+  assetMembers,
   assetStatusEnum,
   embeddings,
   mediaAssets,
@@ -118,12 +119,21 @@ export abstract class AssetService {
 
 
   static async create(userId: string, data: AssetModel.Create): Promise<Asset> {
-    const [asset] = await db()
-      .insert(mediaAssets)
-      .values({ userId, ...data })
-      .returning();
-    if (!asset) throw new Error('Failed to insert media asset');
-    return AssetService.sanitize(asset);
+    return db().transaction(async (tx) => {
+      const [asset] = await tx
+        .insert(mediaAssets)
+        .values({ userId, ...data })
+        .returning();
+      if (!asset) throw new Error('Failed to insert media asset');
+      // Seed the owner's membership row so the membership-based authz (RSC
+      // queries + Replicache pull) sees the owner as a member from day one.
+      // The Phase 1 backfill migration only handled pre-existing rows.
+      await tx
+        .insert(assetMembers)
+        .values({ assetId: asset.id, userId, role: 'owner' })
+        .onConflictDoNothing();
+      return AssetService.sanitize(asset);
+    });
   }
 
   static async list(userId: string): Promise<Asset[]> {
@@ -187,6 +197,31 @@ export abstract class AssetService {
       .from(mediaAssets)
       .where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)));
     return asset ? AssetService.sanitize(asset) : null;
+  }
+
+  /**
+   * Membership-based lookup. Returns the asset if the user is in
+   * `asset_member` (owner OR editor OR viewer). Use for collaborative
+   * operations like moment/comment reads and writes; owner-only operations
+   * (retry transcription, delete asset, create public share link) should
+   * keep using `getById`.
+   */
+  static async getByIdAsMember(
+    id: string,
+    userId: string,
+  ): Promise<Asset | null> {
+    const [row] = await db()
+      .select({ asset: mediaAssets })
+      .from(mediaAssets)
+      .innerJoin(
+        assetMembers,
+        and(
+          eq(assetMembers.assetId, mediaAssets.id),
+          eq(assetMembers.userId, userId),
+        ),
+      )
+      .where(eq(mediaAssets.id, id));
+    return row ? AssetService.sanitize(row.asset) : null;
   }
 
   static async getWithTranscript(id: string, userId: string): Promise<AssetWithTranscript | null> {
