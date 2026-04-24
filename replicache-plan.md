@@ -65,7 +65,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Every `ORDER BY` has a stable tiebreak (id as secondary sort)
 - Initial pull (no cookie) is filtered to ONLY assets the user is a member of, and nested entities (moments, comments, notifications) are scoped to those assets. No global firehose.
 
-### Task 7: Wrap push mutations in a transaction; verify mutation-ID monotonicity
+### ~~Task 7: Wrap push mutations in a transaction; verify mutation-ID monotonicity~~ ✓
 
 **Files**: `packages/api/src/modules/replicache/push.ts`
 **What**:
