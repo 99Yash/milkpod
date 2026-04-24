@@ -4,7 +4,8 @@ import { mutatorArgsSchemas, type MutatorName } from '@milkpod/sync';
 import { eq, sql } from 'drizzle-orm';
 import { AssetMemberService } from '../asset-members/service';
 import { emitReplicachePokes } from '../../events/replicache-events';
-import { MutatorForbiddenError, serverMutators } from './server-mutators';
+import { MutatorForbiddenError } from './authz';
+import { serverMutators } from './server-mutators';
 
 /**
  * Mutators that operate on user-scoped data (no assetId in args). They
