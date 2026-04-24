@@ -25,7 +25,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Confirm each backfill is safe to re-run (`ON CONFLICT DO NOTHING` or `WHERE NOT EXISTS`)
 - Confirm 0035 covers the gap it claims in its comment (assets created between 0031 and the `AssetService.create` seeding change)
 
-### Task 3: Pre-deploy check for 0034 CHECK constraint
+### ~~Task 3: Pre-deploy check for 0034 CHECK constraint~~ ✓
 
 **Files**: `packages/db/src/migrations/0034_asset_invite_role_not_owner.sql`
 **What**:
