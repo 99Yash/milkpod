@@ -37,7 +37,16 @@ export type InviteResult =
   | { kind: 'member'; userId: string; role: AssetMemberRole }
   | { kind: 'invite'; inviteId: string; email: string; role: AssetInviteRole }
   | { kind: 'already_member' }
-  | { kind: 'already_invited' };
+  | { kind: 'already_invited' }
+  | { kind: 'forbidden' };
+
+export type RemoveMemberResult =
+  | { removed: true }
+  | { removed: false; reason: 'owner_protected' | 'not_found' | 'forbidden' };
+
+export type RevokeInviteResult =
+  | { revoked: true }
+  | { revoked: false; reason: 'not_found' | 'forbidden' };
 
 export abstract class AssetMemberService {
   static async getRole(
@@ -83,7 +92,7 @@ export abstract class AssetMemberService {
     } catch (err) {
       console.warn(
         '[asset-members] pokeMembers failed:',
-        err instanceof Error ? err.message : err,
+        err instanceof Error ? err.message : String(err),
       );
     }
   }
@@ -106,7 +115,7 @@ export abstract class AssetMemberService {
       .innerJoin(userTable, eq(assetMembers.userId, userTable.id))
       .where(eq(assetMembers.assetId, assetId));
 
-    const invites = await db()
+    const pendingInvites = await db()
       .select({
         id: assetInvites.id,
         email: assetInvites.email,
@@ -118,13 +127,10 @@ export abstract class AssetMemberService {
       .from(assetInvites)
       .where(eq(assetInvites.assetId, assetId));
 
-    return {
-      members: members as MemberRow[],
-      pendingInvites: invites.filter(
-        (i): i is PendingInviteRow =>
-          i.role === 'editor' || i.role === 'viewer',
-      ),
-    };
+    // `assetInvites.role` is narrowed to `'editor' | 'viewer'` via `$type<>()`
+    // in the schema and enforced at the DB via a CHECK constraint (migration
+    // 0034), so no runtime filter is needed here.
+    return { members, pendingInvites };
   }
 
   static async invite(
@@ -133,6 +139,12 @@ export abstract class AssetMemberService {
     email: string,
     role: AssetInviteRole,
   ): Promise<InviteResult> {
+    // Service-layer authz: only owners can invite. The router also checks,
+    // but enforcing here guarantees no future caller (sync mutators, admin
+    // tools, etc.) can skip the rule.
+    const callerRole = await AssetMemberService.getRole(assetId, invitedBy);
+    if (callerRole !== 'owner') return { kind: 'forbidden' };
+
     const normalizedEmail = email.trim().toLowerCase();
 
     const [existingUser] = await db()
@@ -141,23 +153,23 @@ export abstract class AssetMemberService {
       .where(eq(userTable.email, normalizedEmail));
 
     if (existingUser) {
-      const currentRole = await AssetMemberService.getRole(
-        assetId,
-        existingUser.id,
-      );
-      if (currentRole) return { kind: 'already_member' };
-
       // Insert the membership + its notification row in a single transaction
       // so the invitee cannot end up with access but no bell entry (or the
-      // reverse). After commit, fire the Replicache poke so their client
-      // pulls immediately.
-      await db().transaction(async (tx) => {
-        await tx.insert(assetMembers).values({
-          assetId,
-          userId: existingUser.id,
-          role,
-          invitedBy,
-        });
+      // reverse). `onConflictDoNothing` on the (assetId, userId) PK closes
+      // the TOCTOU race between the existence check and the insert — two
+      // concurrent invites can no longer produce a 500.
+      const inserted = await db().transaction(async (tx) => {
+        const [row] = await tx
+          .insert(assetMembers)
+          .values({
+            assetId,
+            userId: existingUser.id,
+            role,
+            invitedBy,
+          })
+          .onConflictDoNothing()
+          .returning({ userId: assetMembers.userId });
+        if (!row) return null;
         await NotificationService.record(tx, {
           type: 'asset.member.added',
           recipientId: existingUser.id,
@@ -165,7 +177,10 @@ export abstract class AssetMemberService {
           assetId,
           body: { role },
         });
+        return row;
       });
+      if (!inserted) return { kind: 'already_member' };
+
       NotificationService.poke(existingUser.id, assetId);
       void AssetMemberService.sendInviteEmailIfPossible({
         to: normalizedEmail,
@@ -178,17 +193,10 @@ export abstract class AssetMemberService {
       return { kind: 'member', userId: existingUser.id, role };
     }
 
-    const [existingInvite] = await db()
-      .select({ id: assetInvites.id })
-      .from(assetInvites)
-      .where(
-        and(
-          eq(assetInvites.assetId, assetId),
-          eq(assetInvites.email, normalizedEmail),
-        ),
-      );
-    if (existingInvite) return { kind: 'already_invited' };
-
+    // No user row yet — create a pending invite. `onConflictDoNothing` on the
+    // unique (assetId, email) constraint replaces the check-then-insert
+    // pattern so concurrent invites produce `already_invited` instead of a
+    // unique-violation 500.
     const [inserted] = await db()
       .insert(assetInvites)
       .values({
@@ -197,9 +205,13 @@ export abstract class AssetMemberService {
         role,
         invitedBy,
       })
+      .onConflictDoNothing({
+        target: [assetInvites.assetId, assetInvites.email],
+      })
       .returning({ id: assetInvites.id });
 
-    if (!inserted) throw new Error('Failed to create invite');
+    if (!inserted) return { kind: 'already_invited' };
+
     void AssetMemberService.sendInviteEmailIfPossible({
       to: normalizedEmail,
       actorId: invitedBy,
@@ -254,7 +266,7 @@ export abstract class AssetMemberService {
     } catch (err) {
       console.warn(
         '[asset-members] invite email lookup failed:',
-        err instanceof Error ? err.message : err,
+        err instanceof Error ? err.message : String(err),
       );
     }
   }
@@ -263,7 +275,12 @@ export abstract class AssetMemberService {
     assetId: string,
     userIdToRemove: string,
     removedBy: string,
-  ): Promise<{ removed: boolean; reason?: 'owner_protected' | 'not_found' }> {
+  ): Promise<RemoveMemberResult> {
+    // Service-layer authz: only owners can remove members. Check BEFORE the
+    // target lookup so non-owners can't probe membership by trial.
+    const callerRole = await AssetMemberService.getRole(assetId, removedBy);
+    if (callerRole !== 'owner') return { removed: false, reason: 'forbidden' };
+
     const role = await AssetMemberService.getRole(assetId, userIdToRemove);
     if (!role) return { removed: false, reason: 'not_found' };
     if (role === 'owner') return { removed: false, reason: 'owner_protected' };
@@ -295,7 +312,7 @@ export abstract class AssetMemberService {
     } catch (err) {
       console.warn(
         '[asset-members] revocation poke failed:',
-        err instanceof Error ? err.message : err,
+        err instanceof Error ? err.message : String(err),
       );
     }
     return { removed: true };
@@ -304,13 +321,19 @@ export abstract class AssetMemberService {
   static async revokeInvite(
     assetId: string,
     inviteId: string,
-  ): Promise<boolean> {
+    revokedBy: string,
+  ): Promise<RevokeInviteResult> {
+    // Service-layer authz: only owners can revoke invites.
+    const callerRole = await AssetMemberService.getRole(assetId, revokedBy);
+    if (callerRole !== 'owner') return { revoked: false, reason: 'forbidden' };
+
     const result = await db()
       .delete(assetInvites)
       .where(
         and(eq(assetInvites.id, inviteId), eq(assetInvites.assetId, assetId)),
       )
       .returning({ id: assetInvites.id });
-    return result.length > 0;
+    if (result.length === 0) return { revoked: false, reason: 'not_found' };
+    return { revoked: true };
   }
 }

@@ -138,7 +138,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 
 ## Phase 3: Asset members & sharing
 
-### Task 15: Audit asset-members/service.ts for membership-scoped queries
+### ~~Task 15: Audit asset-members/service.ts for membership-scoped queries~~ ✓
 
 **Files**: `packages/api/src/modules/asset-members/service.ts`, `index.ts`, `model.ts`
 **What**:
