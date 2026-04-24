@@ -918,3 +918,143 @@ Checklist verification (per review-prompt.md Frontend + Library Leverage + Commo
   - Common Pattern #8 (useEffect async) — no useEffects touched.
   - SSR — `'use client'` directive present. `authClient.useSession()` is a client-only hook. `navigator.clipboard` only runs in the copy handler. Safe.
   - pnpm check-types: clean. 8/8 tasks green; 7 cached, @milkpod/web cache-miss (source change) and compiled successfully. No regressions elsewhere.
+
+
+---
+
+## Task 20: Insert notifications inside the triggering transaction
+
+Approach: pure verification task. The four files in scope were added entirely on this branch (all four register as `new file` in `git diff main`). Walked every INSERT-into-notifications site, cross-referenced its triggering mutation, and confirmed both land in the same `db().transaction(async (tx) => { ... })` block. No code change produced — Tasks 16 (invite flow) and 18 (removeMember) already landed the tx pattern; signup-hooks shipped with the tx pattern from day one. The audit is the deliverable.
+
+Verification before touching any code:
+  - `rg 'insert\(notifications\)|NotificationService\.record'` across the branch → exactly THREE insert sites: asset-members/service.ts:184 (invite, existingUser branch), asset-members/service.ts:334 (removeMember), signup-hooks.ts:92 (claimPendingInvitesOnSignup). Every other notifications touch is an UPDATE (markRead/markAllRead/markReadByResource/server-mutators) — no new-row side effects, so tx-with-trigger is moot for those.
+  - Comments module (`packages/api/src/modules/comments/`): `rg -i 'notification'` → zero hits. Comments never insert notifications in v1. The plan's "Comment create + notification insert must share a transaction" is forward-looking (applies when/if a mentions feature lands), not an existing code path. Same for moments — `rg -i 'notification' packages/api/src/modules/moments/` → zero hits. So the comments/moments files listed in the task scope have nothing to fix today; they are listed defensively in case a mention/reply notification was inserted inline.
+  - Read `packages/api/src/modules/notifications/service.ts:49-68` (`NotificationService.record`). Signature: `record(tx: DbTx, input: RecordInput): Promise<string>`. The `tx` is the REQUIRED first arg — the service has no other `insertNotification` helper that would bypass tx, so every caller must either be in an open tx or pass `db()` explicitly. Verified by grepping `NotificationService.record(` across the whole repo — only the two asset-members call sites, both pass the tx handle from the enclosing `db().transaction(async (tx) => ...)`.
+  - Read `packages/auth/package.json` and `packages/api/package.json` — @milkpod/api depends on @milkpod/auth (api imports sendInviteEmail from auth), but @milkpod/auth does NOT depend on @milkpod/api. Confirmed the direction: signup-hooks CANNOT import NotificationService without creating a cycle. The direct `tx.insert(notifications).values({...})` at signup-hooks.ts:92-99 is therefore intentional — it mirrors NotificationService.record's shape rather than calling through it. Documented this observation under Library Improvements.
+  - Read `node_modules/.pnpm/drizzle-orm@0.44.2/node_modules/drizzle-orm/pg-core/db.d.ts` for `.transaction()` signature to confirm rollback semantics: the callback's thrown error aborts the tx and re-throws to the caller. Drizzle does NOT auto-commit on partial success — the tx commits only when the callback resolves without throwing. So if the notification insert throws (FK violation, connection loss, etc.), the asset_members INSERT also rolls back. This is the "no phantom notification" guarantee verbatim.
+  - Read the `for await` loop at signup-hooks.ts:50-100: each pending invite gets its OWN `db().transaction(async (tx) => { ... })`. Per-invite tx isolation means a failure on invite #3 doesn't undo the successful commits of invites #1, #2. Good pattern — each invite is atomically claim-or-skip.
+
+Site-by-site proof that notification + trigger share a tx:
+
+  Site 1 — asset-members/service.ts:172-192 (invite, existingUser branch):
+    ```ts
+    const inserted = await db().transaction(async (tx) => {
+      const [row] = await tx
+        .insert(assetMembers)
+        .values({ assetId, userId: existingUser.id, role, invitedBy })
+        .onConflictDoNothing()
+        .returning({ userId: assetMembers.userId });
+      if (!row) return null;                                // already a member → no notification
+      await NotificationService.record(tx, {                // passes the SAME tx handle
+        type: 'asset.member.added',
+        recipientId: existingUser.id,
+        actorId: invitedBy,
+        assetId,
+        body: { role },
+      });
+      return row;
+    });
+    ```
+    → Trigger (INSERT assetMembers) + notification (INSERT notifications) commit atomically. If the notification insert throws, the assetMembers insert rolls back. If assetMembers conflicts (`onConflictDoNothing` returns no row), the notification is correctly skipped — no duplicate bell entry for a re-invited existing member. The post-commit poke + email send happen OUTSIDE the tx (lines 195-202), which is correct per Task 10.
+
+  Site 2 — asset-members/service.ts:308-342 (removeMember):
+    ```ts
+    const result = await db().transaction(
+      async (tx): Promise<RemoveMemberResult> => {
+        const [target] = await tx
+          .select({ role: assetMembers.role })
+          .from(assetMembers)
+          .where(and(eq(assetMembers.assetId, assetId), eq(assetMembers.userId, userIdToRemove)))
+          .for('update');                                   // Task 18 row lock
+        if (!target) return { removed: false, reason: 'not_found' };
+        if (target.role === 'owner') return { removed: false, reason: 'owner_protected' };
+        await tx.delete(assetMembers).where(and(...));      // trigger: DELETE
+        await NotificationService.record(tx, {              // SAME tx — notification
+          type: 'asset.member.removed',
+          recipientId: userIdToRemove,
+          actorId: removedBy,
+          assetId,
+        });
+        return { removed: true };
+      },
+    );
+    ```
+    → SELECT-FOR-UPDATE + DELETE + notification INSERT in one tx. If the notification insert throws, the delete rolls back — the removed user stays a member, which is correct (if we can't tell them they were kicked, don't kick them). Post-commit poke at lines 352-359 runs AFTER `await db().transaction(...)` resolves, so clients never pull pre-commit state.
+
+  Site 3 — auth/src/signup-hooks.ts:56-100 (claimPendingInvitesOnSignup):
+    ```ts
+    await db().transaction(async (tx) => {
+      const [claimed] = await tx
+        .delete(assetInvites)
+        .where(and(eq(assetInvites.id, invite.id), or(isNull(expiresAt), gt(expiresAt, new Date()))))
+        .returning({ id: assetInvites.id });               // trigger: DELETE invite
+      if (!claimed) return;
+      const [inserted] = await tx
+        .insert(assetMembers)
+        .values({ assetId, userId: newUserId, role: invite.role, invitedBy: invite.invitedBy })
+        .onConflictDoNothing()
+        .returning({ userId: assetMembers.userId });        // trigger: INSERT member
+      if (!inserted) return;                                // concurrent direct-add → skip notification
+      await tx.insert(notifications).values({               // SAME tx — notification
+        recipientId: newUserId,
+        type: 'asset.member.added',
+        actorId: invite.invitedBy,
+        resourceType: 'asset',
+        resourceId: invite.assetId,
+        body: { role: invite.role },
+      });
+    });
+    ```
+    → Invite DELETE + member INSERT + notification INSERT share one tx. If any step throws, all three roll back. If assetMembers conflicts (user was concurrently added by the invite flow's existingUser branch between these two hooks — edge case, but possible), notification is skipped. No poke is emitted (the new user's client hasn't initialized yet — its first pull picks everything up naturally), per the top-of-file comment.
+
+Issues found and fixed:
+  (none — all three notification-insert sites were already inside their triggering transaction before Task 20 started. Tasks 16 and 18 closed the last two tx gaps; Task 20 is the post-facto verification that ratifies those fixes plus the signup-hooks pattern that shipped correctly from the start.)
+
+Issues noted (no fix needed):
+  1. packages/auth/src/signup-hooks.ts:92-99 — the direct `tx.insert(notifications).values({...})` duplicates the shape encoded in `NotificationService.record` (recipientId, type, actorId, resourceType='asset', resourceId, body). If NotificationService.record ever tightens its input shape (e.g. adds a denormalized column, validates body against type discriminant), this mirror will drift. BUT the fix — `signup-hooks → NotificationService.record` — creates a package cycle (@milkpod/auth → @milkpod/api → @milkpod/auth), which is worse than the duplication. Three alternatives considered and rejected:
+     (a) Move `NotificationService.record` into `@milkpod/db` as a helper — forces the db package to know about notification shapes and types, violating layering.
+     (b) Move `claimPendingInvitesOnSignup` into `@milkpod/api` and have `@milkpod/auth` call it via a function-injection hook — better-auth's `databaseHooks.user.create.after` is registered at auth() construction in packages/auth/src/index.ts, so the hook body must live in @milkpod/auth OR the auth plugin definition moves to @milkpod/api. Non-trivial refactor, out of scope for a verify task.
+     (c) Accept the duplication, document the mirror. ← chosen. The only-two-fields-that-could-drift (resourceType, body shape) are already type-narrowed by `NotificationBody` in `@milkpod/db/schema/notifications.ts`, which BOTH call sites import transitively. A future migration that adds a new notification type with a stricter body shape would force both sites to update (via the TypeScript `NotificationBody` union). So the duplication is shape-safe against additive changes even without the service call.
+  2. packages/auth/src/signup-hooks.ts:50-100 — the `for (const invite of pending)` loop does one tx per invite. If invite #3's tx throws mid-loop, the outer `try { ... } catch (err) { ... }` at line 102-111 catches it and EXITS the loop — invites #4, #5, etc. never get processed (silently skipped). Each completed invite commits atomically (correct), but the user may end up with a partial set of memberships. Task 20 scope is "notification inside triggering tx", which is satisfied — the phantom-notification class of bug doesn't apply. Whether to isolate per-invite failures is a separate robustness question; a future hardening pass could wrap each tx in its own try/catch so invite #3's failure logs but doesn't abandon #4/#5. Not changed in Task 20 to keep the scope narrow and because the partial-success window is tiny (realistically one user has <5 pending invites, and transient DB errors usually hit all or none).
+  3. packages/api/src/modules/notifications/service.ts:49-68 — `NotificationService.record` returns `Promise<string>` (the inserted id), but BOTH call sites ignore the return (asset-members/service.ts:184, :334). Could be simplified to `Promise<void>` plus dropping the `.returning({ id: notifications.id })` clause (saves a trivial round-trip of bytes). Left as-is to keep the API open for a future caller who wants the id — e.g. a "send email with deep link to this exact notification" flow. Micro-optimization not worth taking.
+  4. packages/api/src/modules/comments/service.ts and packages/api/src/modules/moments/service.ts — no notification insert exists (v1 has no mentions, replies, or comment-resolved events). The plan lists these as scope-in files for Task 20 forward-lookingly. Any future mention/reply notification MUST be added inside the `CommentService.insertMany` / `MomentService.insertMany` path as a `db().transaction(...)` wrapping both the content INSERT and the notification INSERT, with the poke+email side effects moved outside. Documented here so the convention is captured for the future author.
+  5. packages/api/src/modules/replicache/server-mutators.ts:125-195 — the commentCreate/commentUpdate/commentDelete and momentCreate/momentUpdate/momentDelete mutators run inside the push tx (see push.ts for the outer `db().transaction()`). They do NOT insert notifications today. If a comment-create mutator is extended to emit a mention notification, the existing push-tx already guarantees tx containment — no code change needed at the server-mutator level. Verified push.ts wraps the mutator dispatch in a transaction at the outer scope.
+  6. packages/auth/src/signup-hooks.ts:106-110 — the error log includes `email: normalized`. Email is PII per review-prompt.md §"No sensitive data in logs". However, this is diagnostic context for a failed signup-invite claim, mirrored by the same pattern in other server logs (invite-email.ts:58 logs `to` for send failures — pre-existing pattern). Masking would require project-wide convention alignment. Out of scope for Task 20. A future log-hygiene pass could hash or truncate the email; not blocking merge.
+
+Library improvements made:
+  - None. The existing code already uses the intended library primitive: Drizzle's `db().transaction(async (tx) => ...)` for multi-statement atomicity, with the `tx` handle threaded into `NotificationService.record(tx, ...)`. No hand-rolled savepoint, no manual BEGIN/COMMIT, no advisory-lock helper. Task 18 previously replaced the earlier check-then-tx pattern with Drizzle's `.for('update')` row lock inside the removeMember tx, which is the natural composition of `transaction` + `for('update')` that the library provides. The signup-hooks direct `tx.insert(notifications)` is the only duplication, and the cross-package cycle blocks consolidating it (see Issues Noted #1).
+
+Checklist verification (per review-prompt.md Backend + Library Leverage + Common Patterns):
+  - No N+1 queries — verified. Each of the three notification-insert sites is exactly one statement inside its tx. The signup-hooks loop issues N transactions for N pending invites, which is correct (each is a distinct trigger with a distinct recipient); batching into one tx would make a single failure abort all claims, which is the worse tradeoff.
+  - Appropriate database indexes — verified at Task 4. `notification_recipient_created_idx`, `notification_recipient_unread_idx` (partial), `notification_recipient_row_version_idx` all live on the recipient-keyed queries that `listForUser` / `markRead` / Replicache pull perform. Insert path uses the primary key (id via $defaultFn).
+  - Pagination on list endpoints — N/A (Task 21 scope).
+  - Transactions for atomic operations — VERIFIED for all three notification-insert sites. Every INSERT INTO notifications is bundled with its triggering mutation in one `db().transaction()` scope. No phantom-notification class bug.
+  - Use parameterized queries or ORM methods — all three call sites use Drizzle's `.insert(table).values({...})` builder — no raw SQL, no string concatenation. `NotificationService.record` + `signup-hooks` direct insert both.
+  - Appropriate data types in schemas — `notifications.body` is `jsonb().$type<NotificationBody>()`, `notifications.type` is `text().$type<NotificationType>()` — both narrowed at the TS layer. `rowVersion` is `integer`, `readAt` is `timestamp`. Verified at Task 5.
+  - Input validation on every route — N/A (this task audits service-layer tx structure; router-layer validation covered by Tasks 12, 15, 16).
+  - Auth and authorization checks on every endpoint — the two service-layer insert paths (invite, removeMember) each enforce owner-role callerRole at line 157, 294 BEFORE opening the tx. The signup-hooks path is invoked from better-auth's `databaseHooks.user.create.after` — authority is the signup mechanism itself (the user just proved email ownership via OTP). Verified.
+  - Rate limiting on sensitive endpoints — Task 13/15/16 already registered /api/asset-members in the crud bucket. Signup-hooks is invoked on signup (ratelimited by /api/auth/sign-up/email-otp in the auth bucket).
+  - No sensitive data in logs — all three notification-adjacent catch blocks use the safe `err instanceof Error ? err.message : String(err)` form: asset-members/service.ts:106, 282, 357; notifications/service.ts:80; signup-hooks.ts:109. Email is logged in signup-hooks error log — noted as Issues Noted #6, not fixed in Task 20.
+  - No secrets in error responses — N/A (Task 20 touches internal service code; router-layer responses verified in Task 15).
+  - Proper HTTP status codes — N/A (router already uses the discriminated-union `result.kind` / `result.reason` mapping; Task 15/18 verified).
+  - Webhook endpoints — N/A.
+  - Timeouts on external API calls — `NotificationService.poke` calls `emitReplicachePokes` which is an in-process event-bus emit (no network). `sendInviteEmail` (called from asset-members, NOT from notification path) has its 30s `Promise.race` timeout from Task 17.
+  - Idempotency — the invite flow's `onConflictDoNothing` on (assetId, userId) PK prevents duplicate member rows. The signup-hooks `onConflictDoNothing` on the same PK prevents duplicate member rows on concurrent signup hooks. Re-running `claimPendingInvitesOnSignup` on the same user is a no-op (the invite DELETE is gone after the first run). All three notification inserts are not idempotent by row (no natural unique constraint prevents two `asset.member.added` notifications for the same (recipient, actor, asset)), but callers never re-invoke record for the same logical event: invite's tx body early-returns when the member row already existed; removeMember's row lock prevents duplicate delete; signup-hooks' DELETE ... RETURNING ensures the invite is claimed exactly once. So duplicates can't happen at the service boundary.
+  - Connection pooling — every tx uses `db().transaction()`, which checks out one connection for the duration. No connection leak on thrown path (Drizzle's tx wrapper rolls back and releases on error).
+  - Environment variables — unchanged.
+  - Reuse existing utilities and middleware — `NotificationService.record`, `db().transaction`, `onConflictDoNothing`, `.for('update')`, `emitReplicachePokes` all library-native primitives reused. The signup-hooks direct `tx.insert(notifications)` is the only divergence — documented cross-cycle reason above.
+  - Exhaustive switch statements — `NotificationService.serialize` at line 128-148 switches on `row.type` (NotificationType union). Three cases + default → null. `default` returns null rather than throwing, which is the intentional "skip rows from a newer server" pattern documented at line 105-106. If the union grew without updating the switch, the new variant would return null instead of the correct branch, but since serialize receives only v1 `asset.member.*` rows today, this is safe. When adding a fourth notification type, MUST update this switch. A `default: const _exhaustive: never = row.type; return null;` with a runtime fallback would be stricter and forward-compatible — noted as a future hardening, not fixed (serialize is not in Task 20's file list).
+  - No magic numbers — N/A. `INVITE_EXPIRY_MS = 14 * 24 * 60 * 60 * 1000` has a full comment at asset-members/service.ts:17-25 explaining the 14-day choice.
+  - Proper error handling — verified. Every catch uses the safe error-message form. No empty catches. No silent swallows.
+  - Database migrations are safe — migration 0037 (notification row_version trigger) covered at Task 1. Migration 0038+ (notification table + index) covered at Tasks 4, 5.
+  - TypeScript: NotificationService.record's `tx: DbTx` is `any` (eslint-disabled) at line 12 — same pattern as server-mutators.ts. Known pre-existing any, tracked as a tech-debt item in serviceworker-style helpers. Not a Task 20 regression. `NotificationType` and `NotificationBody` are properly discriminated. Signup-hooks' `invite.role` is `'editor' | 'viewer'` via $type<>() narrowing.
+  - Common Patterns #1 (full-error logging) — verified clean across all three sites.
+  - Common Patterns #2 (missing timeouts) — N/A (no external API in the tx path).
+  - Common Patterns #3 (rate limiter) — N/A (no new routes).
+  - Common Patterns #4 (keyboard-invisible) — N/A (backend only).
+  - Common Patterns #5 (silent error swallowing) — the signup-hooks outer catch at line 102-111 logs but doesn't re-throw. Intentional: signup itself must not fail because an invite claim hit a transient error. Users get a signed-up account; invites stay in pending for manual re-processing. Documented at line 103-105.
+  - Common Patterns #6 (duplicated logic) — the signup-hooks direct `tx.insert(notifications)` duplicates NotificationService.record's shape. Blocked by package cycle. Documented.
+  - Common Patterns #7 (exhaustive switches) — see note above on `NotificationService.serialize`. Not a Task 20 file.
+  - Common Patterns #8 (useEffect async) — N/A.
+  - Library Leverage / Drizzle — `db().transaction()`, `.onConflictDoNothing()`, `.for('update')`, `.returning()` are all native Drizzle primitives used correctly in the three sites. No hand-rolled BEGIN/COMMIT/SAVEPOINT SQL anywhere.
+  - pnpm check-types: clean. 8/8 tasks green; all cached (no code change produced by Task 20 — pure verification).

@@ -188,7 +188,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 
 ## Phase 4: Notifications
 
-### Task 20: Insert notifications inside the triggering transaction
+### ~~Task 20: Insert notifications inside the triggering transaction~~ ✓
 
 **Files**: `packages/api/src/modules/notifications/service.ts`, `packages/api/src/modules/comments/service.ts`, `moments/service.ts`, `asset-members/service.ts`
 **What**:
