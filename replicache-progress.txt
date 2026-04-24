@@ -337,3 +337,56 @@ Checklist verification (per review-prompt.md Queries & Data Access + Security + 
   - pnpm check-types: clean (8/8 tasks green). @milkpod/api and downstream re-ran; @milkpod/{db,sync,ai,auth} cache-hit.
 
 ---
+
+---
+
+## Task 10: Verify realtime poke is sent AFTER transaction commit
+
+Approach: enumerated every poke emitter across the branch (`grep -rn "emitReplicachePokes\|replicacheEvents\.emit\|\.poke(\|pokeMembers" packages/api/src`) and traced each call against its surrounding transaction boundary. Cross-checked server-mutators.ts to confirm mutators never emit pokes from inside the savepoint. Read the whole poke bus contract (events/replicache-events.ts) to document the invariant for future contributors.
+
+Call-site audit (one bullet per emitter, all verified post-commit):
+  - packages/api/src/modules/replicache/push.ts:219 — `AssetMemberService.pokeMembers(assetId)` runs after `await db().transaction(...)` on line 98 resolves. The mutation loop collects `affectedAssetIds` into a Set inside the tx body and returns it; fan-out happens outside. Post-commit. ✅
+  - packages/api/src/modules/replicache/push.ts:226 — `emitReplicachePokes([userId], '')` for user-scoped mutators (notificationMarkRead / notificationMarkAllRead). Same post-commit block. ✅
+  - packages/api/src/modules/asset-members/service.ts:169 — `NotificationService.poke(existingUser.id, assetId)` in `AssetMemberService.invite` fires after the `await db().transaction(...)` on line 154-168 resolves. The transaction only contains the `assetMembers` insert + `NotificationService.record(tx, ...)` write — no poke inside. Post-commit. ✅
+  - packages/api/src/modules/asset-members/service.ts:294 — `emitReplicachePokes([userIdToRemove], assetId)` in `AssetMemberService.removeMember` fires after the `await db().transaction(...)` on line 271-286 resolves. Same pattern as invite. Post-commit. ✅
+  - packages/api/src/modules/asset-members/service.ts:82 — `pokeMembers` helper itself does a `SELECT + emit`; no transaction. Callers are responsible for ensuring they invoke `pokeMembers` after their own tx commits. ✅
+  - packages/api/src/modules/moments/service.ts:67 — `pokeMembers(assetId)` after `await db().delete(...)` (no transaction). ✅
+  - packages/api/src/modules/moments/service.ts:88 — `pokeMembers(assetId)` after `await db().insert(...).returning()` (no transaction). ✅
+  - packages/api/src/modules/moments/service.ts:104 — `pokeMembers(updated.assetId)` after `await db().update(...).returning()` (no transaction). ✅
+  - packages/api/src/modules/moments/service.ts:119 — same pattern as :104. ✅
+  - packages/api/src/modules/comments/service.ts:47 — `pokeMembers(assetId)` after `await db().delete(...)` (no transaction). ✅
+  - packages/api/src/modules/comments/service.ts:68 — `pokeMembers(assetId)` after `await db().insert(...).returning()` (no transaction). ✅
+  - packages/api/src/modules/comments/service.ts:84 — `pokeMembers(updated.assetId)` after `await db().update(...).returning()` (no transaction). ✅
+  - packages/api/src/modules/notifications/service.ts:77 — `emitReplicachePokes([recipientId], assetId)` inside `NotificationService.poke()`. The function itself has no tx; it's always called outside one. The JSDoc at service.ts:70-74 already documents "Call this AFTER the transaction that created the notification has committed". Both callers (asset-members:169 above) comply. ✅
+
+Server-mutators.ts audit: grepped `emitReplicachePokes|pokeMembers|replicacheEvents` against `packages/api/src/modules/replicache/server-mutators.ts` — zero hits. Mutators only write to the DB via the savepoint `tx`; they never emit pokes themselves. The poke fan-out is centralized in push.ts post-commit, driven by the mutation loop's collected `affectedAssetIds` / `userPokeNeeded` summary. This is the right architecture: mutators describe effects, the orchestrator (push.ts) decides when to broadcast.
+
+Issues found and fixed:
+  1. packages/api/src/events/replicache-events.ts — Module had no top-of-file docblock stating the post-commit invariant. The invariant is load-bearing for correctness (a poke emitted inside an uncommitted tx causes stale pulls: the receiving client's pull runs on a different pool connection and sees the pre-commit snapshot, resulting in a silent miss until the next unrelated trigger). Added a module-level docblock explicitly naming every emitter entry point (`emitReplicachePokes`, `AssetMemberService.pokeMembers`, `NotificationService.poke`), stating the MUST-be-post-commit contract, explaining the failure mode it prevents, and pointing at push.ts:214-233 as the canonical fan-out pattern. Also enhanced the `emitReplicachePokes` JSDoc to restate the invariant at the call-site where a contributor would look for it.
+  2. packages/api/src/events/replicache-events.ts:70-72 — Silent catch on `publisher.publish(...)` with no comment explaining why the fallback path exists. Per review-prompt.md Common Patterns #5 (silent error swallowing). Not a behavior change — the fallback still emits locally — but added a two-line comment identifying this as the "Redis unavailable" fallback path and calling out that other replicas will miss this specific poke (they'll catch up on the client's next regular pull interval). Matches the existing comment style in `events/asset-events.ts:95-97`.
+
+Issues noted (no fix needed):
+  1. packages/api/src/events/replicache-events.ts:70 — Floating Promise from `publisher.publish(...).catch(...)`. Intentional: the publish is fire-and-forget by design (the caller has already committed and returned; we don't want to block the HTTP response on Redis roundtrip). `.catch()` handles the only failure mode we care about (pub failure → local fallback). ioredis tracks the connection internally; any protocol-level errors surface through the shared ioredis error handler (set up in queue/connection.ts connection pool). Not a bug.
+  2. packages/api/src/events/replicache-events.ts:62 — `.catch(() => {})` on unsubscribe during `closeReplicachePokeBridge`. Acceptable during teardown — at this point we're shutting down and any subscriber error is moot. Matches the pattern used in `closeRedis()` at queue/connection.ts:54.
+  3. packages/api/src/modules/replicache/push.ts:218-220 — `for (const assetId of outcome.affectedAssetIds) { await pokeMembers(assetId); }` serializes the fan-out. Each `pokeMembers` does one SELECT + one publish loop; for a multi-asset push this adds latency to the HTTP response. Could be `Promise.all([...].map(pokeMembers))` to pipeline. Not a correctness issue; affectedAssetIds is typically size 1 in practice (a client pushes mutations for the asset it's currently viewing). Micro-optimization, not a Task 10 concern.
+  4. packages/api/src/events/replicache-events.ts:75 — Local `replicacheEvents.emit('poke', event)` is synchronous. The SSE listener in modules/replicache/index.ts:81-84 writes into the stream controller synchronously. No race between publish and subscribe on single-replica deploys.
+  5. packages/api/src/events/replicache-events.ts:39-46 — `subscriber.on('message', ...)` JSON.parse catch silently drops malformed messages. Acceptable — a malformed Redis message is either (a) another service publishing to our CHANNEL accidentally (misconfiguration, should be loud but not in this scope) or (b) a corrupted wire payload (recovery: next real poke). Could add a `console.warn` with truncated payload for debugging; low-signal, not worth adding now.
+  6. packages/api/src/modules/asset-members/service.ts:82 — `pokeMembers` only fails if `listMemberUserIds` throws; the catch block warns and swallows (appropriate for a fire-and-forget notifier). The emitted pokes themselves don't throw (EventEmitter.emit and ioredis.publish are both fire-and-forget). Safe.
+  7. push.ts user-scoped poke already runs inside a try/catch (push.ts:225-232). This is defensive over-engineering — `emitReplicachePokes` cannot realistically throw (it just pushes into an EventEmitter / Redis publisher). But the catch is cheap and future-proofs the call against publisher refactors. Kept as-is.
+  8. The queue/connection.ts `connections` array captures both publisher and subscriber when `initReplicachePokeBridge()` runs. At shutdown `closeRedis()` calls `.quit()` on all of them. Lifecycle is correct. Verified.
+
+Library improvements made:
+  - None applicable. EventEmitter + ioredis pub/sub is the library primitive; no hand-rolled wrapper exists to collapse. The `publish() → emit()` fallback pattern is idiomatic ioredis usage for optional-Redis deploys (matches the existing pattern in events/asset-events.ts). The per-mutation savepoint in push.ts already uses Drizzle's nested `tx.transaction(...)` primitive (verified in Task 7) — there's no library that provides a built-in "poke on tx commit" hook; the manual post-commit fan-out IS the right library-shaped pattern.
+  - Verified Drizzle has no `tx.onCommit()` hook via `rg -n 'onCommit|afterCommit' node_modules/.pnpm/drizzle-orm@*/node_modules/drizzle-orm/pg-core` — zero hits. Confirmed the "return summary from tx, fan out after await" pattern in push.ts is the canonical Drizzle-shaped approach. (Postgres has `LISTEN/NOTIFY` which emits on commit via `pg_notify`, but wiring that end-to-end is a larger architectural change and outside Task 10 scope; the current Redis pub/sub architecture is deliberate.)
+
+Checklist verification (per review-prompt.md Security + Resilience + Code Quality + Common Patterns):
+  - Every poke runs after `await tx.commit()` or outside the transaction block — verified by enumeration above. Zero in-tx poke emissions across the entire diff.
+  - Server mutators never emit pokes from inside the savepoint — verified via grep; fan-out is centralized in push.ts post-commit.
+  - Poke contract is documented at the bus entry point — new module-level docblock on replicache-events.ts names every emitter, the rule, the failure mode, and the canonical pattern location. Enhanced `emitReplicachePokes` JSDoc restates it at the call-site.
+  - No sensitive data in logs — existing catch blocks use `err instanceof Error ? err.message : err` / `String(err)`. No new logging added that would leak.
+  - No silent error swallowing unexplained — added "Redis unavailable" comment to the publish catch fallback so future readers see the intent. Subscriber-message catch kept silent (documented in issues-noted #5).
+  - Proper error handling — every emitter call site has a try/catch or a fire-and-forget `.catch()`; push.ts:225-232 wraps even the user-scoped poke.
+  - Idempotency — pokes are idempotent by nature (a poke says "pull"; pulling twice is cheap). Retry-safe.
+  - Transactions for atomic operations — the poke IS the post-commit signal that the atomic unit succeeded. Emitting before commit would break atomicity from the client's perspective.
+  - Reuse existing utilities — all poke fan-out goes through `emitReplicachePokes` or `AssetMemberService.pokeMembers` or `NotificationService.poke`. No ad-hoc `replicacheEvents.emit` call outside the bus module itself (bridge) and the SSE stream (subscriber).
+  - pnpm check-types: clean (8/8 tasks green). @milkpod/api and downstream re-ran due to the replicache-events.ts doc edit (comment-only change; no type surface affected); @milkpod/{env,sync,ai,auth} cache-hit.
