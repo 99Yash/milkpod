@@ -1,7 +1,7 @@
 import { db } from '@milkpod/db';
 import { replicacheClient, replicacheClientGroup } from '@milkpod/db/schemas';
 import { mutatorArgsSchemas, type MutatorName } from '@milkpod/sync';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { AssetMemberService } from '../asset-members/service';
 import { emitReplicachePokes } from '../../events/replicache-events';
 import { MutatorForbiddenError, serverMutators } from './server-mutators';
@@ -40,17 +40,26 @@ function isKnownMutator(name: string): name is MutatorName {
 }
 
 /**
- * Advance the lastMutationId for a client, upserting the client row if this
- * is the first push we've seen from it. Called whether the mutation succeeds
- * or fails permanently — the point is to keep Replicache from re-queuing
- * mutations forever on an unrecoverable error.
+ * Drizzle's transaction handle type varies across driver versions; the call
+ * sites use only shared query-builder methods so a loose alias is fine.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DbTx = any;
+
+/**
+ * Advance the lastMutationId for a client, upserting on first push. The
+ * `setWhere` monotonicity guard means a late-arriving lower-id push cannot
+ * regress a client's LMID even if two pushes race. Called whether the
+ * mutation succeeded or failed permanently — the point is to keep
+ * Replicache from re-queuing mutations forever on an unrecoverable error.
  */
 async function advanceLMID(
+  tx: DbTx,
   clientGroupID: string,
   clientID: string,
   newId: number,
 ): Promise<void> {
-  await db()
+  await tx
     .insert(replicacheClient)
     .values({
       id: clientID,
@@ -61,11 +70,12 @@ async function advanceLMID(
     .onConflictDoUpdate({
       target: replicacheClient.id,
       set: { lastMutationId: newId, lastModified: new Date() },
+      setWhere: sql`${replicacheClient.lastMutationId} < ${newId}`,
     });
 }
 
-async function getLMID(clientID: string): Promise<number> {
-  const [row] = await db()
+async function getLMID(tx: DbTx, clientID: string): Promise<number> {
+  const [row] = await tx
     .select({ lmid: replicacheClient.lastMutationId })
     .from(replicacheClient)
     .where(eq(replicacheClient.id, clientID));
@@ -78,118 +88,136 @@ export async function handlePush(
 ): Promise<PushResponse | { forbidden: true }> {
   const { clientGroupID, mutations } = body;
 
-  // Bind clientGroup → user.
-  const [group] = await db()
-    .select()
-    .from(replicacheClientGroup)
-    .where(eq(replicacheClientGroup.id, clientGroupID));
+  // Entire push — clientGroup bind, each mutation's writes, and the paired
+  // LMID advance — runs inside a single transaction. This keeps the LMID
+  // monotonic under concurrent pushes (the SELECT lives in the same tx as
+  // the UPSERT) and guarantees that a mid-batch crash leaves the server
+  // in a coherent state. Per-mutation failures are isolated via savepoints
+  // so one bad mutator can't poison the whole batch.
+  const outcome = await db().transaction<
+    | { forbidden: true }
+    | { forbidden: false; affectedAssetIds: Set<string>; userPokeNeeded: boolean }
+  >(async (tx) => {
+    const [group] = await tx
+      .select()
+      .from(replicacheClientGroup)
+      .where(eq(replicacheClientGroup.id, clientGroupID));
 
-  if (group) {
-    if (group.userId !== userId) return { forbidden: true };
-  } else {
-    // Push can race with the first pull — either may create the client group.
-    await db()
-      .insert(replicacheClientGroup)
-      .values({
-        id: clientGroupID,
-        userId,
-        cvrVersion: 0,
-      })
-      .onConflictDoNothing();
-  }
-
-  const affectedAssetIds = new Set<string>();
-  let userPokeNeeded = false;
-
-  for (const mutation of mutations) {
-    if (!isKnownMutator(mutation.name)) {
-      await advanceLMID(clientGroupID, mutation.clientID, mutation.id);
-      console.warn(
-        '[replicache:push] unknown mutator',
-        mutation.name,
-        '— LMID advanced to drop it',
-      );
-      continue;
+    if (group) {
+      if (group.userId !== userId) return { forbidden: true };
+    } else {
+      // Push can race with the first pull — either may create the client group.
+      await tx
+        .insert(replicacheClientGroup)
+        .values({
+          id: clientGroupID,
+          userId,
+          cvrVersion: 0,
+        })
+        .onConflictDoNothing();
     }
 
-    const schema = mutatorArgsSchemas[mutation.name];
-    const parsed = schema.safeParse(mutation.args);
-    if (!parsed.success) {
-      await advanceLMID(clientGroupID, mutation.clientID, mutation.id);
-      console.warn(
-        '[replicache:push] invalid args for',
-        mutation.name,
-        parsed.error.issues,
-      );
-      continue;
-    }
+    const affectedAssetIds = new Set<string>();
+    let userPokeNeeded = false;
 
-    const lastMutationId = await getLMID(mutation.clientID);
-    if (mutation.id <= lastMutationId) {
-      // Already applied — skip silently (dedup).
-      continue;
-    }
-
-    try {
-      await db().transaction(async (tx) => {
-        // Cast through `Function` since TS can't verify the args-per-name
-        // mapping across the union — we've already validated args against
-        // the matching schema above.
-        const runner = (
-          serverMutators as Record<
-            MutatorName,
-            (
-              tx: unknown,
-              args: unknown,
-              ctx: { userId: string },
-            ) => Promise<void>
-          >
-        )[mutation.name as MutatorName];
-        await runner(tx, parsed.data, { userId });
-        await tx
-          .insert(replicacheClient)
-          .values({
-            id: mutation.clientID,
-            clientGroupId: clientGroupID,
-            lastMutationId: mutation.id,
-            lastModified: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: replicacheClient.id,
-            set: { lastMutationId: mutation.id, lastModified: new Date() },
-          });
-      });
-      if (USER_SCOPED_MUTATORS.has(mutation.name)) {
-        // User-scoped: the only client that needs to rebase is the caller's
-        // other sessions. No assetId to fan out against.
-        userPokeNeeded = true;
-      } else {
-        const assetId = (parsed.data as { assetId: string }).assetId;
-        affectedAssetIds.add(assetId);
-      }
-    } catch (err) {
-      if (err instanceof MutatorForbiddenError) {
-        console.warn('[replicache:push] ACL rejected', mutation.name, err.message);
-      } else {
-        console.error(
-          '[replicache:push] mutator crashed',
+    for (const mutation of mutations) {
+      if (!isKnownMutator(mutation.name)) {
+        await advanceLMID(tx, clientGroupID, mutation.clientID, mutation.id);
+        console.warn(
+          '[replicache:push] unknown mutator',
           mutation.name,
-          err instanceof Error ? err.message : err,
+          '— LMID advanced to drop it',
         );
+        continue;
       }
-      // Advance LMID so the client rebases via its next pull instead of
-      // re-queuing forever. Next pull will omit the row (server never
-      // committed), and Replicache's rebase logic drops the optimistic copy.
-      await advanceLMID(clientGroupID, mutation.clientID, mutation.id);
-    }
-  }
 
-  // Fan out pokes so every member (including the pusher) re-pulls and sees
-  // the authoritative server state. Also picks up LMID advancements.
-  for (const assetId of affectedAssetIds) {
+      // Hoist the narrowed name into a local const so the async savepoint
+      // callback preserves the `MutatorName` type (property narrowing is
+      // widened back to `string` when re-read inside a closure).
+      const mutatorName: MutatorName = mutation.name;
+
+      const schema = mutatorArgsSchemas[mutatorName];
+      const parsed = schema.safeParse(mutation.args);
+      if (!parsed.success) {
+        await advanceLMID(tx, clientGroupID, mutation.clientID, mutation.id);
+        console.warn(
+          '[replicache:push] invalid args for',
+          mutatorName,
+          parsed.error.issues,
+        );
+        continue;
+      }
+
+      const lastMutationId = await getLMID(tx, mutation.clientID);
+      if (mutation.id <= lastMutationId) {
+        // Already applied — Replicache retries produce duplicates by design,
+        // skip silently.
+        continue;
+      }
+
+      let applied = false;
+      try {
+        // Savepoint isolates mutator failure: ACL rejection or a crash
+        // inside the mutator rolls back only this mutation's writes, not
+        // prior mutations in the same batch. Drizzle's nested transaction
+        // issues SAVEPOINT / ROLLBACK TO SAVEPOINT / RELEASE under the hood.
+        await tx.transaction(async (subTx: DbTx) => {
+          // The args-per-name correlation can't be expressed across the
+          // union without a switch. Validated via the matching zod schema
+          // above, so the runtime shape matches the target mutator.
+          const runner = serverMutators[mutatorName] as (
+            tx: DbTx,
+            args: unknown,
+            ctx: { userId: string },
+          ) => Promise<void>;
+          await runner(subTx, parsed.data, { userId });
+        });
+        applied = true;
+      } catch (err) {
+        if (err instanceof MutatorForbiddenError) {
+          console.warn(
+            '[replicache:push] ACL rejected',
+            mutatorName,
+            err.message,
+          );
+        } else {
+          console.error(
+            '[replicache:push] mutator crashed',
+            mutatorName,
+            err instanceof Error ? err.message : String(err),
+          );
+        }
+      }
+
+      // Advance LMID whether the mutator succeeded or was rolled back at
+      // the savepoint. Next pull omits the rolled-back row (server never
+      // committed it) and Replicache's rebase logic drops the optimistic
+      // copy — without the LMID bump, the client re-queues forever.
+      await advanceLMID(tx, clientGroupID, mutation.clientID, mutation.id);
+
+      if (applied) {
+        if (USER_SCOPED_MUTATORS.has(mutatorName)) {
+          // User-scoped: the only client that needs to rebase is the
+          // caller's other sessions. No assetId to fan out against.
+          userPokeNeeded = true;
+        } else {
+          const assetId = (parsed.data as { assetId: string }).assetId;
+          affectedAssetIds.add(assetId);
+        }
+      }
+    }
+
+    return { forbidden: false, affectedAssetIds, userPokeNeeded };
+  });
+
+  if (outcome.forbidden) return { forbidden: true };
+
+  // Fan out pokes AFTER the transaction commits so clients pulling in
+  // response to a poke don't race with uncommitted writes.
+  for (const assetId of outcome.affectedAssetIds) {
     await AssetMemberService.pokeMembers(assetId);
   }
-  if (userPokeNeeded) {
+  if (outcome.userPokeNeeded) {
     // User-scoped mutators only need the caller's other sessions to rebase.
     // Empty assetId is fine — the SSE handler filters on userId, and the
     // client listener triggers a pull regardless of assetId payload.
@@ -198,7 +226,7 @@ export async function handlePush(
     } catch (err) {
       console.warn(
         '[replicache:push] user poke failed:',
-        err instanceof Error ? err.message : err,
+        err instanceof Error ? err.message : String(err),
       );
     }
   }
