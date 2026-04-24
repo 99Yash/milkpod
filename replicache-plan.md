@@ -56,7 +56,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 
 ## Phase 2: Replicache sync engine (server)
 
-### Task 6: Audit pull.ts for CVR determinism and per-user visibility filter
+### ~~Task 6: Audit pull.ts for CVR determinism and per-user visibility filter~~ ✓
 
 **Files**: `packages/api/src/modules/replicache/pull.ts`, `cvr.ts`
 **What**:
