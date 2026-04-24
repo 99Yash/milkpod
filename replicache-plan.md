@@ -206,7 +206,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Response shape `{ items, nextCursor }` (not bare array)
 - Frontend uses the cursor (load-more or infinite scroll)
 
-### Task 22: Exhaustive switch on notification type in the row renderer
+### ~~Task 22: Exhaustive switch on notification type in the row renderer~~ ✓
 
 **Files**: `apps/web/src/components/notifications/notification-row.tsx`
 **What**:
