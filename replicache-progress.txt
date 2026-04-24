@@ -104,3 +104,38 @@ Checklist verification:
   - No ordering dependency — 0034 and 0035 target different tables, confirmed by reading both migrations.
   - Defense-in-depth rationale matches schema narrowing — confirmed asset_invite schema uses `.$type<'editor' | 'viewer'>()` (asset-members.ts:55) and service.ts enforces the same at the TS API boundary.
   - pnpm check-types: clean (8/8 tasks green, full-turbo cache hit; no source changes).
+
+---
+
+## Task 4: Verify indexes on new FK columns and hot query paths
+
+Approach: enumerated every query that touches the new tables (`asset_member`, `asset_invite`, `notification`, `replicache_client_group`, `replicache_client`) across `packages/api`, `packages/auth`, and sanity-checked FK columns without app-level WHEREs. Cross-referenced each WHERE / ORDER BY / JOIN predicate against the indexes declared in the schemas and the 0030/0032/0036 migrations.
+
+Issues found and fixed:
+  - None. Every application-level WHERE on the new tables is already covered.
+
+Issues noted (no fix needed):
+  1. packages/db/src/schema/notifications.ts:57-60 — `notification_recipient_row_version_idx` on `(recipient_id, row_version)` is unused today. The pull handler (pull.ts:182-184) selects notifications with `WHERE recipient_id = ?` only; `row_version` is read into JS and diffed against the CVR snapshot in memory. No query filters or orders by `row_version`. Kept (not removed) because (a) Task 14 in this plan explicitly calls for a prepared hot-path pull query that would filter by row_version, at which point this composite index becomes load-bearing; (b) removing it would require a new migration with rollback risk; (c) notification write volume is low (bounded to membership-lifecycle events per asset), so write-amplification cost is negligible. Same pattern exists on `asset_comment_asset_row_version_idx` / `asset_moment_asset_row_version_idx` (migration 0032) for identical reasons — out of scope for this task but noted for consistency.
+  2. packages/db/src/schema/replicache.ts:5-12 — `replicache_client_group.user_id` has no index. Not queried by any app code (only the PK `id` is used for lookup in pull.ts:105 and push.ts:84). The `ON DELETE cascade` from `user.id` would perform a seq scan on user deletion — acceptable because user deletion is administratively rare and the table stays small (one row per browser profile, not per event). If a future feature needs "invalidate all client groups for user X on password rotation" an index should be added then.
+  3. packages/db/src/schema/asset-members.ts:30-32,55-57 — `asset_member.invited_by` and `asset_invite.invited_by` are both un-indexed FKs (`ON DELETE set null` and `ON DELETE cascade` respectively). Neither is queried in a WHERE by application code. Acceptable because user deletion is rare and these tables remain small.
+  4. packages/db/src/schema/notifications.ts:35-37 — `notification.actor_id` FK has no index. Queried only as a LEFT JOIN driven from `notifications` (pull.ts:183, service.ts:169); the join is `user.id = notifications.actor_id`, so the hot path uses `user`'s PK — no index on the FK side is needed.
+
+Library improvements made:
+  - None. Drizzle's `index()`, `primaryKey()`, and `unique()` builders are already the library primitives here, and all indexes declared match actual query patterns. No opportunity to replace hand-rolled index definitions with a higher-level abstraction (Drizzle has none for this).
+
+Checklist verification (per `review-prompt.md` Queries & Data Access + Task 4 scope):
+  - Every FK column queried in a WHERE has an index:
+      - notifications.recipient_id — `notification_recipient_created_idx`, `notification_recipient_unread_idx` (partial), `notification_recipient_row_version_idx`
+      - assetMembers.assetId (via PK prefix) and assetMembers.userId — PK + `asset_member_user_idx`
+      - assetInvites.assetId (via UNIQUE prefix), assetInvites.email — UNIQUE(asset_id,email) + `asset_invite_email_idx`
+      - replicacheClient.clientGroupId — `replicache_client_group_idx`
+      - replicacheClientGroup.id, replicacheClient.id — PKs
+  - `notifications (userId, createdAt DESC)` exists — verified as `notification_recipient_created_idx` on (recipient_id, created_at); Postgres backward-scans for ORDER BY … DESC.
+  - Partial index on `(userId) WHERE readAt IS NULL` for unread counts — verified as `notification_recipient_unread_idx` with `WHERE "notification"."read_at" IS NULL`. Used by `markAllRead` (service.ts:201-212), `markReadByResource` (service.ts:219-237), and `markRead`'s single-row filter (service.ts:181-197).
+  - `asset_member` PK covers `(assetId, userId)` — confirmed; used by `getRole` (both columns), `list`/`listMemberUserIds` (assetId prefix), and `AssetService.list`/`search`/`listPage` join + WHERE (assetId + userId).
+  - `asset_member` userId-only lookup has an index — `asset_member_user_idx` (declared at schema line 37, created in migration 0030:30). Used by `getAccessibleAssetIds` (authz.ts:10) and `AssetService.list`/`search`/`listPage` when driven from `mediaAssets` join + userId condition.
+  - Replicache CVR / client-group tables are indexed on what pull queries by — `replicacheClientGroup` queried only by PK `id` (pull.ts:105, push.ts:84); `replicacheClient` queried by PK `id` (push.ts:70) and by `clientGroupId` (pull.ts:281, covered by `replicache_client_group_idx`).
+  - Pagination on list endpoints — not in scope for Task 4; the notifications list currently returns all user rows unbounded (deferred to Task 21 per plan).
+  - Appropriate data types — `row_version` integer, `cvr_version` integer, `last_mutation_id` integer, `created_at`/`updated_at`/`read_at`/`expires_at` timestamp, `body` jsonb, text for ids/emails/roles via enum. All correct.
+  - Drizzle relational query API check — the pull + service queries use explicit `.innerJoin`/`.leftJoin` rather than `db.query.table.findMany({ with: ... })`. Acceptable here because (a) the queries return custom projections (selected subset of columns with aliases), not the default entity shape relational queries produce, (b) the per-asset scoping uses `inArray(assetId, assetIds)` with a precomputed list — fine for the current cardinality. Not a Task 4 concern; noted for Task 6 / 15 if revisited.
+  - pnpm check-types: clean (8/8 tasks green, full-turbo cache hit; no source changes).
