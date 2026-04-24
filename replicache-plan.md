@@ -17,7 +17,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Confirm no-op updates don't bump row_version (`WHEN (OLD.* IS DISTINCT FROM NEW.*)` or column-level guard). Otherwise unrelated UPDATEs produce sync storms.
 - Confirm every table the sync engine publishes has a trigger — cross-reference with what `pull.ts` emits
 
-### Task 2: Verify backfill migrations are idempotent
+### ~~Task 2: Verify backfill migrations are idempotent~~ ✓
 
 **Files**: `packages/db/src/migrations/0031_backfill_asset_member_owners.sql`, `0035_backfill_orphan_asset_member_owners.sql`
 **What**:

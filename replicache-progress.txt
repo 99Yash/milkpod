@@ -38,3 +38,28 @@ Checklist verification:
   - Idempotent DDL — 0033 uses CREATE OR REPLACE FUNCTION + DROP TRIGGER IF EXISTS. 0037 does the same. 0038 reuses CREATE OR REPLACE FUNCTION — safe to re-run.
   - Migration safety for zero-downtime — 0038 is a function replacement only; no table locks, no column changes. Safe on large tables.
   - pnpm check-types: clean (8/8 tasks green).
+
+---
+
+## Task 2: Verify backfill migrations are idempotent
+
+Issues found and fixed:
+  - None. Both migrations are already idempotent by design.
+
+Issues noted (no fix needed):
+  1. packages/db/src/migrations/0031_backfill_asset_member_owners.sql:3-6 — `INSERT ... SELECT ... ON CONFLICT ("asset_id", "user_id") DO NOTHING` on the composite PK. Safe to re-run. Uses the media_asset's `created_at` for both created_at and updated_at on the membership row so the backfilled rows look chronologically consistent with the asset; this is harmless for sync because the BEFORE UPDATE row_version trigger (0033) only fires on UPDATE, not INSERT — see Task 1 notes. Also, since `created_at` on asset_member is set from the pre-existing media_asset.created_at rather than NOW(), the `updated_at = created_at` invariant holds and won't later be bumped by Drizzle's `$onUpdate` unless someone actually updates the row.
+  2. packages/db/src/migrations/0035_backfill_orphan_asset_member_owners.sql:7-13 — Doubly idempotent: a LEFT JOIN WHERE `am.user_id IS NULL` filter, plus `ON CONFLICT DO NOTHING` as defense-in-depth. Safe to re-run.
+  3. Gap coverage claim verified: 0031 was added in commit 16ce298 ("refactor: replicache sync"), which introduced the asset_member table. `AssetService.create` didn't begin seeding memberships until a later commit (85b4937 / 1297719 — migration 0035 was added in 85b4937). Any asset created via the old (pre-seeding) create path between 0031 and 85b4937 would be missing its owner membership; 0035 closes that gap. Confirmed by reading the journal timestamps and current service.ts:170-173 which now inserts the owner membership inside the same transaction as the asset insert with `.onConflictDoNothing()`.
+
+Library improvements made:
+  - None. `INSERT ... ON CONFLICT DO NOTHING` IS the idiomatic Postgres/Drizzle primitive here; no library abstraction would be cleaner for a pure-SQL migration. (Noted for completeness: the runtime `AssetService.create` seeding also uses Drizzle's `.onConflictDoNothing()` which is the library primitive version of the same pattern.)
+
+Checklist verification:
+  - Idempotent (safe to re-run) — 0031 ON CONFLICT DO NOTHING; 0035 LEFT JOIN ... WHERE IS NULL + ON CONFLICT DO NOTHING. Both verified.
+  - Migration safety for zero-downtime — both are additive INSERTs into asset_member; no schema mutation, no column changes, no table locks. Safe.
+  - No raw string concatenation (SQL injection surface) — pure static DDL / DML, no parameter interpolation.
+  - Appropriate data types — role is the 'asset_member_role' enum (defined in 0030); assetId/userId are text (matching media_asset.id / user.id); timestamps preserved from source.
+  - PK integrity — 0031 and 0035 target the composite PK (asset_id, user_id); ON CONFLICT clause correctly references both columns.
+  - Gap analysis — 0035's claim that it covers assets created between 0031 and the AssetService.create seeding change is verified by the commit sequence (0031 in 16ce298; seeding in 85b4937; 0035 also in 85b4937 as the compensating backfill). No orphan windows remain because the now-seeding create path uses `.onConflictDoNothing()`, so re-runs are harmless.
+  - Ordering / independence — 0035 runs after 0034 which constrains asset_invite roles to non-owner; 0035 inserts into asset_member not asset_invite, so no CHECK interaction. Independent.
+  - pnpm check-types: clean (8/8 tasks green, full-turbo cache hit; no source changes).
