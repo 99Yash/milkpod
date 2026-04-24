@@ -108,7 +108,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Channel names include the userID or assetID — no global broadcast channel
 - Client subscribes only to channels for assets it can see
 
-### Task 12: Add Elysia auth guard and input validation to Replicache routes
+### ~~Task 12: Add Elysia auth guard and input validation to Replicache routes~~ ✓
 
 **Files**: `packages/api/src/modules/replicache/index.ts`
 **What**:

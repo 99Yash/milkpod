@@ -17,19 +17,14 @@ import {
   type CVRSnapshot,
   type NotificationCVRRow,
 } from './cvr';
+import type { ReplicacheModel } from './model';
 
 export type PatchOp =
   | { op: 'put'; key: string; value: Record<string, unknown> }
   | { op: 'del'; key: string }
   | { op: 'clear' };
 
-export interface PullRequestBody {
-  pullVersion: 1;
-  clientGroupID: string;
-  cookie: number | null;
-  profileID?: string;
-  schemaVersion?: string;
-}
+export type PullRequestBody = ReplicacheModel.Pull;
 
 export interface PullResponse {
   cookie: number;
