@@ -236,7 +236,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Provider creates the instance once per user session; closes on unmount or user change (no leaked IndexedDB handles)
 - The Replicache `name` option includes the userID so logout + login as a different user doesn't surface the previous user's cached data
 
-### Task 25: Stabilize `useSubscribe` dependencies
+### ~~Task 25: Stabilize `useSubscribe` dependencies~~ ✓
 
 **Files**: `apps/web/src/lib/replicache/hooks.ts`
 **What**:
