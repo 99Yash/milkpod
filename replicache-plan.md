@@ -100,7 +100,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Grep for poke/publish calls; each must run after `await tx.commit()` or entirely outside the transaction block
 - Pokes inside an uncommitted tx cause clients to pull before the write is visible → stale pull
 
-### Task 11: Scope realtime channels per user / per asset
+### ~~Task 11: Scope realtime channels per user / per asset~~ ✓
 
 **Files**: `packages/api/src/events/replicache-events.ts`, `apps/web/src/lib/replicache/*`
 **What**:

@@ -1,9 +1,6 @@
 import { Elysia, status, t } from 'elysia';
 import { authMacro } from '../../middleware/auth';
-import {
-  replicacheEvents,
-  type ReplicachePoke,
-} from '../../events/replicache-events';
+import { subscribeUserPokes } from '../../events/replicache-events';
 import { handlePull, type PullRequestBody } from './pull';
 import { handlePush, type PushRequestBody } from './push';
 
@@ -78,12 +75,14 @@ export const replicache = new Elysia({ prefix: '/api/replicache' })
             }
           };
 
-          const listener = (event: ReplicachePoke) => {
-            if (event.userId !== userId) return;
-            write(`event: poke\ndata: ${JSON.stringify({ assetId: event.assetId })}\n\n`);
-          };
-
-          replicacheEvents.on('poke', listener);
+          // Subscribe to this user's dedicated poke channel. The helper
+          // owns the per-user Redis SUBSCRIBE/UNSUBSCRIBE lifecycle, so
+          // this replica only receives pokes for users it actually serves.
+          const unsubscribe = subscribeUserPokes(userId, (event) => {
+            write(
+              `event: poke\ndata: ${JSON.stringify({ assetId: event.assetId })}\n\n`,
+            );
+          });
 
           const heartbeat = setInterval(() => {
             write(': heartbeat\n\n');
@@ -92,7 +91,7 @@ export const replicache = new Elysia({ prefix: '/api/replicache' })
           write(': connected\n\n');
 
           cleanup = () => {
-            replicacheEvents.off('poke', listener);
+            unsubscribe();
             clearInterval(heartbeat);
           };
         },
