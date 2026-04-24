@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { DashboardLayout } from '~/components/layouts/dashboard';
 
 export default function NotificationsLayout({
@@ -6,5 +6,9 @@ export default function NotificationsLayout({
 }: {
   children: ReactNode;
 }) {
-  return <DashboardLayout>{children}</DashboardLayout>;
+  return (
+    <Suspense fallback={null}>
+      <DashboardLayout>{children}</DashboardLayout>
+    </Suspense>
+  );
 }
