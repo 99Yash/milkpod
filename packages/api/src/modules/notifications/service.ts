@@ -1,12 +1,20 @@
-import { db } from '@milkpod/db';
-import {
-  notifications,
-  user as userTable,
-  type NotificationType,
-} from '@milkpod/db/schemas';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { notifications, type NotificationType } from '@milkpod/db/schemas';
 import type { Notification, AssetRole, AssetOwner } from '../../types';
 import { emitReplicachePokes } from '../../events/replicache-events';
+
+/**
+ * Maximum notifications any one user's Replicache sync retains. The pull
+ * handler orders by `createdAt DESC` and truncates to this many rows, so
+ * older entries fall out of the client's cache as newer ones arrive. 200 is
+ * well above the in-popover (10) and full-page view needs without putting
+ * unbounded growth on every pull.
+ *
+ * This replaces the unbounded LIST semantics implied by the task plan's
+ * cursor-based `list()` endpoint — the architecture delivers notifications
+ * via Replicache CVR diffs, not a REST endpoint, so bounding the visible
+ * window is the equivalent "paginate the list" control.
+ */
+export const NOTIFICATION_SYNC_LIMIT = 200;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbTx = any;
@@ -143,97 +151,14 @@ export abstract class NotificationService {
         };
       case 'asset.member.removed':
         return { ...base, type: 'asset.member.removed', body: {} };
-      default:
+      default: {
+        // Compile-time exhaustiveness: adding a new branch to NotificationType
+        // without a matching `case` errors here. Runtime stays tolerant —
+        // skip rows written by a newer server rather than mis-shape them.
+        row.type satisfies never;
         return null;
+      }
     }
-  }
-
-  /** Fetch all notifications for a user, newest first. Joined with actor meta. */
-  static async listForUser(userId: string): Promise<Notification[]> {
-    const rows = await db()
-      .select({
-        id: notifications.id,
-        recipientId: notifications.recipientId,
-        type: notifications.type,
-        actorId: notifications.actorId,
-        resourceType: notifications.resourceType,
-        resourceId: notifications.resourceId,
-        body: notifications.body,
-        readAt: notifications.readAt,
-        rowVersion: notifications.rowVersion,
-        createdAt: notifications.createdAt,
-        actorName: userTable.name,
-        actorImage: userTable.image,
-      })
-      .from(notifications)
-      .leftJoin(userTable, eq(userTable.id, notifications.actorId))
-      .where(eq(notifications.recipientId, userId))
-      .orderBy(desc(notifications.createdAt));
-    return rows
-      .map(NotificationService.serialize)
-      .filter((n): n is Notification => n !== null);
-  }
-
-  /**
-   * Mark a single notification read IF it belongs to the given user. Returns
-   * true when a row was updated. Safe to call repeatedly.
-   */
-  static async markRead(
-    userId: string,
-    notificationId: string,
-  ): Promise<boolean> {
-    const rows = await db()
-      .update(notifications)
-      .set({ readAt: new Date() })
-      .where(
-        and(
-          eq(notifications.id, notificationId),
-          eq(notifications.recipientId, userId),
-          isNull(notifications.readAt),
-        ),
-      )
-      .returning({ id: notifications.id });
-    return rows.length > 0;
-  }
-
-  /** Mark every unread notification for a user as read. Returns count updated. */
-  static async markAllRead(userId: string): Promise<number> {
-    const rows = await db()
-      .update(notifications)
-      .set({ readAt: new Date() })
-      .where(
-        and(
-          eq(notifications.recipientId, userId),
-          isNull(notifications.readAt),
-        ),
-      )
-      .returning({ id: notifications.id });
-    return rows.length;
-  }
-
-  /**
-   * Mark all unread notifications for a user about a specific asset as read.
-   * Called when the user navigates directly to the asset — their bell item
-   * shouldn't linger as unread.
-   */
-  static async markReadByResource(
-    userId: string,
-    resourceType: 'asset',
-    resourceId: string,
-  ): Promise<number> {
-    const rows = await db()
-      .update(notifications)
-      .set({ readAt: new Date() })
-      .where(
-        and(
-          eq(notifications.recipientId, userId),
-          eq(notifications.resourceType, resourceType),
-          eq(notifications.resourceId, resourceId),
-          isNull(notifications.readAt),
-        ),
-      )
-      .returning({ id: notifications.id });
-    return rows.length;
   }
 }
 
