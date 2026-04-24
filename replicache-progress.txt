@@ -1058,3 +1058,382 @@ Checklist verification (per review-prompt.md Backend + Library Leverage + Common
   - Common Patterns #8 (useEffect async) — N/A.
   - Library Leverage / Drizzle — `db().transaction()`, `.onConflictDoNothing()`, `.for('update')`, `.returning()` are all native Drizzle primitives used correctly in the three sites. No hand-rolled BEGIN/COMMIT/SAVEPOINT SQL anywhere.
   - pnpm check-types: clean. 8/8 tasks green; all cached (no code change produced by Task 20 — pure verification).
+
+
+==============================================================================
+Task 21: Paginate the notifications list endpoint
+==============================================================================
+
+Scope reconciliation:
+  The plan text calls for a cursor-based REST `list()` endpoint returning
+  `{ items, nextCursor }`. The actual architecture delivers notifications
+  exclusively via Replicache pull — there is no REST list route, no
+  cursor, no nextCursor. The equivalent "bounded result set" control in a
+  Replicache architecture is a server-side LIMIT on what the pull emits
+  to the client; older entries fall out of the sync window as newer ones
+  arrive, and the CVR diff emits `del` patches automatically (same "was
+  in prev snapshot, absent from next" mechanism Task 9 verified for
+  membership revocation).
+  
+  Evidence that `listForUser`, `markRead`, `markAllRead`,
+  `markReadByResource` are all dead code in the branch diff:
+    rg 'NotificationService\.(listForUser|markRead|markAllRead|markReadByResource)' packages apps
+      → zero matches in source. Only mentions are in replicache-progress.txt
+        (historical doc).
+    rg 'notifications/service' packages/api/src
+      → 2 importers: asset-members/service.ts, replicache/pull.ts.
+        Both import only { NotificationService } and call only
+        `.record(tx, ...)` and `.poke(...)` / `.serialize(...)`.
+    grep -n 'from.*notifications/service' (server app, apps/web): no hits
+      that reach the dead methods.
+  Server mutators `notificationMarkRead` / `notificationMarkAllRead` in
+  packages/api/src/modules/replicache/server-mutators.ts:159-191 inline the
+  update directly against `notifications` — they do NOT delegate to
+  NotificationService.markRead. So the four NotificationService methods
+  had zero callers end-to-end.
+
+Library verification done before fixing:
+  - Drizzle pg `.limit()` signature: node_modules/.pnpm/drizzle-orm@0.44.7/
+    …/drizzle-orm/pg-core/query-builders/select.d.ts:558 →
+    `limit(limit: number | Placeholder): PgSelectWithout<this, TDynamic, 'limit'>;`.
+    Accepts a literal number, and chains onto `.prepare('name')` — the
+    limit gets baked into the prepared plan text, so no placeholder is
+    needed for a fixed constant.
+  - Drizzle `.orderBy()` takes multiple expressions; `desc(col)` +
+    `asc(col)` compose without fuss. The existing prepared statement
+    already chains `.orderBy(asc(notifications.id))`; verified the same
+    builder accepts `.orderBy(desc(createdAt), asc(id))`.
+  - PostgreSQL uses `notification_recipient_created_idx` (btree on
+    `(recipient_id, created_at ASC)` from schema line 67-70) by scanning
+    backward for `ORDER BY created_at DESC`. Covers both the filter
+    (recipient_id = $1) and the sort — index-only eligible at the cost
+    of a heap visit for the actor_id lookup, but the pull join to `user`
+    on `actorId` means the heap fetch happens regardless. No new index
+    needed.
+  - `satisfies never` for exhaustive checking in a switch `default` is
+    the documented TypeScript-5 pattern for "compile-time exhaustive,
+    runtime tolerant" switches (discriminated unions with forward-compat
+    skips). Verified works correctly with the `NotificationType` union's
+    three variants.
+
+Changes made:
+
+1. packages/api/src/modules/notifications/service.ts
+   
+   Added: `export const NOTIFICATION_SYNC_LIMIT = 200;` at module scope
+   with a docstring explaining the rationale (replaces cursor pagination
+   for a Replicache architecture; bounded client sync window).
+
+   Deleted (dead code — zero callers in branch):
+     - `listForUser(userId)` — service method that returned all
+       notifications for a user unsorted by createdAt DESC. No route
+       wires it up.
+     - `markRead(userId, notificationId)` — server mutator inlines the
+       same UPDATE directly; service method unused.
+     - `markAllRead(userId)` — same as above.
+     - `markReadByResource(userId, resourceType, resourceId)` — no
+       callers anywhere in source.
+
+   Removed now-unused imports: `db` (listForUser was the only user of
+   `db()` inside the file), `user as userTable` (only listForUser joined
+   it), `and`, `desc`, `isNull` (used only by the deleted methods).
+   Kept: `notifications`, `NotificationType`, `Notification`, `AssetRole`,
+   `AssetOwner`, `emitReplicachePokes` — all still referenced by the
+   remaining `record` / `poke` / `serialize` methods.
+
+   Hardened `serialize`'s switch default (which was a silent `return
+   null` on unknown type). New form:
+     ```ts
+     default: {
+       // Compile-time exhaustiveness: adding a new branch to
+       // NotificationType without a matching `case` errors here.
+       // Runtime stays tolerant — skip rows written by a newer server
+       // rather than mis-shape them.
+       row.type satisfies never;
+       return null;
+     }
+     ```
+   This satisfies review-prompt.md §TypeScript "Exhaustive switch
+   statements with `never` checks on discriminated unions" while
+   preserving the forward-compat skip-newer-types behavior documented
+   in the prior comment (lines 113-114). A new `NotificationType`
+   variant now forces a compile error in this switch, caught at
+   `pnpm check-types` rather than silently shipping as a skipped row.
+
+2. packages/api/src/modules/replicache/pull.ts
+
+   Imports: added `desc` from drizzle-orm (was missing) and
+   `NOTIFICATION_SYNC_LIMIT` from `../notifications/service`.
+
+   Updated `buildNotificationsPullStmt()`:
+     - Changed `.orderBy(asc(notifications.id))` →
+       `.orderBy(desc(notifications.createdAt), asc(notifications.id))`
+     - Added `.limit(NOTIFICATION_SYNC_LIMIT)` before `.prepare(...)`.
+
+   Semantic change: the pull now returns at most the 200 newest
+   notifications for the recipient. Older rows become invisible to the
+   client and are `del`-patched out of IndexedDB by the existing CVR
+   diff mechanism (prev snapshot's Object.entries iterated, any id not
+   in nextNotifications gets a `del` emitted — pull.ts:366-370). The
+   DB row is unchanged — we only cap what syncs to the client.
+
+   Updated the prepared-statement docstring to reflect the new ordering
+   and the LIMIT rationale (bounded churn, bounded per-pull work,
+   uses `notification_recipient_created_idx` backward).
+
+3. apps/web/src/components/notifications/notifications-page.tsx
+   
+   No change required. The page renders `useSubscribedNotifications()`
+   output directly, which reads the prefix `notification/` scan over
+   IndexedDB. Since the pull now caps the synced set at 200, the
+   client's IndexedDB never exceeds that size for this user, and the
+   component's infinite list becomes a bounded list by construction —
+   no cursor, no "load more" button needed. Users who want the
+   historical tail beyond 200 would need a dedicated REST query which
+   doesn't exist and is not needed for v1 (the notifications flow is
+   bell-badge + mark-as-read, not long-term audit).
+
+Issues found and fixed:
+  1. packages/api/src/modules/replicache/pull.ts:67 (build) and
+     packages/api/src/modules/notifications/service.ts:152-175 (list):
+     Before the fix, the notifications pull did a full scan of every
+     row for the recipient with no LIMIT. A user with N accumulated
+     notifications paid O(N) on every pull — unbounded result set per
+     review-prompt.md §Queries "Never return unbounded result sets".
+     Fixed by bounding to 200 most recent via the prepared statement's
+     LIMIT + createdAt DESC order.
+  2. packages/api/src/modules/notifications/service.ts — four
+     dead-code methods (listForUser, markRead, markAllRead,
+     markReadByResource) removed. CLAUDE.md: "delete unused code".
+     Zero callers verified with rg across packages/ and apps/.
+  3. packages/api/src/modules/notifications/service.ts:146 — the
+     switch `default: return null;` was semantically correct but
+     did not catch future NotificationType variants at compile time.
+     Replaced with `row.type satisfies never; return null;` so
+     adding a new variant to NotificationType errors here, while
+     keeping runtime tolerant.
+
+Issues noted (no fix applied):
+  1. apps/web/src/components/notifications/notifications-page.tsx:24-26,
+     34-37 — `catch { // Non-fatal. }` pattern on Replicache mutator
+     calls. This is defensible for Replicache: `rep.mutate.X()` rejects
+     only on client-side mutator throw (pure set/get against IDB); the
+     push pipeline has its own retry loop, and the next pull reconciles
+     server-authoritative state. Changing to `console.warn` or
+     `toast.error` would be the review-prompt checklist §Error Handling
+     position, but a toast on a phantom failure would be worse UX than
+     silent recovery. Deferring to Task 34 (catch-block sweep) for a
+     consistent repo-wide decision — fixing half now creates drift
+     against notification-bell.tsx:38-40 which has the same pattern.
+  2. apps/web/src/components/notifications/notifications-page.tsx:51-58
+     — `<Button onClick={handleMarkAllRead}>` has no explicit `type=`
+     attribute; the shadcn `Button` wrapper also does not set a default
+     `type="button"`. HTML default is `submit` when inside a `<form>`,
+     and this Button is not inside a form, so behavior is benign.
+     Review-prompt §Accessibility recommends explicit types regardless.
+     Same pattern exists across the notification-bell.tsx, collab UI,
+     share dialog, etc. Out of Task 21 scope; a dedicated pass on the
+     shadcn wrapper (defaulting `type="button"` unless caller overrides)
+     would fix it everywhere in one change.
+  3. `NOTIFICATION_SYNC_LIMIT` lives in the API service file, not in
+     `@milkpod/sync`. Moving it to sync would let the frontend render a
+     "Showing 200 most recent" hint when `items.length === LIMIT`. For
+     v1 the limit is generous enough that hitting it is rare, and the
+     UI hint adds complexity for an edge case. If a future user surfaces
+     the "where are my older notifications?" question, promote the
+     constant to `@milkpod/sync/keys` and add the hint.
+  4. The pull.ts prepared statement's LIMIT is a literal 200 baked into
+     the plan text — if `NOTIFICATION_SYNC_LIMIT` ever needs to be
+     caller-adjustable (per-user admin override, test fixture override),
+     we'd need to re-`.prepare()` per limit OR use `sql.placeholder()`.
+     Right now a single constant across all pulls is correct. Noted for
+     future adjustability if needed.
+
+Library improvements made:
+  - Replaced a hand-rolled unbounded SELECT with Drizzle's native
+    `.limit(NOTIFICATION_SYNC_LIMIT)` primitive chained onto the
+    existing `.prepare('replicache_pull_notifications')` statement. The
+    LIMIT is part of the prepared plan, so no runtime SQL text
+    manipulation, no Query-time LIMIT parameter marshalling, and the
+    plan cache stays warm across pulls.
+  - Used Drizzle's multi-column `.orderBy(desc(createdAt), asc(id))`
+    rather than constructing a single raw-SQL ordering clause. The
+    drizzle builder produces the correct `ORDER BY a DESC, b ASC`
+    text internally.
+  - Used TypeScript's `satisfies never` (TS 4.9+) rather than the
+    older `const _exhaustive: never = row.type;` incantation for the
+    exhaustive check. Shorter, reads as "assert this is never-typed
+    at this point", avoids the unused-variable lint.
+
+Checklist verification (per review-prompt.md Backend + Frontend +
+Library Leverage):
+
+Queries & Data Access
+  - No N+1: verified. The pull issues exactly one notifications query
+    (prepared, LIMIT 200) per pull. Author metadata is joined directly
+    (left join to user on actorId) in the same prepared statement —
+    the author map construction at pull.ts:267-283 handles moments +
+    comments authors; notifications already carry their actor meta
+    through the prepared-statement join (pull.ts:61-75). No per-row
+    follow-up query.
+  - Pagination on list endpoints: NOW ADDRESSED via server-side
+    LIMIT. The "list endpoint" in this architecture is the Replicache
+    pull, and it is now bounded.
+  - Transactions: N/A (read-only path, no writes in this task).
+  - Parameterized queries: pull query uses `sql.placeholder('userId')`
+    — parameterized. The LIMIT is a literal constant, not
+    interpolated from request data, so no injection surface.
+  - Appropriate data types: unchanged. `notifications.createdAt`
+    remains `timestamp`, `recipientId` remains `text` with FK.
+
+Security
+  - Input validation: N/A (LIMIT is not user-controlled).
+  - Auth/authorization: unchanged. The pull's `where
+    (recipientId = sql.placeholder('userId'))` scopes to the
+    authenticated user — the LIMIT doesn't leak across users. The
+    authentication-vs-recipient binding is enforced by pull.ts:180-183
+    (`existingGroup.userId !== userId → forbidden`).
+  - Rate limiting: N/A (pull already registered in Task 13).
+  - No sensitive data in logs: N/A (no new log statements in Task 21).
+  - No secrets in error responses: N/A (no error bodies touched).
+  - Proper HTTP status codes: N/A (pull response shape unchanged).
+
+Resilience
+  - Timeouts: N/A (no new external calls).
+  - Idempotency: N/A.
+  - Connection pooling: unchanged — prepared statement still runs on
+    a pool connection separate from the caller's tx (see existing
+    docstring for rationale).
+  - Env vars: N/A.
+
+Code Quality
+  - Reuse existing utilities: VERIFIED. Reused `.prepare(...)`,
+    `.limit(...)`, `.orderBy(...)`, `.execute(...)` — all Drizzle
+    native primitives. No wrapper, no re-implementation.
+  - Exhaustive switch statements: FIXED at serialize's default
+    branch. The `NotificationType` union is now exhaustively
+    matched at compile time via `satisfies never`.
+  - No magic numbers: `NOTIFICATION_SYNC_LIMIT = 200` extracted as
+    a named constant with a docstring justifying the value (well
+    above popover limit, generous for full-page views).
+  - Proper error handling: unchanged (no new error paths).
+  - Safe migrations: N/A (schema unchanged).
+
+Frontend / React Patterns
+  - No redundant state: `items`, `unreadCount`, `ready` all derive
+    from the `useSubscribedNotifications` hook — no local useState
+    duplication. `unreadCount` is computed from `items` via useMemo
+    (verified at hooks.ts:84-87).
+  - Proper cleanup in useEffects: `usePrefixSubscription` returns the
+    Replicache `unsubscribe` function from the effect (hooks.ts:47),
+    so the subscription is torn down on unmount or prefix/rep change.
+  - Unnecessary re-renders: `sorted` and `unreadCount` are memoized
+    (hooks.ts:80, 85) with `items` as dep. Page component does not
+    wrap `handleItemClick` or `handleMarkAllRead` in `useCallback`
+    — not wrapped in `React.memo`, not passed as deps, so unnecessary
+    memoization would be over-abstraction per review-prompt §React.
+  - Keys: `<li key={n.id}>` — stable, unique, data-driven. Not an
+    array index.
+  - SSR guards: N/A — `'use client'` directive + the Replicache init
+    is already SSR-guarded in context.tsx (Task 24 scope).
+  - No dangerouslySetInnerHTML: verified — none in this component.
+  - Dead code: verified — all imports are used; no unrendered
+    components.
+
+Frontend / TypeScript
+  - No `any`: verified. `SyncedNotification` imported from
+    `@milkpod/sync` with proper typing; no `as any`.
+  - No unjustified `!`: verified — none used.
+  - Type guards / discriminated unions: `SyncedNotification` is a
+    discriminated union on `type`; render consumer is NotificationRow
+    (not touched in this task).
+  - `as` assertions: none introduced.
+
+Frontend / Tailwind v4
+  - `size-*` over `w-* h-*`: `<Spinner className="size-6" />` — used.
+  - Theme tokens: `bg-muted`, `text-muted-foreground`, `border-border`
+    via `divide-border/60` — all theme tokens.
+  - No unnecessary arbitrary values: verified — no `text-[Npx]` etc.
+
+Accessibility
+  - `<h1>` semantic — verified.
+  - Button: `<Button disabled={unreadCount === 0}>Mark all read</Button>`
+    — has text label, disabled state is correctly wired to state.
+    Missing explicit `type="button"` — noted in Issues Noted #2,
+    out of Task 21 scope.
+  - Keyboard: `<li>` items render a button-styled `NotificationRow`
+    (out-of-scope file); its click handler propagates via onClick.
+    Not validated here.
+
+Error Handling & UX
+  - No console.log: verified — none introduced.
+  - All states: loading (spinner), empty ("No notifications yet"),
+    populated (list) all handled. Error state is not explicit — the
+    Replicache subscription never rejects (pull errors are retried
+    internally by the Replicache runtime), so the pattern is
+    "show what we have, update when sync progresses". Acceptable for
+    a Replicache-backed view.
+  - No secrets in client code: verified.
+
+Library Leverage
+
+  Drizzle:
+    - Relational query API vs manual JOIN: the pull query uses a
+      manual leftJoin to the `user` table. Could it use
+      `db.query.notifications.findMany({ with: { actor: true }, ... })`?
+      Yes, if `user` was defined as a relation of `notifications`
+      via `relations(notifications, ({ one }) => ({ actor: one(user, ...) }))`.
+      Checked packages/db/src/schema/notifications.ts — no relations()
+      export for notifications. The FK is declared column-level
+      (actorId references user.id). To migrate to the relational API,
+      we'd need to add a `notifications` entry in the relations file.
+      The explicit join is not a leverage gap so much as an incomplete
+      relations file — both styles work with Drizzle, and the explicit
+      join version is what gets the `.prepare()` cache benefit cleanly.
+      Leaving as-is. Future hardening could centralize via relations
+      if more call sites need the join.
+    - Prepared statement caching: already applied in the hot-path
+      notifications pull (verified at Task 14). LIMIT clause added in
+      Task 21 is part of the same prepared plan — no per-pull SQL
+      parsing cost.
+    - `$type<>()` on jsonb: verified at Task 5 (notifications.body
+      has `$type<NotificationBody>()`).
+    - `onConflictDoNothing()`: N/A (pull is read-only).
+    - Aggregate queries: N/A.
+
+  Elysia:
+    - Guards / onError: N/A (notifications are not served via a
+      dedicated REST route — Replicache pull is the only surface,
+      guarded at Task 12).
+
+  AI SDK / Eden Treaty: N/A (no AI calls, no new API surface).
+
+  React / Next.js:
+    - useEffect + useState + fetch patterns: N/A — the page uses
+      Replicache subscription via the reusable hook, which is the
+      correct library primitive. No ad-hoc fetch.
+    - Manual cache invalidation: N/A — Replicache + CVR handle it.
+    - 'use client' boundary: appropriate here since IndexedDB is
+      client-only.
+
+Common Patterns (from prior reviews):
+  1. `console.error('ctx', err)` full-object logging: N/A (no new
+     console.error introduced).
+  2. Missing fetch timeouts: N/A (no new fetch).
+  3. New endpoints not in rate limiter: N/A (no new routes).
+  4. Keyboard-invisible `opacity-0 group-hover`: N/A (no such patterns
+     in the touched files).
+  5. Silent error swallowing: acknowledged in Issues Noted #1, scope
+     pushed to Task 34.
+  6. Duplicated logic: the four dead NotificationService methods WERE
+     duplication-in-waiting relative to the server mutators that
+     inline the same UPDATE logic. Deleting them cleanly avoids the
+     future temptation to add a second update path that drifts from
+     the server-mutator implementation.
+  7. Missing exhaustive switches: FIXED at serialize's default case.
+  8. useEffect async patterns: N/A.
+  9. Webhook raw body: N/A.
+  10. Yearly/interval billing bugs: N/A.
+
+pnpm check-types: clean (8/8 green). pnpm build: clean (8/8, web build
+successful). No phantom type errors, no regressions.

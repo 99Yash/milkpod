@@ -7,9 +7,12 @@ import {
   replicacheClientGroup,
   user as userTable,
 } from '@milkpod/db/schemas';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Comment, Moment, Notification } from '../../types';
-import { NotificationService } from '../notifications/service';
+import {
+  NOTIFICATION_SYNC_LIMIT,
+  NotificationService,
+} from '../notifications/service';
 import { getAccessibleAssetIds } from './authz';
 import {
   getCVRStore,
@@ -22,10 +25,20 @@ import type { ReplicacheModel } from './model';
 /**
  * Module-scope prepared statement for the per-user notifications row-version
  * lookup. This runs on every pull and has a fixed shape (single `userId`
- * placeholder, joined actor metadata, ordered by id), so it's the ideal
- * candidate for PostgreSQL's server-side plan cache — each PoolClient
- * prepares the statement on first use and reuses the cached plan on every
- * subsequent pull from that same client.
+ * placeholder, joined actor metadata, ordered by `createdAt DESC` with `id`
+ * tiebreak, capped at NOTIFICATION_SYNC_LIMIT), so it's the ideal candidate
+ * for PostgreSQL's server-side plan cache — each PoolClient prepares the
+ * statement on first use and reuses the cached plan on every subsequent
+ * pull from that same client.
+ *
+ * The LIMIT is the sync-window cap: a user accumulates notifications
+ * forever in the DB, but their client only ever sees the newest
+ * NOTIFICATION_SYNC_LIMIT. As newer rows arrive, older ones fall out of
+ * the set and get `del` patches from the CVR diff — bounded churn, bounded
+ * per-pull work. `createdAt DESC` uses `notification_recipient_created_idx`
+ * backward; `id ASC` breaks ties so the prepared plan and snapshot
+ * insertion order are stable across pulls (needed for deterministic patch
+ * arrays).
  *
  * Build via Drizzle's `.prepare('name')` with `sql.placeholder('userId')` so
  * the SQL string is generated once at first call (not per-pull) and the
@@ -64,7 +77,8 @@ function buildNotificationsPullStmt() {
     .from(notifications)
     .leftJoin(userTable, eq(userTable.id, notifications.actorId))
     .where(eq(notifications.recipientId, sql.placeholder('userId')))
-    .orderBy(asc(notifications.id))
+    .orderBy(desc(notifications.createdAt), asc(notifications.id))
+    .limit(NOTIFICATION_SYNC_LIMIT)
     .prepare('replicache_pull_notifications');
 }
 

@@ -197,7 +197,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Same for mentions, invite accepted, member added
 - Otherwise a rollback of the trigger leaves a phantom notification
 
-### Task 21: Paginate the notifications list endpoint
+### ~~Task 21: Paginate the notifications list endpoint~~ ✓
 
 **Files**: `packages/api/src/modules/notifications/service.ts`, `apps/web/src/components/notifications/notifications-page.tsx`
 **What**:
