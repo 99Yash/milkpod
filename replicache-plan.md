@@ -34,7 +34,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Before prod deploy, run `SELECT count(*) FROM asset_invite WHERE role = 'owner';` — if > 0, resolve offending rows (delete or downgrade) first, else 0034 fails
 - Record the query + expected zero result in `progress.txt`. No code change required.
 
-### Task 4: Verify indexes on new FK columns and hot query paths
+### ~~Task 4: Verify indexes on new FK columns and hot query paths~~ ✓
 
 **Files**: `packages/db/src/schema/{asset-members,notifications,replicache}.ts`
 **What**:
