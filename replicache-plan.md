@@ -74,7 +74,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Duplicate mutations (`lastMutationID >= incoming.id`) are silently skipped, NOT errored — Replicache retries produce duplicates by design
 - On mutator failure, still advance `lastMutationID` with an error record so the client doesn't loop forever
 
-### Task 8: Audit authz.ts coverage for read (pull) and write (push)
+### ~~Task 8: Audit authz.ts coverage for read (pull) and write (push)~~ ✓
 
 **Files**: `packages/api/src/modules/replicache/authz.ts`, `server-mutators.ts`, `pull.ts`
 **What**:

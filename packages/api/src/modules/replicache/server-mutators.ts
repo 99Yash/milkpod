@@ -14,14 +14,7 @@ import type {
   NotificationMarkAllReadArgs,
   NotificationMarkReadArgs,
 } from '@milkpod/sync';
-import { AssetMemberService } from '../asset-members/service';
-
-export class MutatorForbiddenError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'MutatorForbiddenError';
-  }
-}
+import { requireEditor } from './authz';
 
 export interface ServerMutatorCtx {
   userId: string;
@@ -34,18 +27,6 @@ export interface ServerMutatorCtx {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbTx = any;
-
-async function requireEditor(
-  assetId: string,
-  userId: string,
-): Promise<void> {
-  const allowed = await AssetMemberService.isEditor(assetId, userId);
-  if (!allowed) {
-    throw new MutatorForbiddenError(
-      `User ${userId} is not an editor of asset ${assetId}`,
-    );
-  }
-}
 
 export const serverMutators = {
   async momentCreate(
