@@ -161,7 +161,14 @@ export async function handlePull(
     //    output, and the stored snapshot's insertion order is stable across
     //    writes — which in turn keeps the del-loop iteration order
     //    (Object.entries over prev snapshot) deterministic.
-    const assetIds = await getAccessibleAssetIds(userId);
+    //
+    //    Pass `tx` so the membership read runs on the same connection as the
+    //    subsequent entity reads. Assets themselves are NOT published via
+    //    sync (see keys.ts — only moment/comment/notification entities),
+    //    so revocation of an asset_member row manifests to the client as
+    //    `del` ops on the asset's child entities; the asset's own
+    //    disappearance is handled by REST cache invalidation, not here.
+    const assetIds = await getAccessibleAssetIds(userId, tx);
     let currentMoments: Moment[] = [];
     let currentComments: Comment[] = [];
     if (assetIds.length > 0) {
@@ -280,7 +287,30 @@ export async function handlePull(
         });
       }
     }
-    // Deletions: rows present in prev snapshot but not current.
+    // Deletions: rows present in prev snapshot but not current. A single
+    // mechanism — "was in prev, absent from next" — covers every way a row
+    // can leave the user's visible set:
+    //
+    //   1. Physical deletion (DELETE FROM table). No mutator currently issues
+    //      hard deletes for moments/comments, but the branch handles it if
+    //      any path does.
+    //   2. Soft deletion. Moments/comments have both `dismissedAt` (set by
+    //      REST delete routes) and `deletedAt` (set by Replicache mutators).
+    //      Both are filtered out of `currentMoments` / `currentComments` by
+    //      the `isNull(...)` predicates above, so soft-deleted rows fall out
+    //      of `nextMoments` / `nextComments` and get a `del` emitted here.
+    //   3. Membership revocation (visibility loss). When a user's
+    //      asset_member row is removed, `getAccessibleAssetIds` no longer
+    //      returns that assetId, the `inArray(assetId, assetIds)` filter
+    //      excludes every moment/comment on the revoked asset, and the same
+    //      "absent from next" rule emits the `del` ops. `AssetMemberService
+    //      .removeMember` fires a Replicache poke post-commit to trigger
+    //      this pull immediately (see asset-members/service.ts).
+    //
+    // The `row.a` field in each CVRRow preserves the assetId captured at
+    // snapshot time, so we can reconstruct the Replicache key (`moment/<assetId>/<id>`)
+    // even after the user has lost access to the asset. Notifications are
+    // user-scoped so their key has no assetId segment.
     if (!isColdSync) {
       for (const [id, row] of Object.entries(prevSnapshot.moments)) {
         if (!nextMoments[id]) {

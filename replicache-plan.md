@@ -83,7 +83,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Every server mutator re-checks ownership/membership; never trusts the client's implied permission
 - If authz.ts is too thin, expand — don't let pull/push reimplement checks divergently
 
-### Task 9: Emit `del` patches on visibility loss
+### ~~Task 9: Emit `del` patches on visibility loss~~ ✓
 
 **Files**: `packages/api/src/modules/replicache/pull.ts`, `cvr.ts`
 **What**:
