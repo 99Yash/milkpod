@@ -106,7 +106,7 @@ export function ShareDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5">
+        <Button type="button" variant="outline" size="sm" className="gap-1.5">
           <Share2 className="size-3.5" />
           Share
         </Button>
@@ -269,9 +269,11 @@ function PublicLinkSection({ assetId, collectionId }: PublicLinkSectionProps) {
         </div>
 
         <div className="flex items-center justify-between gap-4">
-          <Label className="text-sm">Expires</Label>
+          <Label htmlFor="share-expiry" className="text-sm">
+            Expires
+          </Label>
           <Select value={expiry} onValueChange={setExpiry}>
-            <SelectTrigger className="w-36" size="sm">
+            <SelectTrigger id="share-expiry" className="w-36" size="sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -285,6 +287,7 @@ function PublicLinkSection({ assetId, collectionId }: PublicLinkSectionProps) {
         </div>
 
         <Button
+          type="button"
           onClick={handleCreate}
           disabled={creating}
           className="w-full gap-1.5"
@@ -324,6 +327,7 @@ function PublicLinkSection({ assetId, collectionId }: PublicLinkSectionProps) {
                   </p>
                 </div>
                 <Button
+                  type="button"
                   variant="ghost"
                   size="sm"
                   className="size-7 shrink-0 p-0"
@@ -339,6 +343,7 @@ function PublicLinkSection({ assetId, collectionId }: PublicLinkSectionProps) {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
+                      type="button"
                       variant="ghost"
                       size="sm"
                       className="size-7 shrink-0 p-0 text-muted-foreground"

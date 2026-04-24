@@ -173,7 +173,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Member removal, role change, and asset delete must refuse to leave an asset with 0 owners (409 or similar)
 - Check inside the transaction, not in application logic alone — two concurrent role changes could each see 1 owner and both proceed
 
-### Task 19: Audit share dialog + collaborators-section UI
+### ~~Task 19: Audit share dialog + collaborators-section UI~~ ✓
 
 **Files**: `apps/web/src/components/share/share-dialog.tsx`, `collaborators-section.tsx`
 **What**:
