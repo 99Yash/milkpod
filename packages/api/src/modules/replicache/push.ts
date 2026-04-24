@@ -5,6 +5,7 @@ import { eq, sql } from 'drizzle-orm';
 import { AssetMemberService } from '../asset-members/service';
 import { emitReplicachePokes } from '../../events/replicache-events';
 import { MutatorForbiddenError } from './authz';
+import type { ReplicacheModel } from './model';
 import { serverMutators } from './server-mutators';
 
 /**
@@ -16,21 +17,8 @@ const USER_SCOPED_MUTATORS: ReadonlySet<MutatorName> = new Set([
   'notificationMarkAllRead',
 ]);
 
-export interface PushMutationV1 {
-  id: number;
-  clientID: string;
-  name: string;
-  args: unknown;
-  timestamp: number;
-}
-
-export interface PushRequestBody {
-  pushVersion: 1;
-  clientGroupID: string;
-  mutations: PushMutationV1[];
-  profileID?: string;
-  schemaVersion?: string;
-}
+export type PushMutationV1 = ReplicacheModel.PushMutation;
+export type PushRequestBody = ReplicacheModel.Push;
 
 export type PushResponse =
   | Record<string, never>
