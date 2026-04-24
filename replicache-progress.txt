@@ -1576,3 +1576,322 @@ pnpm check-types: clean (8/8 green, 7 cached + web rebuild). No
 regressions. The exhaustive default also compiled cleanly — TS can
 narrow `n` to `never` after the three cases, confirming that all
 current variants are actually accounted for (no phantom coverage).
+
+
+================================================================
+TASK 23 — Derive unread count; mark-as-read via Replicache mutator
+================================================================
+
+Files in scope:
+  - apps/web/src/components/notifications/notification-bell.tsx
+  - packages/sync/src/mutators/notifications.ts
+
+Also examined for context (not in Task 23 scope but confirmed the
+architecture end-to-end):
+  - apps/web/src/lib/replicache/hooks.ts (useSubscribedNotifications)
+  - packages/sync/src/mutators/index.ts (registration)
+  - packages/api/src/modules/replicache/server-mutators.ts
+    (notificationMarkRead, notificationMarkAllRead server parity)
+  - packages/api/src/modules/replicache/pull.ts (serializeNotification
+    shape match)
+  - apps/web/src/components/notifications/notifications-page.tsx
+    (same pattern — deferred to Task 34 sweep)
+
+Library verification (read before fixing):
+  - node_modules/.pnpm/replicache@15.3.0/.../chunk-C1TWiB5U.d.ts:
+    verified WriteTransaction.set(key, ReadonlyJSONValue), tx.get<T>()
+    generic form, tx.scan({prefix}).entries() async-iter, and the
+    MakeMutators type that drives rep.mutate typing from the
+    `mutators` constructor option. The bell's `rep.mutate.
+    notificationMarkRead({ id, readAt })` goes through the
+    MakeMutator<F> mapping and is strictly typed off
+    clientMutators.notificationMarkRead's signature — so any drift
+    in the client mutator's args would be a compile-time error here.
+  - Verified `ReadonlyJSONValue` requires an index-signature object,
+    which is why the `as unknown as ReadonlyJSONValue` double-cast
+    is consistent across every client mutator that sets a value
+    (see moments.ts:49,79; comments.ts; notifications.ts:33,63).
+    Not a local issue to fix.
+  - Search target: Replicache's docs/examples for mark-read / list
+    fanout patterns. Confirmed via the .d.ts that the standard
+    pattern is exactly `tx.scan({ prefix }).entries()` + per-entry
+    `tx.set()` — there is no bulk-set primitive. The current
+    implementation uses the correct library pattern.
+
+Task-specific requirements (both pass as-written):
+
+  1. "Unread count derived from notifications list (no separate
+     useState)":
+     VERIFIED in apps/web/src/lib/replicache/hooks.ts:84-87. The
+     `useSubscribedNotifications` hook computes unreadCount via a
+     pure `useMemo` reduction over the subscribed items array — no
+     useState, no separate REST call, no secondary state. The bell
+     (line 24) and notifications page (line 15) both consume
+     `{ items, unreadCount, ready }` from the same hook. The count
+     updates automatically whenever the Replicache subscription
+     fires (add / mark-read / remove — any change to readAt on any
+     notification row recomputes the count).
+
+  2. "Mark-as-read is a Replicache mutator (optimistic, server-
+     authoritative) — not a REST fetch racing with pull":
+     VERIFIED. notification-bell.tsx handleItemClick (line 34)
+     calls `rep.mutate.notificationMarkRead({ id, readAt })` — a
+     registered Replicache mutator (packages/sync/src/mutators/
+     index.ts:40). notification-bell.tsx handleMarkAllRead (line 49)
+     calls `rep.mutate.notificationMarkAllRead({ readAt })`.
+     Neither falls back to `fetch` or `api.api.notifications.*`
+     (confirmed with `grep 'api\.api\.notifications\|fetch' on
+     apps/web/src/components/notifications/* = 0 hits).
+     The server counterparts in packages/api/src/modules/replicache/
+     server-mutators.ts (lines 159-190) mirror both mutators with
+     the same argument shape; the recipientId WHERE clause + the
+     isNull(readAt) WHERE clause make the server update atomic with
+     its authorization check (no separate auth query needed), so
+     the "optimistic / server-authoritative" contract holds end-
+     to-end with no race against pull.
+
+Issues found and fixed:
+  1. apps/web/src/components/notifications/notification-bell.tsx:33-
+     40, 48-52 — Both catch blocks for `rep.mutate.*` were empty:
+         } catch {
+           // Non-fatal — navigation still happens. Next pull will
+           // reconcile.
+         }
+     This matches the exact anti-pattern review-prompt.md §Common
+     Patterns #5 calls out: silent catch with an explanatory
+     comment but no diagnostic. The operation itself IS truly
+     non-fatal (the optimistic local apply already succeeded before
+     the catch fires, and Replicache handles server-push retry
+     internally with backoff per its docs), so a toast.error on
+     every transient failure would be wrong UX — but devs need
+     some signal when the mutator body itself throws (e.g.,
+     TransactionClosedError, corrupt local value surfaced by the
+     `as SyncedNotification` cast, a future regression in the
+     args schema). Fix: both catches now capture the error and
+     emit a SAFE-FORMAT console.error (per review-prompt §Common
+     Patterns #1: `err instanceof Error ? err.message : String(err)`
+     — the raw `err` object can carry stack traces / internal
+     Replicache state, so it's masked). User experience is
+     unchanged (no toast, no blocked navigation); only developer
+     visibility improves. Comment rewritten to explain WHY silent
+     is acceptable (optimistic already applied + background retry),
+     not just to assert it.
+
+Issues noted (no fix needed):
+  1. apps/web/src/components/notifications/notifications-page.tsx:19-
+     26, 33-37 — Identical empty-catch pattern with "Non-fatal"
+     comments. Out of Task 23 scope (not in the task's file list)
+     and explicitly covered by Task 34 ("Sweep catch blocks for
+     silent error swallowing"). Flagged here so Task 34 doesn't
+     need to re-discover it.
+  2. packages/sync/src/mutators/notifications.ts:25, 33, 56, 63 —
+     `as SyncedNotification | undefined` and `as unknown as
+     ReadonlyJSONValue` casts. These are consistent with every
+     other client mutator in the package (moments.ts:49,71,79 and
+     comments.ts) and are structurally unavoidable: ReadonlyJSONValue
+     has an index-signature constraint that SyncedNotification (a
+     discriminated union over fixed keys) doesn't satisfy
+     structurally, and tx.get's generic overload requires `T
+     extends JSONValue` which a non-index-signature object also
+     fails. A cleaner alternative would be a typed wrapper over
+     tx.get/tx.set in packages/sync (e.g., `getSynced<T>(tx, key)`
+     + `setSynced(tx, key, value)` that encapsulate the cast once),
+     but that's a cross-package refactor affecting every mutator
+     — out of Task 23 scope. Candidate for a later cleanup.
+  3. packages/sync/src/mutators/notifications.ts:31, 61 — The
+     client optimistically bumps `rowVersion: existing.rowVersion
+     + 1`. The server's DB trigger (0033_sync_row_version_triggers.
+     sql) bumps row_version on UPDATE WHERE OLD IS DISTINCT FROM
+     NEW, so the server-side increment is +1 as well, yielding
+     parity. No risk of divergence or UI flicker on reconciliation.
+     Documented explicitly here because it's a non-obvious
+     invariant that ties two subsystems (trigger + mutator) to
+     the same integer rule.
+  4. apps/web/src/components/notifications/notification-bell.tsx:28-
+     29 — `const visible = items.slice(0, 10)` and `const hasMore
+     = items.length > 10` are recomputed every render without
+     useMemo. For a 10-element slice this is negligible and the
+     outputs feed into children that aren't memoized, so memoizing
+     here would be pure overhead. Leaving.
+
+Checklist verification (Task 23 scope):
+
+  Backend / Queries & Data Access
+    - N/A (Task 23 is client-side; server side was touched/audited
+      under Tasks 7, 8, 12, 14, 20, 21).
+  Backend / Security
+    - N/A.
+  Backend / Resilience
+    - N/A.
+  Backend / Code Quality
+    - Exhaustive switch on server mutator dispatch: not in this
+      task's files, audited under Tasks 7 & 8 already. The client
+      Replicache mutator map and server mutator map are keyed by
+      the same const string literals and both typed as `const`
+      records, so any name mismatch between client and server
+      mutators would surface at compile time through
+      ClientMutators / ServerMutators typing — verified above.
+
+  Frontend / React Patterns
+    - No redundant state: VERIFIED. useSubscribedNotifications
+      derives `sorted` (useMemo) and `unreadCount` (useMemo) from
+      the subscribed `items`; no separate state for the count.
+      The bell has one local state (`open` for the popover) which
+      is genuine UI state, not derivable.
+    - Proper cleanup in useEffects: VERIFIED. The only effects
+      touched by this task are in hooks.ts (usePrefixSubscription)
+      and context.tsx (SSE + Replicache init). Both return
+      unsubscribe / close on unmount. The handlers in the bell
+      (handleItemClick, handleMarkAllRead) are plain async fns,
+      not inside useEffect — no cleanup needed.
+    - Unnecessary re-renders: bell renders only on open/close,
+      items change (Replicache subscribe), or unreadCount change.
+      All three are semantically required re-renders. No memo
+      opportunity for the visible/hasMore derivations worth the
+      noise (see Issues Noted #4).
+    - Keys: `<li key={n.id}>` uses the stable notification id
+      (UUID-shaped per schema). Not array index. VERIFIED.
+    - SSR guards: 'use client' already present (line 1). The hook
+      that touches IndexedDB lives in hooks.ts which is also
+      'use client' via its users; the bell itself doesn't touch
+      IndexedDB directly — it goes through the Replicache
+      instance which is only instantiated inside useEffect in
+      context.tsx. VERIFIED.
+    - No dangerouslySetInnerHTML: VERIFIED.
+    - Dead code: VERIFIED — every import in bell is used, every
+      export in the mutator file is reachable through
+      clientMutators and mutatorArgsSchemas.
+
+  Frontend / TypeScript
+    - No `any`: VERIFIED in both files.
+    - No unjustified non-null assertions: VERIFIED (no `!` in
+      either file).
+    - Exhaustive switch statements: N/A (no switch in either
+      file; the renderMessage switch lives in notification-row.tsx
+      and was handled in Task 22).
+    - Prefer type guards and discriminated unions: the two `as`
+      casts in the mutator are justified (see Issues Noted #2) —
+      Replicache's API surface requires them.
+
+  Frontend / Tailwind v4
+    - No arbitrary values where a theme token exists: VERIFIED.
+      The bell uses `size-9`, `size-4`, `size-2`, `text-sm`,
+      `text-xs`, `bg-destructive`, `bg-muted/60`, `ring-background`
+      — all theme tokens, no arbitrary values.
+    - `size-*` over w-/h-: VERIFIED.
+    - `inset-*`: N/A (no all-four sides set).
+
+  Frontend / Accessibility
+    - ARIA + semantic HTML: VERIFIED.
+        * PopoverTrigger wraps a <Button> (shadcn — semantic
+          button underneath).
+        * The bell button has aria-label that reflects unread
+          count ("Notifications (N unread)" vs "Notifications"),
+          so screen readers announce the state even though the
+          unread dot has aria-hidden.
+        * The "Mark all read" button has `type="button"` and a
+          disabled state.
+        * Each notification in the list is a <button type="button">
+          inside a <li>, which is the correct interactive
+          semantic (the Popover's <ul> is the content list).
+    - Keyboard accessibility: VERIFIED. All interactive elements
+      are actual <button>s, not divs. No opacity-0 hover-only
+      tricks in this component (no group-focus-within audit
+      needed here; pattern #4 sweep handled in Task 19/33 for
+      other files).
+    - No color-only indicators: the unread dot is color-only
+      (bg-destructive) BUT the button's aria-label encodes unread
+      status textually, so the count is announced; this is fine.
+
+  Frontend / Error Handling & UX
+    - No console.log: VERIFIED.
+    - Proper error handling beyond console.log: FIXED — both
+      catches now use the safe console.error format. The reasoning
+      for not surfacing a toast is documented inline (optimistic
+      already applied; background retry).
+    - Handle all states: VERIFIED. The popover content handles
+      !ready (loading), visible.length === 0 (empty), and
+      populated list. The "View all" link appears only when
+      hasMore.
+    - No secrets in client code: VERIFIED.
+
+  Library Leverage & Composability
+
+  Drizzle: N/A (client file; server mutators audited under Task 7).
+
+  Replicache (the library being leveraged in this task):
+    - rep.mutate.* vs. manual fetch: USING PRIMITIVE. The bell
+      dispatches via `rep.mutate.notificationMarkRead(...)` — the
+      library's own mutator system — instead of POSTing to a REST
+      endpoint and racing with pull. This is the whole point of
+      Task 23's second bullet and is already correctly in place.
+    - useSubscribe for derived count vs. separate fetch: USING
+      PRIMITIVE. The unread count is computed from the live
+      subscription (rep.subscribe via hooks.ts) rather than a
+      dedicated /notifications/unread-count endpoint.
+    - tx.scan({prefix}).entries() for bulk update: CORRECT. This
+      is the canonical Replicache pattern for iterating a key
+      prefix and mutating; there is no `setMany` or `deleteMany`
+      primitive (verified by reading the WriteTransaction
+      interface in chunk-C1TWiB5U.d.ts:1000-1023 — only get, set,
+      put, del, scan, has, isEmpty).
+    - tx.set's `as ReadonlyJSONValue` double-cast: unavoidable
+      given the library's ReadonlyJSONValue index-signature
+      constraint (see Issues Noted #2). Consistent with every
+      other mutator.
+
+  Elysia / AI SDK / Eden Treaty: N/A (frontend + sync-package
+  file; no server framework surface in this task).
+
+  React / Next.js:
+    - useEffect + useState + fetch patterns: N/A — the bell does
+      NOT use that pattern. It subscribes to Replicache via the
+      hook. No polling, no manual cache invalidation — both handled
+      by Replicache pokes + CVR.
+    - Manual cache invalidation: N/A.
+    - 'use client' boundary: appropriate. IndexedDB and Replicache
+      subscriptions are inherently client-only.
+    - Manual loading/error state machines: replaced by Replicache's
+      own `ready` signal (from the first subscribe fire) exposed
+      through useSubscribedNotifications.
+
+  TypeScript Patterns:
+    - Discriminated unions + exhaustive switches: not in these two
+      files' surface; Task 22 covers the notification-type
+      exhaustive switch.
+    - Type guards over casts: see Issues Noted #2 — library-imposed,
+      not fixable locally.
+    - satisfies / as const: clientMutators and mutatorArgsSchemas
+      in mutators/index.ts are plain object literals; they flow
+      into the Replicache constructor's `mutators` option which
+      types them via MakeMutators<MD>. No `satisfies` clause needed
+      because the downstream usage site (rep.mutate.*) does the
+      shape check automatically.
+    - Generic constraints: N/A here.
+    - Branded types: N/A.
+    - AsyncState<T>: N/A — Replicache provides its own equivalent
+      via the `ready` flag on the subscription.
+
+  Common Patterns (from prior reviews):
+    1. console.error full-object logging: APPLIED SAFE-FORMAT to
+       the two catch blocks touched in this task (pattern #1).
+    2. Missing fetch timeouts: N/A (no fetch in the task's files).
+    3. New endpoints not in rate limiter: N/A (no new routes in
+       this task).
+    4. opacity-0 group-hover missing group-focus-within: N/A.
+    5. Silent error swallowing: FIXED for the bell (this task);
+       the parallel notifications-page.tsx is noted for Task 34.
+    6. Duplicated logic: noted — the bell and notifications-page
+       share almost identical handleItemClick + handleMarkAllRead
+       bodies. A shared hook (e.g., useMarkRead()) would dedupe,
+       but this is a design choice crossing two components' files;
+       deferring until Task 34 has a view on the wider sweep.
+    7. Missing exhaustive switches: N/A (handled in Task 22).
+    8. useEffect async patterns: N/A in this task's files.
+    9. Webhook raw body: N/A.
+    10. Yearly/interval billing bugs: N/A.
+
+pnpm check-types: clean (8/8 green, 7 cached + web rebuild). No
+regressions. The bell compiles cleanly with the new safe-error
+catch arms; `err` is typed as `unknown` in both, which the
+`instanceof Error` narrow handles correctly.

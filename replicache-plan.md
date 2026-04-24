@@ -215,7 +215,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - `default: { const _: never = notification.type; throw new Error(\`unknown: \${notification.type}\`); }`
 - Adding a new type forces a compile error here
 
-### Task 23: Derive unread count; mark-as-read via Replicache mutator
+### ~~Task 23: Derive unread count; mark-as-read via Replicache mutator~~ ✓
 
 **Files**: `apps/web/src/components/notifications/notification-bell.tsx`, `packages/sync/src/mutators/notifications.ts`
 **What**:

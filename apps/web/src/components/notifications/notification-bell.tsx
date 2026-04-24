@@ -35,8 +35,13 @@ export function NotificationBell() {
           id: n.id,
           readAt: Date.now(),
         });
-      } catch {
-        // Non-fatal — navigation still happens. Next pull will reconcile.
+      } catch (err) {
+        // Optimistic local apply already succeeded; Replicache retries the
+        // server push on its own. Log for debugging but don't block nav.
+        console.error(
+          'notification mark-read failed:',
+          err instanceof Error ? err.message : String(err),
+        );
       }
     }
     setOpen(false);
@@ -47,8 +52,11 @@ export function NotificationBell() {
     if (!rep || unreadCount === 0) return;
     try {
       await rep.mutate.notificationMarkAllRead({ readAt: Date.now() });
-    } catch {
-      // Non-fatal.
+    } catch (err) {
+      console.error(
+        'notification mark-all-read failed:',
+        err instanceof Error ? err.message : String(err),
+      );
     }
   };
 
