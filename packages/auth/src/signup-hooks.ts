@@ -48,40 +48,55 @@ export async function claimPendingInvitesOnSignup(
     if (pending.length === 0) return;
 
     for (const invite of pending) {
-      // Skip invites with an invalid role (should never happen given DB
-      // constraints, but defensive: role 'owner' would nonsensically apply
-      // here).
+      // Skip invites with an invalid role (should never happen given the DB
+      // CHECK constraint on asset_invite.role, but defensive: role 'owner'
+      // would nonsensically apply here).
       if (invite.role !== 'editor' && invite.role !== 'viewer') continue;
 
       await db().transaction(async (tx) => {
-        // Race safeguard: if the user was somehow already added concurrently
-        // (e.g. two invites, one claimed already), skip.
-        const [existing] = await tx
-          .select({ userId: assetMembers.userId })
-          .from(assetMembers)
+        // Atomically claim the invite. The expiry predicate is repeated here
+        // so an invite that expired between the SELECT above and this tx is
+        // still rejected — and a concurrent revoke (DELETE by the owner) is
+        // observed as `claimed` being empty. Without this, a revoked/expired
+        // invite could still grant membership.
+        const [claimed] = await tx
+          .delete(assetInvites)
           .where(
             and(
-              eq(assetMembers.assetId, invite.assetId),
-              eq(assetMembers.userId, newUserId),
+              eq(assetInvites.id, invite.id),
+              or(
+                isNull(assetInvites.expiresAt),
+                gt(assetInvites.expiresAt, new Date()),
+              ),
             ),
-          );
-        if (!existing) {
-          await tx.insert(assetMembers).values({
+          )
+          .returning({ id: assetInvites.id });
+        if (!claimed) return;
+
+        // Idempotent membership insert. If the user was added concurrently by
+        // another claim (two invites, or a direct add from the invite flow's
+        // existingUser branch that raced with this hook), returning() is
+        // empty and we skip the notification to avoid a duplicate.
+        const [inserted] = await tx
+          .insert(assetMembers)
+          .values({
             assetId: invite.assetId,
             userId: newUserId,
             role: invite.role,
             invitedBy: invite.invitedBy,
-          });
-          await tx.insert(notifications).values({
-            recipientId: newUserId,
-            type: 'asset.member.added',
-            actorId: invite.invitedBy,
-            resourceType: 'asset',
-            resourceId: invite.assetId,
-            body: { role: invite.role },
-          });
-        }
-        await tx.delete(assetInvites).where(eq(assetInvites.id, invite.id));
+          })
+          .onConflictDoNothing()
+          .returning({ userId: assetMembers.userId });
+        if (!inserted) return;
+
+        await tx.insert(notifications).values({
+          recipientId: newUserId,
+          type: 'asset.member.added',
+          actorId: invite.invitedBy,
+          resourceType: 'asset',
+          resourceId: invite.assetId,
+          body: { role: invite.role },
+        });
       });
     }
   } catch (err) {

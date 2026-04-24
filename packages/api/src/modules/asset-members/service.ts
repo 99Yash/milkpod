@@ -14,6 +14,17 @@ import { NotificationService } from '../notifications/service';
 export type AssetMemberRole = 'owner' | 'editor' | 'viewer';
 export type AssetInviteRole = Exclude<AssetMemberRole, 'owner'>;
 
+/**
+ * Default lifetime for pending invites. Stale pending invites are a quiet
+ * risk: an owner who changes their mind can revoke explicitly, but an
+ * abandoned invite that sits in the table for months could grant access to
+ * an email address that got reused (employee left, personal account
+ * repurposed). 14 days matches common SaaS norms (GitHub ~7, Slack none,
+ * Linear 30) and is long enough for realistic email delivery + human delay.
+ * The schema allows `null` expiry for callers that want to opt out.
+ */
+const INVITE_EXPIRY_MS = 14 * 24 * 60 * 60 * 1000;
+
 export interface MemberRow {
   userId: string;
   role: AssetMemberRole;
@@ -204,6 +215,7 @@ export abstract class AssetMemberService {
         email: normalizedEmail,
         role,
         invitedBy,
+        expiresAt: new Date(Date.now() + INVITE_EXPIRY_MS),
       })
       .onConflictDoNothing({
         target: [assetInvites.assetId, assetInvites.email],

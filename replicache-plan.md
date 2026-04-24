@@ -147,7 +147,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - No `SELECT * FROM asset WHERE id = ?` without a membership/ownership join
 - Role capability enforcement at the service layer: viewer attempting write → 403. Grep each mutation method for role check.
 
-### Task 16: Audit invite flow safety
+### ~~Task 16: Audit invite flow safety~~ ✓
 
 **Files**: `packages/api/src/modules/asset-members/service.ts`, `packages/auth/src/invite-email.ts`, `signup-hooks.ts`
 **What**:
