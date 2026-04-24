@@ -1,13 +1,13 @@
-import { Replicache, TEST_LICENSE_KEY, type PullerResultV1 } from 'replicache';
-/* TEST_LICENSE_KEY is fine for dev — prod deployments should set
-   NEXT_PUBLIC_REPLICACHE_LICENSE_KEY so Replicache logs don't carry the
-   'test' marker and so upstream licensing changes don't silently break. */
+import { Replicache, type PullerResultV1 } from 'replicache';
 import { clientEnv } from '@milkpod/env/client';
 import { clientMutators } from '@milkpod/sync';
 
 const env = clientEnv();
 const serverUrl = env.NEXT_PUBLIC_SERVER_URL;
-const licenseKey = env.NEXT_PUBLIC_REPLICACHE_LICENSE_KEY ?? TEST_LICENSE_KEY;
+
+// Hung requests freeze the sync pipeline — Replicache's retry backoff only
+// kicks in once a request settles. 30s is generous for pull/push payloads.
+const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Build a Replicache instance scoped to a single authenticated user. The
@@ -22,43 +22,64 @@ const licenseKey = env.NEXT_PUBLIC_REPLICACHE_LICENSE_KEY ?? TEST_LICENSE_KEY;
 export function createMilkpodReplicache(userId: string) {
   return new Replicache({
     name: `milkpod-${userId}`,
-    licenseKey,
     pullURL: `${serverUrl}/api/replicache/pull`,
     pushURL: `${serverUrl}/api/replicache/push`,
     pullInterval: null,
     mutators: clientMutators,
     puller: async (request) => {
-      const res = await fetch(`${serverUrl}/api/replicache/pull`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(request),
-      });
-      const httpRequestInfo = {
-        httpStatusCode: res.status,
-        errorMessage: res.ok ? '' : await res.text().catch(() => res.statusText),
-      };
-      if (!res.ok) return { httpRequestInfo } satisfies PullerResultV1;
-      return {
-        httpRequestInfo,
-        response: await res.json(),
-      } satisfies PullerResultV1;
-    },
-    pusher: async (request) => {
-      const res = await fetch(`${serverUrl}/api/replicache/push`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(request),
-      });
-      return {
-        httpRequestInfo: {
+      try {
+        const res = await fetch(`${serverUrl}/api/replicache/pull`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(request),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        const httpRequestInfo = {
           httpStatusCode: res.status,
           errorMessage: res.ok
             ? ''
             : await res.text().catch(() => res.statusText),
-        },
-      };
+        };
+        if (!res.ok) return { httpRequestInfo } satisfies PullerResultV1;
+        return {
+          httpRequestInfo,
+          response: await res.json(),
+        } satisfies PullerResultV1;
+      } catch (err) {
+        return {
+          httpRequestInfo: {
+            httpStatusCode: 0,
+            errorMessage: err instanceof Error ? err.message : String(err),
+          },
+        } satisfies PullerResultV1;
+      }
+    },
+    pusher: async (request) => {
+      try {
+        const res = await fetch(`${serverUrl}/api/replicache/push`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(request),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        return {
+          httpRequestInfo: {
+            httpStatusCode: res.status,
+            errorMessage: res.ok
+              ? ''
+              : await res.text().catch(() => res.statusText),
+          },
+        };
+      } catch (err) {
+        return {
+          httpRequestInfo: {
+            httpStatusCode: 0,
+            errorMessage: err instanceof Error ? err.message : String(err),
+          },
+        };
+      }
     },
   });
 }
