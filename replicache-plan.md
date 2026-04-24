@@ -92,7 +92,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - The CVR diff mechanism must detect rows that left the user's visible set, not just rows physically deleted
 - Cover soft-deletes (if any) the same way
 
-### Task 10: Verify realtime poke is sent AFTER transaction commit
+### ~~Task 10: Verify realtime poke is sent AFTER transaction commit~~ ✓
 
 **Files**: `packages/api/src/events/replicache-events.ts`, `push.ts`, any service calling into it
 **What**:
