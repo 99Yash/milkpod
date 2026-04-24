@@ -1437,3 +1437,142 @@ Common Patterns (from prior reviews):
 
 pnpm check-types: clean (8/8 green). pnpm build: clean (8/8, web build
 successful). No phantom type errors, no regressions.
+
+
+================================================================
+TASK 22 — Exhaustive switch on notification type in row renderer
+================================================================
+
+File in scope:
+  - apps/web/src/components/notifications/notification-row.tsx
+
+Reviewed the full file + the SyncedNotification union in
+packages/sync/src/types.ts + the db-side NotificationType in
+packages/db/src/schema/notifications.ts. The type has three variants
+today: 'asset.member.added', 'asset.member.role_changed',
+'asset.member.removed' (aligned across db, sync, and UI).
+
+Issues found and fixed:
+  1. apps/web/src/components/notifications/notification-row.tsx:12-22
+     — `renderMessage` switches on `n.type` and covers all three
+     variants today, but has no `default: never` branch. If a new
+     notification type is added to the `SyncedNotification` union
+     (e.g. 'comment.mention' or 'invite.accepted'), this function
+     will silently return `undefined` at runtime, which would render
+     as the literal string "undefined" in the UI.
+     Fix: added the standard exhaustive-check pattern used elsewhere
+     in the codebase (see packages/api/src/modules/asset-members/
+     index.ts:39, packages/api/src/modules/quota/service.ts:142):
+         default: {
+           const _exhaustive: never = n;
+           throw new Error(
+             `Unknown notification type: ${JSON.stringify(_exhaustive)}`,
+           );
+         }
+     Because the whole `n` is narrowed to `never` in the default
+     branch, assigning it to a `never`-typed variable forces a TS
+     compile error the moment a new discriminant is added but the
+     switch isn't updated. Matches the guidance in
+     docs/typescript-patterns.md §1 and the `const _exhaustive: never
+     = result` form. Using `JSON.stringify(_exhaustive)` (rather than
+     `_exhaustive.type`) because accessing properties on `never`
+     would require a cast.
+
+Issues noted (no fix needed):
+  1. notification-row.tsx:48 — `notification.actor?.name?.charAt(...)`
+     has a redundant `?.` after `name` because `SyncedNotificationActor.
+     name: string` is non-nullable. Cosmetic, not Task 22 scope; leaving
+     for a broader cleanup sweep.
+  2. notification-row.tsx:68,74 — `text-[10px]` and `text-[11px]`
+     arbitrary font sizes. Review-prompt §Tailwind v4 permits these
+     when no theme token exists for the size. No theme tokens in this
+     project for 10px/11px (would require a new `@theme` entry to
+     retire). Not Task 22 scope.
+  3. notification-row.tsx:44-85 — The `<button>` is clickable only
+     when `onClick` is passed; without `onClick` the button does
+     nothing but is still rendered as an interactive button (no
+     `disabled`, no aria-hidden). Real use sites (notification-bell
+     and notifications-page) always pass onClick, so this is
+     consumer-contract-only, but strictly speaking the prop could be
+     non-optional or the button could fall back to a non-interactive
+     element when no handler is provided. Out of Task 22 scope.
+  4. notification-row.tsx:78-83 — The unread indicator dot has
+     `aria-hidden` and no text alternative. `aria-label` or
+     visually-hidden text like "Unread" on the button itself would
+     announce unread state to screen readers. Not Task 22 scope;
+     candidate for Task 33/34 accessibility sweep.
+
+Checklist verification (Task 22 scope: exhaustive switch):
+
+  Backend: N/A (frontend-only change).
+
+  Frontend / React Patterns
+    - No redundant state: unchanged (renderMessage is a pure function,
+      no state involved).
+    - Proper cleanup in useEffects: N/A.
+    - Unnecessary re-renders: renderMessage is called once per render
+      inline; adding memo would be over-abstraction — not wrapped in
+      React.memo, not a prop of a memoed child.
+    - Keys: unchanged.
+    - SSR guards: unchanged — 'use client' is already present.
+    - No dangerouslySetInnerHTML: verified — message is plain string
+      interpolation into a <p>, React auto-escapes.
+    - Dead code: verified — renderMessage still used on line 72.
+
+  Frontend / TypeScript
+    - No `any`: verified.
+    - No unjustified non-null assertions: verified.
+    - Exhaustive switch statements: FIXED. This is the core of the
+      task — `renderMessage`'s switch now has the `const _exhaustive:
+      never = n` check. Will produce a TS2322 compile error if a new
+      variant is added to SyncedNotification without a case here.
+    - Prefer type guards and discriminated unions: `SyncedNotification`
+      is already a discriminated union on `type`; the switch narrows
+      `n.body` per branch (n.body.role on 'asset.member.added',
+      n.body.toRole on 'asset.member.role_changed', empty object on
+      'asset.member.removed') — verified TypeScript properly narrows
+      the union by running check-types.
+
+  Frontend / Tailwind v4: unchanged (no class changes in this task).
+
+  Accessibility: unchanged (no markup change).
+
+  Error Handling & UX
+    - No console.log: verified — still none.
+    - The `throw new Error(...)` in the exhaustive branch is
+      intentionally loud: hitting it means a dev forgot to update
+      this file after adding a variant, and the dev-console stack
+      trace is the fastest way to find the omission. Not user-facing
+      in normal operation because the TS compile error fires first.
+
+  Library Leverage
+    - Drizzle / Elysia / AI SDK / Eden: N/A (no library surface touched
+      in this file).
+    - React: N/A — no new library primitive applies. The exhaustive
+      switch is the correct TS pattern and has no React equivalent.
+    - TypeScript patterns: applied §1 of docs/typescript-patterns.md
+      (Discriminated Unions & Exhaustive Switches) per book. Matches
+      the `const _exhaustive: never = result` form, and the codebase's
+      own prior uses (asset-members/index.ts:39, quota/service.ts:142).
+
+  Common Patterns (from prior reviews):
+    1. console.error full-object logging: N/A (no new console.error).
+    2. Missing fetch timeouts: N/A (no fetch).
+    3. New endpoints not in rate limiter: N/A.
+    4. opacity-0 group-hover missing group-focus-within: N/A (no such
+       pattern in this file).
+    5. Silent error swallowing: N/A.
+    6. Duplicated logic: noted — `formatRelative` duplicates
+       apps/web/src/lib/format.ts `formatRelativeDate` (the former
+       takes epoch ms, the latter takes Date|string). Dedup would
+       require widening formatRelativeDate's signature to
+       `Date | string | number`; out of Task 22 scope.
+    7. Missing exhaustive switches: FIXED (this task).
+    8. useEffect async patterns: N/A.
+    9. Webhook raw body: N/A.
+    10. Yearly/interval billing bugs: N/A.
+
+pnpm check-types: clean (8/8 green, 7 cached + web rebuild). No
+regressions. The exhaustive default also compiled cleanly — TS can
+narrow `n` to `never` after the three cases, confirming that all
+current variants are actually accounted for (no phantom coverage).

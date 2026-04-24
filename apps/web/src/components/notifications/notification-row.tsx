@@ -18,6 +18,12 @@ function renderMessage(n: SyncedNotification): string {
       return `${actor} changed your role to ${n.body.toRole}`;
     case 'asset.member.removed':
       return `${actor} removed you from an asset`;
+    default: {
+      const _exhaustive: never = n;
+      throw new Error(
+        `Unknown notification type: ${JSON.stringify(_exhaustive)}`,
+      );
+    }
   }
 }
 
