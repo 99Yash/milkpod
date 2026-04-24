@@ -255,7 +255,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Package deps in `package.json` are client-safe
 - If a server-only import slipped in, split via subpath or move to `packages/api`
 
-### Task 27: Verify sync mutator purity and client/server parity
+### ~~Task 27: Verify sync mutator purity and client/server parity~~ ✓
 
 **Files**: `packages/sync/src/mutators/{comments,moments,notifications}.ts`, `packages/api/src/modules/replicache/server-mutators.ts`
 **What**:
