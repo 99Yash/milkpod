@@ -157,7 +157,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Email template escapes interpolated inviter names / asset titles (no HTML injection)
 - `signup-hooks.ts` handles redeemed / expired / revoked invites gracefully
 
-### Task 17: Add timeout and generic failure path to invite email send
+### ~~Task 17: Add timeout and generic failure path to invite email send~~ ✓
 
 **Files**: `packages/auth/src/invite-email.ts`
 **What**:
