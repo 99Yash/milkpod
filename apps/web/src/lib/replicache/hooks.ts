@@ -30,17 +30,17 @@ function usePrefixSubscription<T>(prefix: string): SubscriptionResult<T> {
     }
     setReady(false);
     const unsubscribe = rep.subscribe(
-      async (tx) => {
-        const acc: T[] = [];
-        for await (const value of tx.scan({ prefix }).values()) {
-          acc.push(value as T);
-        }
-        return acc;
-      },
+      async (tx) => (await tx.scan({ prefix }).toArray()) as T[],
       {
         onData: (data) => {
           setItems(data);
           setReady(true);
+        },
+        onError: (err) => {
+          console.error(
+            `replicache subscribe failed for prefix "${prefix}":`,
+            err instanceof Error ? err.message : String(err),
+          );
         },
       },
     );
