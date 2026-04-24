@@ -2,10 +2,14 @@ import { db } from '@milkpod/db';
 import {
   assetInvites,
   assetMembers,
+  mediaAssets,
   user as userTable,
 } from '@milkpod/db/schemas';
 import { and, eq } from 'drizzle-orm';
+import { sendInviteEmail } from '@milkpod/auth/invite-email';
+import { serverEnv } from '@milkpod/env/server';
 import { emitReplicachePokes } from '../../events/replicache-events';
+import { NotificationService } from '../notifications/service';
 
 export type AssetMemberRole = 'owner' | 'editor' | 'viewer';
 export type AssetInviteRole = Exclude<AssetMemberRole, 'owner'>;
@@ -143,11 +147,32 @@ export abstract class AssetMemberService {
       );
       if (currentRole) return { kind: 'already_member' };
 
-      await db().insert(assetMembers).values({
+      // Insert the membership + its notification row in a single transaction
+      // so the invitee cannot end up with access but no bell entry (or the
+      // reverse). After commit, fire the Replicache poke so their client
+      // pulls immediately.
+      await db().transaction(async (tx) => {
+        await tx.insert(assetMembers).values({
+          assetId,
+          userId: existingUser.id,
+          role,
+          invitedBy,
+        });
+        await NotificationService.record(tx, {
+          type: 'asset.member.added',
+          recipientId: existingUser.id,
+          actorId: invitedBy,
+          assetId,
+          body: { role },
+        });
+      });
+      NotificationService.poke(existingUser.id, assetId);
+      void AssetMemberService.sendInviteEmailIfPossible({
+        to: normalizedEmail,
+        actorId: invitedBy,
         assetId,
-        userId: existingUser.id,
         role,
-        invitedBy,
+        requiresSignup: false,
       });
 
       return { kind: 'member', userId: existingUser.id, role };
@@ -175,6 +200,13 @@ export abstract class AssetMemberService {
       .returning({ id: assetInvites.id });
 
     if (!inserted) throw new Error('Failed to create invite');
+    void AssetMemberService.sendInviteEmailIfPossible({
+      to: normalizedEmail,
+      actorId: invitedBy,
+      assetId,
+      role,
+      requiresSignup: true,
+    });
     return {
       kind: 'invite',
       inviteId: inserted.id,
@@ -183,27 +215,81 @@ export abstract class AssetMemberService {
     };
   }
 
+  /**
+   * Post-commit side effect: fetch actor + asset display info and hand off to
+   * the mailer. Intentionally swallows failures — a missing email shouldn't
+   * roll back a successful membership insert. Fires asynchronously; callers
+   * use `void` to detach.
+   */
+  private static async sendInviteEmailIfPossible(input: {
+    to: string;
+    actorId: string;
+    assetId: string;
+    role: AssetInviteRole;
+    requiresSignup: boolean;
+  }): Promise<void> {
+    try {
+      const [row] = await db()
+        .select({
+          actorName: userTable.name,
+          assetTitle: mediaAssets.title,
+        })
+        .from(userTable)
+        .leftJoin(mediaAssets, eq(mediaAssets.id, input.assetId))
+        .where(eq(userTable.id, input.actorId));
+      if (!row || !row.assetTitle) return;
+
+      const origin = serverEnv().CORS_ORIGIN;
+      const targetUrl = input.requiresSignup
+        ? `${origin}/signin?email=${encodeURIComponent(input.to)}&redirect=${encodeURIComponent(`/asset/${input.assetId}`)}`
+        : `${origin}/asset/${input.assetId}`;
+      await sendInviteEmail({
+        to: input.to,
+        actorName: row.actorName,
+        assetTitle: row.assetTitle,
+        role: input.role,
+        targetUrl,
+        requiresSignup: input.requiresSignup,
+      });
+    } catch (err) {
+      console.warn(
+        '[asset-members] invite email lookup failed:',
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   static async removeMember(
     assetId: string,
     userIdToRemove: string,
+    removedBy: string,
   ): Promise<{ removed: boolean; reason?: 'owner_protected' | 'not_found' }> {
     const role = await AssetMemberService.getRole(assetId, userIdToRemove);
     if (!role) return { removed: false, reason: 'not_found' };
     if (role === 'owner') return { removed: false, reason: 'owner_protected' };
 
-    await db()
-      .delete(assetMembers)
-      .where(
-        and(
-          eq(assetMembers.assetId, assetId),
-          eq(assetMembers.userId, userIdToRemove),
-        ),
-      );
+    await db().transaction(async (tx) => {
+      await tx
+        .delete(assetMembers)
+        .where(
+          and(
+            eq(assetMembers.assetId, assetId),
+            eq(assetMembers.userId, userIdToRemove),
+          ),
+        );
+      await NotificationService.record(tx, {
+        type: 'asset.member.removed',
+        recipientId: userIdToRemove,
+        actorId: removedBy,
+        assetId,
+      });
+    });
 
     // Poke the removed user so their Replicache pulls immediately and CVR
     // diffing emits `del` ops for every row on this asset. Without this, the
     // removed user's client would keep showing the asset's rows until their
-    // next manual pull or page reload.
+    // next manual pull or page reload. The same poke also delivers the
+    // "removed" notification row to their bell.
     try {
       emitReplicachePokes([userIdToRemove], assetId);
     } catch (err) {

@@ -10,12 +10,33 @@ export interface CVRRow {
 }
 
 /**
+ * Notifications are user-scoped (no assetId in the key) so they carry a
+ * narrower per-row record. Kept separate from `CVRRow` so the stored shape
+ * stays minimal.
+ */
+export interface NotificationCVRRow {
+  v: number;
+}
+
+/**
  * A Client-View Record — what the client had last time they pulled.
  * Diffing the current visible row set against this produces the next patch.
+ *
+ * `clients` tracks the `lastMutationId` of every client in the group at the
+ * time the snapshot was taken. The pull handler emits only the clients whose
+ * LMID differs from the prev snapshot so Replicache's protocol invariant
+ * holds: if `cookie` doesn't change, `lastMutationIDChanges` must be empty.
  */
 export interface CVRSnapshot {
   moments: Record<string, CVRRow>;
   comments: Record<string, CVRRow>;
+  /**
+   * Notifications are synced per-user regardless of which asset the client is
+   * viewing, so entries live at the top level of the snapshot rather than
+   * being asset-scoped like moments/comments.
+   */
+  notifications?: Record<string, NotificationCVRRow>;
+  clients?: Record<string, number>;
 }
 
 const TTL_SECONDS = 12 * 60 * 60;

@@ -2,12 +2,14 @@ import { db } from '@milkpod/db';
 import {
   assetComments,
   assetMoments,
+  notifications,
   replicacheClient,
   replicacheClientGroup,
   user as userTable,
 } from '@milkpod/db/schemas';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import type { Comment, Moment } from '../../types';
+import type { Comment, Moment, Notification } from '../../types';
+import { NotificationService } from '../notifications/service';
 import { getAccessibleAssetIds } from './authz';
 import { getCVRStore, type CVRSnapshot } from './cvr';
 
@@ -126,7 +128,11 @@ export async function handlePull(
     const prev: CVRSnapshot | null =
       cookie != null ? await cvrStore.get(clientGroupID, cookie) : null;
     const isColdSync = prev == null;
-    const prevSnapshot: CVRSnapshot = prev ?? { moments: {}, comments: {} };
+    const prevSnapshot: CVRSnapshot = prev ?? {
+      moments: {},
+      comments: {},
+      notifications: {},
+    };
 
     // 4. Query current visible rows.
     const assetIds = await getAccessibleAssetIds(userId);
@@ -155,6 +161,31 @@ export async function handlePull(
         );
     }
 
+    // 4b. Notifications — user-scoped, always included regardless of which
+    // asset the client is viewing. The join to `user` pulls actor display
+    // info so the bell can render avatar + name without a separate fetch.
+    const notificationRows = await tx
+      .select({
+        id: notifications.id,
+        recipientId: notifications.recipientId,
+        type: notifications.type,
+        actorId: notifications.actorId,
+        resourceType: notifications.resourceType,
+        resourceId: notifications.resourceId,
+        body: notifications.body,
+        readAt: notifications.readAt,
+        rowVersion: notifications.rowVersion,
+        createdAt: notifications.createdAt,
+        actorName: userTable.name,
+        actorImage: userTable.image,
+      })
+      .from(notifications)
+      .leftJoin(userTable, eq(userTable.id, notifications.actorId))
+      .where(eq(notifications.recipientId, userId));
+    const currentNotifications = notificationRows
+      .map((r) => NotificationService.serialize(r))
+      .filter((n): n is Notification => n !== null);
+
     // 5. Resolve author metadata for all visible rows in one query.
     const authorIds = new Set<string>();
     for (const m of currentMoments) authorIds.add(m.userId);
@@ -176,7 +207,11 @@ export async function handlePull(
     }
 
     // 6. Build the next snapshot and diff patch.
-    const nextSnapshot: CVRSnapshot = { moments: {}, comments: {} };
+    const nextSnapshot: CVRSnapshot = {
+      moments: {},
+      comments: {},
+      notifications: {},
+    };
     const patch: PatchOp[] = [];
     if (isColdSync) patch.push({ op: 'clear' });
 
@@ -202,6 +237,18 @@ export async function handlePull(
         });
       }
     }
+    const prevNotifications = prevSnapshot.notifications ?? {};
+    for (const n of currentNotifications) {
+      nextSnapshot.notifications![n.id] = { v: n.rowVersion };
+      const prevRow = prevNotifications[n.id];
+      if (!prevRow || prevRow.v !== n.rowVersion) {
+        patch.push({
+          op: 'put',
+          key: `notification/${n.id}`,
+          value: n as unknown as Record<string, unknown>,
+        });
+      }
+    }
     // Deletions: rows present in prev snapshot but not current.
     if (!isColdSync) {
       for (const [id, row] of Object.entries(prevSnapshot.moments)) {
@@ -214,20 +261,18 @@ export async function handlePull(
           patch.push({ op: 'del', key: `comment/${row.a}/${id}` });
         }
       }
+      for (const id of Object.keys(prevNotifications)) {
+        if (!nextSnapshot.notifications![id]) {
+          patch.push({ op: 'del', key: `notification/${id}` });
+        }
+      }
     }
 
-    // 7. Bump cvr_version (no-op if patch is empty — keeps client's cookie stable).
-    const prevVersion = existingGroup?.cvrVersion ?? 0;
-    const nextVersion = patch.length > 0 ? prevVersion + 1 : prevVersion;
-    if (nextVersion !== prevVersion) {
-      await cvrStore.put(clientGroupID, nextVersion, nextSnapshot);
-      await tx
-        .update(replicacheClientGroup)
-        .set({ cvrVersion: nextVersion })
-        .where(eq(replicacheClientGroup.id, clientGroupID));
-    }
-
-    // 8. Load last mutation IDs for every client in this group.
+    // 7. Compute per-client LMID deltas vs the previous snapshot. Replicache
+    //    rejects responses where the cookie is unchanged but
+    //    `lastMutationIDChanges` is non-empty, so we track LMIDs in the CVR
+    //    and emit only the diffs. A cookie bump means either the patch is
+    //    non-empty OR at least one client's LMID moved.
     const clients = await tx
       .select({
         id: replicacheClient.id,
@@ -235,8 +280,28 @@ export async function handlePull(
       })
       .from(replicacheClient)
       .where(eq(replicacheClient.clientGroupId, clientGroupID));
+    const currentLmids: Record<string, number> = {};
+    for (const c of clients) currentLmids[c.id] = c.lastMutationId;
+    const prevLmids = prevSnapshot.clients ?? {};
     const lastMutationIDChanges: Record<string, number> = {};
-    for (const c of clients) lastMutationIDChanges[c.id] = c.lastMutationId;
+    for (const [cid, lmid] of Object.entries(currentLmids)) {
+      if (prevLmids[cid] !== lmid) lastMutationIDChanges[cid] = lmid;
+    }
+    nextSnapshot.clients = currentLmids;
+
+    // 8. Bump cvr_version when anything changed (patch or LMID). No change →
+    //    return prev cookie with empty patch + empty LMID changes.
+    const prevVersion = existingGroup?.cvrVersion ?? 0;
+    const hasChanges =
+      patch.length > 0 || Object.keys(lastMutationIDChanges).length > 0;
+    const nextVersion = hasChanges ? prevVersion + 1 : prevVersion;
+    if (nextVersion !== prevVersion) {
+      await cvrStore.put(clientGroupID, nextVersion, nextSnapshot);
+      await tx
+        .update(replicacheClientGroup)
+        .set({ cvrVersion: nextVersion })
+        .where(eq(replicacheClientGroup.id, clientGroupID));
+    }
 
     return {
       cookie: nextVersion,

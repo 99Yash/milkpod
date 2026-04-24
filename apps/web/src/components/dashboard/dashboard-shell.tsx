@@ -27,6 +27,7 @@ import {
   DashboardPanelContent,
 } from '~/components/dashboard/dashboard-panel';
 import { DashboardSidebarToggle } from '~/components/dashboard/sidebar-toggle';
+import { NotificationBell } from '~/components/notifications/notification-bell';
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar';
 import { Button } from '~/components/ui/button';
 import {
@@ -192,12 +193,16 @@ export function DashboardShell({
                     onToggle={() => setMobileOpen(true)}
                     label="Open sidebar"
                   />
-                  <div>
+                  <div className="flex-1">
                     <p className="text-sm font-semibold leading-tight">
                       {siteConfig.name}
                     </p>
                     <p className="text-xs text-muted-foreground">Dashboard</p>
                   </div>
+                  <NotificationBell />
+                </div>
+                <div className="mb-4 hidden justify-end lg:flex">
+                  <NotificationBell />
                 </div>
                 {children}
               </div>

@@ -50,6 +50,9 @@ export namespace AssetModel {
     cursor: t.Optional(t.String({ maxLength: 500 })),
     limit: t.Optional(t.String({ maxLength: 10 })),
     paginate: t.Optional(t.String({ maxLength: 10 })),
+    scope: t.Optional(
+      t.Union([t.Literal('all'), t.Literal('shared')]),
+    ),
   });
   export type ListQuery = typeof listQuery.static;
 

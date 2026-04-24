@@ -8,9 +8,15 @@ import { SearchFilterBar, type AssetFilters } from './search-filter-bar';
 import { cn } from '~/lib/utils';
 import type { Collection } from '@milkpod/api/types';
 
-type LibraryView = 'assets' | 'collections';
+type LibraryView = 'assets' | 'collections' | 'shared';
 
 const emptyFilters: AssetFilters = { q: '', status: '', sourceType: '' };
+
+const VIEWS: Array<{ value: LibraryView; label: string }> = [
+  { value: 'assets', label: 'Assets' },
+  { value: 'shared', label: 'Shared with me' },
+  { value: 'collections', label: 'Collections' },
+];
 
 interface LibraryTabProps {
   onSelectAsset?: (assetId: string) => void;
@@ -29,6 +35,9 @@ export function LibraryTab({
     setRefreshKey((k) => k + 1);
   }, []);
 
+  const isAssetView = view === 'assets' || view === 'shared';
+  const scope = view === 'shared' ? 'shared' : 'all';
+
   return (
     <section aria-labelledby="library-tab-title" className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -39,41 +48,35 @@ export function LibraryTab({
           Library
         </h2>
         <div className="flex rounded-md border border-border/60 bg-accent/60 dark:bg-accent/30 p-0.5">
-          <button
-            type="button"
-            onClick={() => setView('assets')}
-            className={cn(
-              'rounded-sm px-3 py-1 text-xs font-semibold transition-colors',
-              view === 'assets'
-                ? 'bg-background text-accent-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            Assets
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('collections')}
-            className={cn(
-              'rounded-sm px-3 py-1 text-xs font-semibold transition-colors',
-              view === 'collections'
-                ? 'bg-background text-accent-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            Collections
-          </button>
+          {VIEWS.map((v) => (
+            <button
+              key={v.value}
+              type="button"
+              onClick={() => setView(v.value)}
+              className={cn(
+                'rounded-sm px-3 py-1 text-xs font-semibold transition-colors',
+                view === v.value
+                  ? 'bg-background text-accent-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {v.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {view === 'assets' && (
+      {isAssetView && (
         <>
-          <UrlInputForm onSuccess={handleSuccess} />
+          {view === 'assets' ? (
+            <UrlInputForm onSuccess={handleSuccess} />
+          ) : null}
           <SearchFilterBar filters={filters} onChange={setFilters} />
           <AssetList
             onSelectAsset={onSelectAsset}
             refreshKey={refreshKey}
             filters={filters}
+            scope={scope}
           />
         </>
       )}

@@ -14,9 +14,16 @@ import {
 	commentUpdateArgsSchema,
 	commentUpdateClient,
 } from './comments';
+import {
+	notificationMarkAllReadArgsSchema,
+	notificationMarkAllReadClient,
+	notificationMarkReadArgsSchema,
+	notificationMarkReadClient,
+} from './notifications';
 
 export * from './moments';
 export * from './comments';
+export * from './notifications';
 
 /**
  * Client-side mutator bodies, keyed by the name Replicache uses to dispatch
@@ -30,6 +37,8 @@ export const clientMutators = {
 	commentCreate: commentCreateClient,
 	commentUpdate: commentUpdateClient,
 	commentDelete: commentDeleteClient,
+	notificationMarkRead: notificationMarkReadClient,
+	notificationMarkAllRead: notificationMarkAllReadClient,
 };
 
 export type ClientMutators = typeof clientMutators;
@@ -46,4 +55,6 @@ export const mutatorArgsSchemas = {
 	commentCreate: commentCreateArgsSchema,
 	commentUpdate: commentUpdateArgsSchema,
 	commentDelete: commentDeleteArgsSchema,
+	notificationMarkRead: notificationMarkReadArgsSchema,
+	notificationMarkAllRead: notificationMarkAllReadArgsSchema,
 };

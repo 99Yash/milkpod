@@ -2,13 +2,12 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Mail, Trash2, UserPlus } from 'lucide-react';
+import { Mail, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '~/lib/api';
 import { queryKeys } from '~/lib/query-keys';
 import { toToastErrorMessage } from '~/lib/api';
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar';
-import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import {
@@ -118,18 +117,11 @@ export function CollaboratorsSection({ assetId }: CollaboratorsSectionProps) {
   const pendingInvites = data?.pendingInvites ?? [];
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <UserPlus className="size-3.5 text-muted-foreground" />
-        <p className="text-xs font-medium text-muted-foreground">
-          Collaborators
-        </p>
-      </div>
-
+    <div className="space-y-4">
       <div className="flex gap-2">
         <Input
           type="email"
-          placeholder="teammate@example.com"
+          placeholder="Add people by email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => {
@@ -143,7 +135,7 @@ export function CollaboratorsSection({ assetId }: CollaboratorsSectionProps) {
           onValueChange={(v) => setRole(v as InviteRole)}
           disabled={inviting}
         >
-          <SelectTrigger size="sm" className="w-24">
+          <SelectTrigger size="sm" className="w-24 shrink-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -161,90 +153,93 @@ export function CollaboratorsSection({ assetId }: CollaboratorsSectionProps) {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-4">
+        <div className="flex justify-center py-2">
           <Spinner className="size-4" />
         </div>
       ) : (
-        <div className="space-y-1.5">
-          {members.map((m) => (
-            <div
-              key={m.userId}
-              className="flex items-center gap-3 rounded-md border px-3 py-2"
-            >
-              <Avatar className="size-7">
-                {m.image ? <AvatarImage src={m.image} alt={m.name} /> : null}
-                <AvatarFallback className="text-[10px] font-semibold">
-                  {getInitials(m.name, m.email)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{m.name}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {m.email}
-                </p>
-              </div>
-              <Badge
-                variant={m.role === 'owner' ? 'default' : 'secondary'}
-                className="capitalize"
+        <div>
+          <p className="pb-2 text-xs font-medium text-muted-foreground">
+            People with access
+          </p>
+          <ul className="-mx-2">
+            {members.map((m) => (
+              <li
+                key={m.userId}
+                className="group flex items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/50"
               >
-                {m.role}
-              </Badge>
-              {m.role !== 'owner' ? (
+                <Avatar className="size-8">
+                  {m.image ? <AvatarImage src={m.image} alt={m.name} /> : null}
+                  <AvatarFallback className="text-[10px] font-semibold">
+                    {getInitials(m.name, m.email)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{m.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {m.email}
+                  </p>
+                </div>
+                {m.role === 'owner' ? (
+                  <span className="text-xs text-muted-foreground">Owner</span>
+                ) : (
+                  <>
+                    <span className="text-xs capitalize text-muted-foreground">
+                      {m.role}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="size-7 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
+                      onClick={() => handleRemove(m.userId)}
+                      disabled={removingUserId === m.userId}
+                      aria-label={`Remove ${m.name}`}
+                    >
+                      {removingUserId === m.userId ? (
+                        <Spinner className="size-3.5" />
+                      ) : (
+                        <Trash2 className="size-3.5" />
+                      )}
+                    </Button>
+                  </>
+                )}
+              </li>
+            ))}
+
+            {pendingInvites.map((inv) => (
+              <li
+                key={inv.id}
+                className="group flex items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/50"
+              >
+                <div className="flex size-8 items-center justify-center rounded-full bg-muted">
+                  <Mail className="size-3.5 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm">{inv.email}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Pending invite · {inv.role}
+                  </p>
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                  onClick={() => handleRemove(m.userId)}
-                  disabled={removingUserId === m.userId}
-                  aria-label={`Remove ${m.name}`}
+                  className="size-7 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
+                  onClick={() => handleRevokeInvite(inv.id)}
+                  disabled={revokingInviteId === inv.id}
+                  aria-label={`Revoke invite for ${inv.email}`}
                 >
-                  {removingUserId === m.userId ? (
+                  {revokingInviteId === inv.id ? (
                     <Spinner className="size-3.5" />
                   ) : (
                     <Trash2 className="size-3.5" />
                   )}
                 </Button>
-              ) : null}
-            </div>
-          ))}
-
-          {pendingInvites.map((inv) => (
-            <div
-              key={inv.id}
-              className="flex items-center gap-3 rounded-md border border-dashed px-3 py-2"
-            >
-              <div className="flex size-7 items-center justify-center rounded-full bg-muted">
-                <Mail className="size-3.5 text-muted-foreground" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm">{inv.email}</p>
-                <p className="text-[10px] text-muted-foreground">
-                  Invited · awaiting signup
-                </p>
-              </div>
-              <Badge variant="outline" className="capitalize">
-                {inv.role}
-              </Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                onClick={() => handleRevokeInvite(inv.id)}
-                disabled={revokingInviteId === inv.id}
-                aria-label={`Revoke invite for ${inv.email}`}
-              >
-                {revokingInviteId === inv.id ? (
-                  <Spinner className="size-3.5" />
-                ) : (
-                  <Trash2 className="size-3.5" />
-                )}
-              </Button>
-            </div>
-          ))}
+              </li>
+            ))}
+          </ul>
 
           {members.length === 1 && pendingInvites.length === 0 ? (
-            <p className="pt-1 text-[11px] text-muted-foreground">
-              Only you can see this video. Invite someone above to collaborate.
+            <p className="pt-2 text-xs text-muted-foreground">
+              Only you can see this. Invite someone above to collaborate.
             </p>
           ) : null}
         </div>

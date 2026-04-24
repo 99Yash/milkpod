@@ -1,6 +1,7 @@
 import { api } from './api';
 import type {
   Asset,
+  AssetWithAccess,
   AssetWithTranscript,
   Collection,
   CollectionWithItems,
@@ -121,7 +122,7 @@ export async function fetchAssets(
 }
 
 export interface AssetPageResult {
-  items: Asset[];
+  items: AssetWithAccess[];
   nextCursor: string | null;
   hasMore: boolean;
 }
@@ -132,6 +133,7 @@ export async function fetchAssetsPage(params: {
   sourceType?: string;
   cursor?: string;
   limit?: number;
+  scope?: 'all' | 'shared';
 }): Promise<AssetPageResult> {
   const query: Record<string, string> = {};
   if (params.q) query.q = params.q;
@@ -139,6 +141,7 @@ export async function fetchAssetsPage(params: {
   if (params.sourceType) query.sourceType = params.sourceType;
   if (params.cursor) query.cursor = params.cursor;
   if (params.limit) query.limit = String(params.limit);
+  if (params.scope) query.scope = params.scope;
 
   query.paginate = 'true';
 
@@ -161,7 +164,7 @@ export async function fetchAssetsPage(params: {
   }
 
   return {
-    items: page.items as Asset[],
+    items: page.items as AssetWithAccess[],
     nextCursor:
       typeof page.nextCursor === 'string' ? page.nextCursor : null,
     hasMore: page.hasMore === true,

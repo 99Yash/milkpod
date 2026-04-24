@@ -1,5 +1,9 @@
-import { and, eq } from 'drizzle-orm';
-import { assetComments, assetMoments } from '@milkpod/db/schemas';
+import { and, eq, isNull } from 'drizzle-orm';
+import {
+  assetComments,
+  assetMoments,
+  notifications,
+} from '@milkpod/db/schemas';
 import type {
   CommentCreateArgs,
   CommentDeleteArgs,
@@ -7,6 +11,8 @@ import type {
   MomentCreateArgs,
   MomentDeleteArgs,
   MomentUpdateArgs,
+  NotificationMarkAllReadArgs,
+  NotificationMarkReadArgs,
 } from '@milkpod/sync';
 import { AssetMemberService } from '../asset-members/service';
 
@@ -160,6 +166,45 @@ export const serverMutators = {
         and(
           eq(assetComments.id, args.id),
           eq(assetComments.assetId, args.assetId),
+        ),
+      );
+  },
+
+  /**
+   * Flip readAt on a single notification — only if the caller is the
+   * recipient. The `recipientId` WHERE clause makes the ownership check
+   * atomic with the update; no separate auth query needed.
+   */
+  async notificationMarkRead(
+    tx: DbTx,
+    args: NotificationMarkReadArgs,
+    ctx: ServerMutatorCtx,
+  ): Promise<void> {
+    await tx
+      .update(notifications)
+      .set({ readAt: new Date(args.readAt) })
+      .where(
+        and(
+          eq(notifications.id, args.id),
+          eq(notifications.recipientId, ctx.userId),
+          isNull(notifications.readAt),
+        ),
+      );
+  },
+
+  /** Bulk mark-read for every unread notification owned by the caller. */
+  async notificationMarkAllRead(
+    tx: DbTx,
+    args: NotificationMarkAllReadArgs,
+    ctx: ServerMutatorCtx,
+  ): Promise<void> {
+    await tx
+      .update(notifications)
+      .set({ readAt: new Date(args.readAt) })
+      .where(
+        and(
+          eq(notifications.recipientId, ctx.userId),
+          isNull(notifications.readAt),
         ),
       );
   },

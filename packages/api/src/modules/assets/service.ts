@@ -7,9 +7,15 @@ import {
   sourceTypeEnum,
   transcripts,
   transcriptSegments,
+  user,
 } from '@milkpod/db/schemas';
-import { and, desc, eq, ilike, inArray, lt, or, type SQL } from 'drizzle-orm';
-import type { Asset, AssetWithTranscript } from '../../types';
+import { and, desc, eq, ilike, inArray, lt, ne, or, type SQL } from 'drizzle-orm';
+import type {
+  Asset,
+  AssetRole,
+  AssetWithAccess,
+  AssetWithTranscript,
+} from '../../types';
 import { decodeCursor, buildPage, type CursorPage } from '../../utils';
 import type { AssetModel } from './model';
 
@@ -19,7 +25,7 @@ const MAX_SPEAKER_NAME_ENTRIES = 50;
 const MAX_SPEAKER_ID_LENGTH = 64;
 const MAX_SPEAKER_NAME_LENGTH = 80;
 
-export type AssetPage = CursorPage<Asset>;
+export type AssetPage = CursorPage<AssetWithAccess>;
 
 export abstract class AssetService {
   private static asRecord(value: unknown): Record<string, unknown> | null {
@@ -71,11 +77,22 @@ export abstract class AssetService {
     return { ...row, visualLastError: null };
   }
 
+  /**
+   * Membership-scoped conditions. `assetMembers.userId` is filtered here so
+   * the list returns all assets the caller has access to (owner, editor, or
+   * viewer). Pass `scope: 'shared'` to restrict to rows where the caller is
+   * NOT the owner.
+   */
   private static buildSearchConditions(
     userId: string,
-    query?: Pick<AssetModel.ListQuery, 'q' | 'status' | 'sourceType'>,
+    query?: Pick<AssetModel.ListQuery, 'q' | 'status' | 'sourceType' | 'scope'>,
   ): SQL[] {
-    const conditions: SQL[] = [eq(mediaAssets.userId, userId)];
+    const conditions: SQL[] = [eq(assetMembers.userId, userId)];
+
+    if (query?.scope === 'shared') {
+      conditions.push(ne(assetMembers.role, 'owner'));
+    }
+
     if (!query) return conditions;
 
     // Status filter (comma-separated)
@@ -116,6 +133,28 @@ export abstract class AssetService {
     return conditions;
   }
 
+  /**
+   * Shape the raw joined row into the public AssetWithAccess type.
+   * `owner` is always present because `mediaAssets.userId` FKs to `user`.
+   */
+  private static toAssetWithAccess(row: {
+    asset: Asset;
+    role: AssetRole;
+    ownerId: string;
+    ownerName: string;
+    ownerImage: string | null;
+  }): AssetWithAccess {
+    return {
+      ...AssetService.sanitize(row.asset),
+      role: row.role,
+      owner: {
+        id: row.ownerId,
+        name: row.ownerName,
+        image: row.ownerImage,
+      },
+    };
+  }
+
 
 
   static async create(userId: string, data: AssetModel.Create): Promise<Asset> {
@@ -136,24 +175,51 @@ export abstract class AssetService {
     });
   }
 
-  static async list(userId: string): Promise<Asset[]> {
+  static async list(userId: string): Promise<AssetWithAccess[]> {
     const rows = await db()
-      .select()
+      .select({
+        asset: mediaAssets,
+        role: assetMembers.role,
+        ownerId: user.id,
+        ownerName: user.name,
+        ownerImage: user.image,
+      })
       .from(mediaAssets)
-      .where(eq(mediaAssets.userId, userId))
+      .innerJoin(
+        assetMembers,
+        and(
+          eq(assetMembers.assetId, mediaAssets.id),
+          eq(assetMembers.userId, userId),
+        ),
+      )
+      .innerJoin(user, eq(user.id, mediaAssets.userId))
       .orderBy(mediaAssets.createdAt);
-    return rows.map(AssetService.sanitize);
+    return rows.map(AssetService.toAssetWithAccess);
   }
 
-  static async search(userId: string, query: AssetModel.ListQuery): Promise<Asset[]> {
+  static async search(
+    userId: string,
+    query: AssetModel.ListQuery,
+  ): Promise<AssetWithAccess[]> {
     const conditions = AssetService.buildSearchConditions(userId, query);
 
     const rows = await db()
-      .select()
+      .select({
+        asset: mediaAssets,
+        role: assetMembers.role,
+        ownerId: user.id,
+        ownerName: user.name,
+        ownerImage: user.image,
+      })
       .from(mediaAssets)
+      .innerJoin(
+        assetMembers,
+        eq(assetMembers.assetId, mediaAssets.id),
+      )
+      .innerJoin(user, eq(user.id, mediaAssets.userId))
       .where(and(...conditions))
       .orderBy(mediaAssets.createdAt);
-    return rows.map(AssetService.sanitize);
+    return rows.map(AssetService.toAssetWithAccess);
   }
 
   static async listPage(
@@ -178,17 +244,25 @@ export abstract class AssetService {
     }
 
     const rows = await db()
-      .select()
+      .select({
+        asset: mediaAssets,
+        role: assetMembers.role,
+        ownerId: user.id,
+        ownerName: user.name,
+        ownerImage: user.image,
+      })
       .from(mediaAssets)
+      .innerJoin(
+        assetMembers,
+        eq(assetMembers.assetId, mediaAssets.id),
+      )
+      .innerJoin(user, eq(user.id, mediaAssets.userId))
       .where(and(...conditions))
       .orderBy(desc(mediaAssets.createdAt), desc(mediaAssets.id))
       .limit(pageSize + 1);
 
-    const page = buildPage(rows, pageSize);
-    return {
-      ...page,
-      items: page.items.map(AssetService.sanitize),
-    };
+    const shaped = rows.map(AssetService.toAssetWithAccess);
+    return buildPage(shaped, pageSize);
   }
 
   static async getById(id: string, userId: string): Promise<Asset | null> {

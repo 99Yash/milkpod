@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Copy, Link2, Share2, Trash2 } from 'lucide-react';
+import { Check, Copy, Link2, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getEntitlementsForPlan } from '@milkpod/ai/plans';
@@ -32,11 +32,22 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '~/components/ui/dialog';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '~/components/ui/tabs';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu';
 import type { ShareLink } from '@milkpod/api/types';
 import { CollaboratorsSection } from './collaborators-section';
 
@@ -90,8 +101,54 @@ export function ShareDialog({
   collectionId,
   resourceName,
 }: ShareDialogProps) {
-  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <Share2 className="size-3.5" />
+          Share
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="grid-cols-[minmax(0,1fr)] sm:max-w-lg">
+        <DialogHeader className="min-w-0">
+          <DialogTitle className="line-clamp-2 pr-6">
+            Share “{resourceName}”
+          </DialogTitle>
+          <DialogDescription>
+            Invite people or create a public link.
+          </DialogDescription>
+        </DialogHeader>
+
+        {assetId ? (
+          <Tabs defaultValue="people" className="min-w-0 gap-4">
+            <TabsList className="w-full">
+              <TabsTrigger value="people">People</TabsTrigger>
+              <TabsTrigger value="link">Public link</TabsTrigger>
+            </TabsList>
+            <TabsContent value="people" className="min-w-0">
+              <CollaboratorsSection assetId={assetId} />
+            </TabsContent>
+            <TabsContent value="link" className="min-w-0">
+              <PublicLinkSection assetId={assetId} collectionId={undefined} />
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <PublicLinkSection assetId={undefined} collectionId={collectionId} />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface PublicLinkSectionProps {
+  assetId: string | undefined;
+  collectionId: string | undefined;
+}
+
+function PublicLinkSection({ assetId, collectionId }: PublicLinkSectionProps) {
+  const queryClient = useQueryClient();
   const [canQuery, setCanQuery] = useState(false);
   const [expiry, setExpiry] = useState('none');
   const [creating, setCreating] = useState(false);
@@ -102,17 +159,7 @@ export function ShareDialog({
   const plan = getCachedPlan();
   const canUsePublicShareQA =
     isAdmin ||
-    (plan
-      ? getEntitlementsForPlan(plan).canUsePublicShareQA
-      : true); // not loaded → let server decide
-
-  const handleCanQueryChange = (checked: boolean) => {
-    if (checked && !canUsePublicShareQA) {
-      handleUpgradeError({ status: 402, value: { code: 'PUBLIC_SHARE_QA_NOT_ALLOWED' } });
-      return;
-    }
-    setCanQuery(checked);
-  };
+    (plan ? getEntitlementsForPlan(plan).canUsePublicShareQA : true);
 
   const queryKey = queryKeys.shareLinks({ assetId, collectionId });
 
@@ -120,14 +167,33 @@ export function ShareDialog({
     queryKey,
     queryFn: async () => {
       const links = await fetchShareLinks();
-      // Populate global active share link count before filtering by resource
       setActiveShareLinkCount(links.length);
       return links.filter((link) =>
         assetId ? link.assetId === assetId : link.collectionId === collectionId
       );
     },
-    enabled: open,
   });
+
+  const handleCanQueryChange = (checked: boolean) => {
+    if (checked && !canUsePublicShareQA) {
+      handleUpgradeError({
+        status: 402,
+        value: { code: 'PUBLIC_SHARE_QA_NOT_ALLOWED' },
+      });
+      return;
+    }
+    setCanQuery(checked);
+  };
+
+  const copyToClipboard = async (token: string) => {
+    try {
+      await navigator.clipboard.writeText(getShareUrl(token));
+      setCopiedToken(token);
+      setTimeout(() => setCopiedToken(null), 2000);
+    } catch {
+      toast.error('Failed to copy link');
+    }
+  };
 
   const handleCreate = async () => {
     const limitCheck = checkShareLinkLimit();
@@ -149,12 +215,13 @@ export function ShareDialog({
         toast.error('Failed to create share link');
         return;
       }
-      // Optimistically add to cache
-      queryClient.setQueryData<ShareLink[]>(queryKey, (prev) => [...(prev ?? []), result]);
+      queryClient.setQueryData<ShareLink[]>(queryKey, (prev) => [
+        ...(prev ?? []),
+        result,
+      ]);
       incrementActiveShareLinkCount();
-      // Auto-copy to clipboard
       await copyToClipboard(result.token);
-      toast.success('Share link created and copied to clipboard');
+      toast.success('Link created and copied');
       setCanQuery(false);
       setExpiry('none');
     } catch {
@@ -168,157 +235,158 @@ export function ShareDialog({
     setRevokingId(linkId);
     try {
       await api.api.shares({ id: linkId }).delete();
-      // Optimistically remove from cache
-      queryClient.setQueryData<ShareLink[]>(queryKey, (prev) =>
-        prev?.filter((l) => l.id !== linkId) ?? []
+      queryClient.setQueryData<ShareLink[]>(
+        queryKey,
+        (prev) => prev?.filter((l) => l.id !== linkId) ?? []
       );
       decrementActiveShareLinkCount();
-      toast.success('Share link revoked');
+      toast.success('Link revoked');
     } catch {
-      toast.error('Failed to revoke share link');
+      toast.error('Failed to revoke link');
     } finally {
       setRevokingId(null);
     }
   };
 
-  const copyToClipboard = async (token: string) => {
-    try {
-      await navigator.clipboard.writeText(getShareUrl(token));
-      setCopiedToken(token);
-      setTimeout(() => setCopiedToken(null), 2000);
-    } catch {
-      toast.error('Failed to copy link');
-    }
-  };
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <Share2 className="size-3.5" />
-          Share
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Share "{resourceName}"</DialogTitle>
-          <DialogDescription>
-            Create a link to share this {assetId ? 'asset' : 'collection'} with
-            others. Anyone with the link can view the content.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-2">
-          {assetId ? (
-            <>
-              <CollaboratorsSection assetId={assetId} />
-              <div className="border-t" />
-            </>
-          ) : null}
-          {/* Create new link section */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="can-query" className="text-sm">
-                Allow AI Q&A
-              </Label>
-              <Switch
-                id="can-query"
-                checked={canQuery}
-                onCheckedChange={handleCanQueryChange}
-                disabled={!canUsePublicShareQA}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label className="text-sm">Expires</Label>
-              <Select value={expiry} onValueChange={setExpiry}>
-                <SelectTrigger className="w-32" size="sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {EXPIRY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+    <div className="space-y-5">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-0.5">
+            <Label htmlFor="can-query" className="text-sm">
+              Allow AI Q&amp;A
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Viewers can ask questions about this content.
+            </p>
           </div>
+          <Switch
+            id="can-query"
+            checked={canQuery}
+            onCheckedChange={handleCanQueryChange}
+            disabled={!canUsePublicShareQA}
+          />
+        </div>
 
-          <DialogFooter className="sm:justify-start">
-            <Button
-              onClick={handleCreate}
-              disabled={creating}
-              className="gap-1.5"
-            >
-              {creating ? (
-                <Spinner className="size-4" />
-              ) : (
-                <Link2 className="size-4" />
-              )}
-              Create link
-            </Button>
-          </DialogFooter>
+        <div className="flex items-center justify-between gap-4">
+          <Label className="text-sm">Expires</Label>
+          <Select value={expiry} onValueChange={setExpiry}>
+            <SelectTrigger className="w-36" size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {EXPIRY_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-          {/* Existing links */}
-          {loadingLinks ? (
-            <div className="flex justify-center py-4">
-              <Spinner className="size-4" />
-            </div>
-          ) : existingLinks.length > 0 ? (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                Active links
-              </p>
-              <div className="space-y-1.5">
-                {existingLinks.map((link) => (
-                  <div
-                    key={link.id}
-                    className="flex items-center gap-2 rounded-md border px-3 py-2"
-                  >
-                    <Link2 className="size-3.5 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-mono text-xs text-foreground">
-                        {getShareUrl(link.token)}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {link.canQuery ? 'Q&A enabled' : 'View only'}
-                        {' · '}
-                        Expires: {formatExpiry(link.expiresAt)}
-                      </p>
-                    </div>
+        <Button
+          onClick={handleCreate}
+          disabled={creating}
+          className="w-full gap-1.5"
+        >
+          {creating ? (
+            <Spinner className="size-4" />
+          ) : (
+            <Link2 className="size-4" />
+          )}
+          Create link
+        </Button>
+      </div>
+
+      {loadingLinks ? (
+        <div className="flex justify-center py-2">
+          <Spinner className="size-4" />
+        </div>
+      ) : existingLinks.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            Active links
+          </p>
+          <ul className="space-y-1">
+            {existingLinks.map((link) => (
+              <li
+                key={link.id}
+                className="group flex items-center gap-2 rounded-md bg-muted/40 px-2 py-1.5 transition-colors hover:bg-muted/70"
+              >
+                <div className="min-w-0 flex-1">
+                  <code className="block truncate font-mono text-xs text-foreground">
+                    {getShareUrl(link.token)}
+                  </code>
+                  <p className="text-[10px] text-muted-foreground">
+                    {link.canQuery ? 'Q&A enabled' : 'View only'}
+                    {' · '}
+                    Expires {formatExpiry(link.expiresAt)}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="size-7 shrink-0 p-0"
+                  onClick={() => copyToClipboard(link.token)}
+                  aria-label="Copy link"
+                >
+                  {copiedToken === link.token ? (
+                    <Check className="size-3.5 text-green-500 animate-in zoom-in-50 duration-150" />
+                  ) : (
+                    <Copy className="size-3.5" />
+                  )}
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 w-7 shrink-0 p-0"
-                      onClick={() => copyToClipboard(link.token)}
-                    >
-                      {copiedToken === link.token ? (
-                        <Check className="size-3.5 text-green-500 animate-in zoom-in-50 duration-150" />
-                      ) : (
-                        <Copy className="size-3.5" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleRevoke(link.id)}
+                      className="size-7 shrink-0 p-0 text-muted-foreground"
+                      aria-label="Link options"
                       disabled={revokingId === link.id}
                     >
                       {revokingId === link.id ? (
                         <Spinner className="size-3.5" />
                       ) : (
-                        <Trash2 className="size-3.5" />
+                        <MoreIcon />
                       )}
                     </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={() => handleRevoke(link.id)}
+                    >
+                      Revoke link
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </li>
+            ))}
+          </ul>
         </div>
-      </DialogContent>
-    </Dialog>
+      ) : null}
+    </div>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="12" cy="5" r="1" />
+      <circle cx="12" cy="19" r="1" />
+    </svg>
   );
 }

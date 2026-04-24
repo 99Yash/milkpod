@@ -20,4 +20,5 @@ export * from './schema/comments';
 export * from './schema/monthly-usage';
 export * from './schema/billing';
 export * from './schema/asset-members';
+export * from './schema/notifications';
 export * from './schema/replicache';
