@@ -3505,3 +3505,337 @@ Commit
 review(task 28): switch getWithTranscript and /assets/:id/search to
 membership scope so shared collaborators can load the asset detail view,
 transcript search, and moment/comment generation paths.
+
+
+================================================================================
+Task 29 — Verify no REST/Replicache double-writes for comments and moments
+================================================================================
+
+Scope: packages/api/src/modules/comments/{service,index}.ts,
+       packages/api/src/modules/moments/{service,index}.ts,
+       packages/sync/src/mutators/{comments,moments}.ts,
+       apps/web/src/components/comments/comments-tab.tsx,
+       apps/web/src/components/moments/moments-tab.tsx,
+       apps/web/src/components/asset/tabs/{comments,moments}-tab-content.tsx.
+
+Goal: confirm that the REST POST routes that still survive in the
+branch are NOT issuing a second write for the same logical mutation
+that a Replicache mutator is already handling — i.e., no path where
+the UI fires `rep.mutate.X()` AND an `api.api.X.post(...)` for the same
+entity + operation on the same user action.
+
+--------------------------------------------------------------------------------
+Write inventory — what path each mutation takes
+--------------------------------------------------------------------------------
+
+Comments (REST-only, no Replicache UI caller):
+  CREATE   : REST batch via `POST /api/comments/generate` →
+             `generateComments()` → `CommentService.insertMany` (server-
+             side LLM generation). NO caller of
+             `rep.mutate.commentCreate` anywhere in apps/web —
+             verified via
+             `rg 'mutate\.(comment|moment)(Create|Update|Delete)' apps/web`
+             (only moments hits returned). The client mutator exists in
+             `packages/sync/src/mutators/comments.ts` but is dead code
+             from the UI's perspective. No double-write.
+  UPDATE   : No update UI at all (body edit not exposed in this PR).
+  DELETE   : User clicks dismiss → `comments-tab.tsx:55` fires REST
+             `POST /api/comments/:id/feedback {action:'dismiss'}` only.
+             No `rep.mutate.commentDelete` caller. No double-write.
+  LIST READ: `comments-tab-content.tsx:17` one-shot REST GET populates
+             `initialComments`; `comments-tab.tsx` drives the list from
+             local `useState`. No Replicache subscription hooked up for
+             comments yet, so REST is the single source. No overlap.
+
+Moments (dual-path with strict if/else branching; mutually exclusive):
+  CREATE   : REST batch via `POST /api/moments/generate` (same shape as
+             comments). No `rep.mutate.momentCreate` caller. No
+             double-write.
+  UPDATE   : `moments-tab.tsx:118-129` `handleSave`:
+               if (rep) { await rep.mutate.momentUpdate({…isSaved:true}); return; }
+               await api.api.moments({id}).feedback.post({action:'save'});
+             The explicit `return` makes the branches mutually
+             exclusive — a call will take EXACTLY one of the two paths
+             per click. No double-write.
+  DELETE   : `moments-tab.tsx:131-139` `handleDismiss`: same
+             if-rep-else-REST pattern with explicit return. Mutually
+             exclusive. No double-write.
+  LIST READ: `moments-tab-content.tsx:17` REST GET populates
+             `initialMoments`. `moments-tab.tsx:79-86` uses
+             `useSubscribedMoments(assetId)` when `rep && syncReady`,
+             else falls back to `initialMoments`. Single source at any
+             given render; handoff is driven by `syncReady`. No
+             overlapping writes.
+
+Server-mutator ↔ service-method parity:
+  - `serverMutators.momentUpdate` (server-mutators.ts:56-76) directly
+    `UPDATE asset_moment SET …` based on the patch shape. It does NOT
+    call through `MomentService.saveMoment`, but it also does NOT
+    double-insert into `asset_moment_feedback` (noted below).
+  - `serverMutators.momentDelete` (server-mutators.ts:78-93) sets
+    `deletedAt`, while the REST `dismissMoment` sets `dismissedAt`.
+    Different columns, but pull.ts:245-249 filters on `isNull` of BOTH,
+    so either path hides the row from sync consumers and the REST list
+    filter (moments/service.ts:23-27) was already updated to do the
+    same (`isNull(deletedAt)`). Net effect at the list level: parity.
+
+Server-side poke sequencing (re-verified in passing since this task
+touches the pipeline):
+  - `CommentService.insertMany` / `deleteByAsset` / `dismissComment`
+    (service.ts) fire `AssetMemberService.pokeMembers(assetId)` AFTER
+    the Drizzle write resolves; the write is auto-committed at that
+    point. Same pattern in `MomentService.insertMany` /
+    `deleteByAssetAndPreset` / `saveMoment` / `dismissMoment`. Pokes
+    run post-commit (Task 10 invariant). No change needed.
+
+--------------------------------------------------------------------------------
+Issues found and fixed
+--------------------------------------------------------------------------------
+
+  None. The dual-path is mutually exclusive on both save and dismiss,
+  and every other comment/moment mutation has exactly one write path.
+  No code changes made in Task 29.
+
+--------------------------------------------------------------------------------
+Issues noted (no fix needed, or deferred to a later sweep)
+--------------------------------------------------------------------------------
+
+1. moments-tab.tsx:118-139 REST save/dismiss fallback is effectively
+   dead code under normal auth flow.
+   Why acceptable: `DashboardLayout` (apps/web/src/components/layouts/
+   dashboard.tsx:14-38) wraps every authenticated route in
+   `<ReplicacheProvider>`, and asset pages live inside the dashboard
+   layout (apps/web/src/app/asset/[id]/page.tsx:26 — "ReplicacheProvider
+   is mounted in DashboardLayout"). `rep` is only null for the single
+   render tick before the provider's `useEffect` sets the instance.
+   A user can't click save/dismiss that fast. Removing the fallback
+   would touch the function signature and prop contract of
+   `MomentCard`; deliberately leaving as defensive code. Not a
+   double-write.
+
+2. Replicache path skips the `asset_moment_feedback` row that the REST
+   path inserts via `MomentService.addFeedback`.
+   Why acceptable: `asset_moment_feedback` is WRITE-ONLY in the current
+   codebase — `rg 'assetMomentFeedback'` across packages/ returns only
+   the insert and the conflict-fallback SELECT in `addFeedback`, plus
+   the schema and the `MomentFeedback` type re-export. No aggregation,
+   analytics consumer, or read query consumes it. Losing the signal
+   when Replicache is active doesn't affect any product surface.
+   Flagging for future design work: either (a) inline the feedback
+   insert inside `serverMutators.momentUpdate` when `args.isSaved`
+   flips, or (b) remove the table. Out of scope for Task 29 because it
+   is a feature-design decision, not a bug.
+
+3. Comments have no Replicache UI path at all.
+   Why acceptable: Task 29 is specifically "no double-writes". Zero
+   writes to Replicache from the UI means zero double-writes. The
+   client mutators (`commentCreateClient`, `commentUpdateClient`,
+   `commentDeleteClient`) exist in `packages/sync/src/mutators/
+   comments.ts` but have no caller in `apps/web`. They remain plumbed
+   for a future wiring pass. Not a bug.
+
+4. `moments-tab.tsx:118-139` `handleSave` / `handleDismiss` have no
+   try/catch — if the Replicache mutator or the REST fallback throws,
+   the user sees no error toast.
+   Why acceptable here: Task 34 ("Sweep catch blocks for silent error
+   swallowing") is the scheduled place for this. Logging it here to
+   avoid duplicating work; the fix should go in alongside Task 34's
+   systematic sweep. Per Replicache docs, `rep.mutate.X()` only throws
+   on client-side validator failures (zod schema mismatch on args) or
+   a closed tx — both are programmer errors, not runtime/network
+   failures. The real silent-failure risk is the REST fallback's
+   undestructured `error` field, which the dead-code fallback reduces
+   in practice.
+
+5. List-read divergence between REST and Replicache for moments:
+   REST `MomentService.list` filters on
+   `eq(assetMoments.userId, userId)` — caller's own moments only.
+   Replicache pull.ts:240-250 filters on
+   `inArray(assetId, accessibleAssetIds)` — every member's moments on
+   every accessible asset.
+   Why acceptable: this is the intended collaboration semantics.
+   Sharing an asset surfaces every member's moments to every member
+   via Replicache. The REST list is only used as the SSR priming
+   payload before the subscription takes over (moments-tab.tsx:79-86),
+   so the brief window where a user sees "their own" moments before
+   "everyone's" is a cosmetic handoff, not a correctness problem. Not
+   a Task 29 concern.
+
+--------------------------------------------------------------------------------
+Library leverage / composability check
+--------------------------------------------------------------------------------
+
+Drizzle:
+  - `CommentService.insertMany` / `MomentService.insertMany` use a
+    single batch `db().insert(table).values(rows).returning()` — no
+    per-row loop with an insert. Correct batch-insert primitive.
+  - `MomentService.addFeedback` already uses
+    `.onConflictDoNothing().returning()` + a single SELECT fallback —
+    the cleanest expression of "insert-or-lookup" with Drizzle. The
+    post-conflict SELECT uses the same columns as the unique
+    constraint (`asset_moment_feedback_unique`), matching the
+    `onConflictDoNothing` behavior. No change.
+  - Server mutators bypass the service classes and write the table
+    directly (server-mutators.ts). This is DELIBERATE — the server
+    mutator runs inside the Replicache push tx, which already owns
+    the Drizzle tx; delegating to `MomentService.saveMoment` would
+    open a second tx and break atomicity with the
+    `replicache_client.lastMutationId` bump. Keep as-is.
+
+Elysia:
+  - `comments/index.ts` and `moments/index.ts` both apply
+    `{ auth: true }` per-route. Moving to `.guard({ auth: true },
+    app => ...)` was discussed in Task 12 for the Replicache module
+    specifically; here each route also pulls `user` off the context
+    via the `authMacro`, which is evaluated per-route. Moving to a
+    group guard would not change behavior because every route needs
+    `user` regardless. No change.
+  - No opportunity for `.onError()` consolidation — the only explicit
+    catch (comments/index.ts:46-50) converts LLM-generation failure
+    into a sanitized 500; the moments/index.ts `/generate` route
+    doesn't catch at all (errors bubble to Elysia's default handler).
+    Consistent with Task 12's decision to keep generation-specific
+    error shape local.
+
+React:
+  - `handleSave` / `handleDismiss` use a plain `if (rep) ... return;`
+    branch rather than a hook-level abstraction. An
+    `useEntityMutator()` that centralized "replicache-or-REST" would
+    be over-abstraction for two call sites — three lines of branching
+    is not a duplication worth extracting. Leave as-is.
+
+No hand-rolled logic that could be replaced by a library primitive
+was found in this task's scope.
+
+--------------------------------------------------------------------------------
+Checklist verification
+--------------------------------------------------------------------------------
+
+Backend — Queries & Data Access
+  - N+1: insertMany for both entities is a single bulk insert. The
+    trailing `for (const assetId of assetIds) { pokeMembers(…) }` loop
+    is N=1 or 2 in practice (a single REST call is scoped to a single
+    asset), and poke is not a DB query — it publishes to an in-memory
+    SSE channel. Not N+1.
+  - Indexes: no new queries added in Task 29's scope.
+  - Pagination: `CommentService.list` / `MomentService.list` still
+    return all rows for an asset. Out of scope for this task (Task 30
+    covers the Replicache-vs-list interaction).
+  - Transactions: server mutators run inside the push transaction.
+    REST service methods auto-commit per write; pokes run after
+    commit. Correct.
+  - Parameterized queries: all Drizzle builder; no raw sql\`\` with
+    interpolation.
+  - Data types: jsonb `evidenceRefs` typed via schema inference; other
+    columns unchanged in this task.
+
+Backend — Security
+  - Input validation: `CommentModel.generate` / `CommentModel.feedback`
+    / `MomentModel.generate` / `MomentModel.feedback` validate bodies;
+    Task 12 verified Replicache push/pull TypeBox validators.
+  - Auth & authorization: REST routes gate on membership via
+    `AssetService.getByIdAsMember`; server mutators gate on
+    `requireEditor(assetId, userId)` inside the push tx.
+    Collaborator-with-viewer-role cannot write (verified in Task 15).
+  - Rate limiting: `/api/comments` and `/api/moments` prefixes are
+    pre-existing and covered by the rate limiter. Task 13 covered
+    Replicache prefixes separately.
+  - No sensitive data in logs: `comments/index.ts:48` already uses
+    the `msg = err instanceof Error ? err.message : String(err)`
+    pattern.
+  - HTTP status codes: 404 / 422 / 500 / 402 used appropriately.
+
+Backend — Resilience
+  - Timeouts: no new external HTTP in Task 29's scope. `generateComments`
+    / `generateMoments` LLM calls were covered in a prior task.
+  - Idempotency: `insertMany` relies on `id` collisions to be prevented
+    upstream (server IDs come from the LLM pipeline with collision-
+    resistant nanoid); Replicache server mutators use
+    `.onConflictDoNothing()` on create mutators (server-mutators.ts:53,
+    114). Correct.
+  - Connection pooling: Drizzle db() handles it.
+
+Backend — Code Quality
+  - Reuse: `AssetMemberService.pokeMembers` is the shared poke helper
+    (used by both services). Shared `AssetService.getByIdAsMember`
+    gate.
+  - Exhaustive switch: no switches in this diff.
+  - Magic numbers: CommentModel / MomentModel carry length / range
+    limits; client-side mirrors them in the zod schemas in
+    `packages/sync/src/mutators/*`.
+  - Error handling: comments/index.ts:44-50 catches and sanitizes the
+    message; moments/index.ts lets LLM errors bubble (Elysia default
+    500).
+
+Frontend — React Patterns
+  - No redundant state: `comments-tab.tsx` keeps `comments` in
+    useState because comments have no Replicache subscription yet.
+    `moments-tab.tsx` derives `rows` from `useSubscribedMoments` when
+    ready; does not shadow with a local copy. Correct.
+  - useEffect cleanup: `comments-tab-content.tsx` /
+    `moments-tab-content.tsx` use a `fetchedRef` guard for
+    StrictMode-double-invocation dedupe; no subscriptions or timers
+    to clean up. The one-shot fetch resolves into setState — if the
+    component unmounts before the fetch returns, the setState warns
+    but doesn't crash; acceptable for a brief SSR-prime.
+  - Keys: `comments.map` uses `comment.id`, `rows.map` uses
+    `moment.id`. Stable.
+  - SSR guards: `fetchedRef` + `useEffect` ensure fetch only fires
+    client-side. `api` is Eden-typed, browser-safe.
+  - No dangerouslySetInnerHTML: comment/moment bodies flow through
+    React text nodes. Safe.
+  - Dead code: mutator files exist for comments but have no caller.
+    Documented as (3) above; not dead within the sync package itself
+    (pull/push tests + server parity depend on them).
+
+Frontend — TypeScript
+  - No `any`: both components use explicit types from
+    `@milkpod/api/types` and `@milkpod/sync`. The `data as Moment[]`
+    cast in `handleGenerate` (moments-tab.tsx:107) is the documented
+    Eden-inference workaround; same for comments-tab.tsx:41. Justified.
+  - Non-null assertions: none in this scope.
+  - Exhaustive switches: none.
+  - Type guards: `syncedToMoment` / `syncedToRow` are mapper functions
+    from the known union member `SyncedMoment` to `Moment`; no guard
+    needed.
+
+Frontend — Tailwind v4 / Accessibility / UX
+  - Out of scope for this task; Tasks 33/34 sweep.
+
+Common Patterns (prior-review nudges)
+  1. console.error full-object — only one in scope (comments/
+     index.ts:48); already safe.
+  2. Missing timeouts — no new external HTTP.
+  3. New endpoints not rate-limited — no new endpoints.
+  4. Keyboard-invisible elements — out of scope.
+  5. Silent error swallowing — noted as (4) above; deferred to Task 34.
+  6. Duplicated logic — pokeMembers is already shared.
+  7. Missing exhaustive switches — none in scope.
+  8. useEffect patterns — `fetchedRef` dedupe is the correct pattern.
+  9. Webhook raw body — N/A.
+  10. Yearly billing — N/A.
+
+TypeScript Patterns (docs/typescript-patterns.md)
+  - `SyncedMoment` / `Moment` are a documented projection pair:
+    Replicache-serializable shape vs DB-inferred shape. The mapper
+    functions (`syncedToMoment`, `syncedToRow`) keep the projection
+    local to the component. Acceptable; not worth abstracting across
+    a single call site.
+  - Discriminated unions for feedback action use a bare string union
+    from `MomentModel.Feedback['action']`; server mutator maps each
+    literal action independently. No switch-on-action that needs a
+    never check.
+
+--------------------------------------------------------------------------------
+Build / type-check
+--------------------------------------------------------------------------------
+
+  pnpm check-types: 8/8 green (52ms, FULL TURBO — no code touched).
+  No regressions.
+
+--------------------------------------------------------------------------------
+Commit
+--------------------------------------------------------------------------------
+
+review(task 29): verify no REST/Replicache double-writes for
+comments and moments — no code changes required.
