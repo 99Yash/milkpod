@@ -63,3 +63,44 @@ Checklist verification:
   - Gap analysis — 0035's claim that it covers assets created between 0031 and the AssetService.create seeding change is verified by the commit sequence (0031 in 16ce298; seeding in 85b4937; 0035 also in 85b4937 as the compensating backfill). No orphan windows remain because the now-seeding create path uses `.onConflictDoNothing()`, so re-runs are harmless.
   - Ordering / independence — 0035 runs after 0034 which constrains asset_invite roles to non-owner; 0035 inserts into asset_member not asset_invite, so no CHECK interaction. Independent.
   - pnpm check-types: clean (8/8 tasks green, full-turbo cache hit; no source changes).
+
+---
+
+## Task 3: Pre-deploy check for 0034 CHECK constraint
+
+Issues found and fixed:
+  - None. No code change required (task scope is pre-deploy operational verification).
+
+Issues noted (no fix needed):
+  1. packages/db/src/migrations/0034_asset_invite_role_not_owner.sql:7-9 — `ALTER TABLE ... ADD CONSTRAINT ... CHECK (role IN ('editor','viewer'))` is a plain (validating) constraint add. Postgres takes an ACCESS EXCLUSIVE lock and validates ALL existing rows immediately. In a large-table deploy this could stall writes for the duration. Here it's acceptable: asset_invite was introduced in 0030 of this same branch, so the table is empty on first deploy, and the expected steady-state row count is small (pending invites per asset). For future reference, the safer pattern for already-populated tables is `ADD CONSTRAINT ... CHECK (...) NOT VALID; ... VALIDATE CONSTRAINT ...` which keeps the validation out of the DDL lock window. Not changing here because (a) the current situation is safe, and (b) retrofitting two-phase validation once data is small gains nothing.
+  2. packages/db/src/migrations/0034_asset_invite_role_not_owner.sql — Uses `ADD CONSTRAINT` without `IF NOT EXISTS` (syntax not supported on ADD CONSTRAINT in Postgres < 17 anyway). Drizzle's journal prevents re-application so this is fine; noting for the record.
+  3. Independence from 0035 verified: 0034 targets table `asset_invite`; 0035 targets table `asset_member`. Different tables, different columns, no foreign key between them other than both referencing `media_asset`. No ordering constraint between 0034 and 0035 — they could run in either order without behavioral change. Current journal ordering is 0034 → 0035, which is what `_journal.json` idx 34/35 shows (entries copied verbatim: 0034 when=1776866713941, 0035 when=1776867555730).
+  4. API-side safety verified: `packages/api/src/modules/asset-members/service.ts:10` defines `AssetInviteRole = Exclude<AssetMemberRole, 'owner'>`, and `AssetMemberService.invite(..., role: AssetInviteRole)` is the only code path that INSERTs into asset_invite. `packages/auth/src/signup-hooks.ts` only SELECTs and DELETEs from asset_invite. No code path inserts role='owner', so the CHECK is pure defense-in-depth against direct DB writes — it should never reject a row authored by this application's runtime.
+  5. CHECK syntax compatibility with pgEnum column: `role IN ('editor','viewer')` compares the `asset_member_role` enum column against string literals. Postgres implicitly casts the literals to the enum via `unknown → enum` resolution; this is the standard idiom used throughout Drizzle's own generated migrations. No CAST is needed.
+
+Pre-deploy verification (REQUIRED before running 0034 against any environment that may have seen manual DB writes):
+
+    -- Expected: 0
+    SELECT count(*) FROM asset_invite WHERE role = 'owner';
+
+    -- If > 0, resolve offending rows before applying 0034. Either:
+    --   DELETE FROM asset_invite WHERE role = 'owner';
+    -- or downgrade:
+    --   UPDATE asset_invite SET role = 'editor' WHERE role = 'owner';
+    -- Then re-run `SELECT count(*)` — must return 0 — and only then `pnpm db:migrate`.
+
+    Rationale: 0034's `ADD CONSTRAINT ... CHECK` validates every existing row at
+    DDL time. One `role = 'owner'` row → migration fails → deploy blocked.
+
+Expected result across all current environments: 0. asset_invite only exists in environments where migration 0030 (Apr 22 2026 onward) has been applied, and the only runtime insert path (AssetMemberService.invite) is TS-narrowed to exclude 'owner'. Any non-zero result would indicate a manual DB write outside the application and must be investigated before deploy.
+
+Library improvements made:
+  - None. Pre-deploy check is an operational verification, not a library call site.
+
+Checklist verification:
+  - Migration safety for zero-downtime — ADD CONSTRAINT takes ACCESS EXCLUSIVE briefly; table is effectively empty in prod, so the lock window is negligible. Noted NOT VALID alternative for future large-table CHECKs.
+  - No raw string concatenation (SQL injection surface) — pure static DDL.
+  - Appropriate data types — CHECK targets the `asset_member_role` enum column; string literal comparison is idiomatic Postgres.
+  - No ordering dependency — 0034 and 0035 target different tables, confirmed by reading both migrations.
+  - Defense-in-depth rationale matches schema narrowing — confirmed asset_invite schema uses `.$type<'editor' | 'viewer'>()` (asset-members.ts:55) and service.ts enforces the same at the TS API boundary.
+  - pnpm check-types: clean (8/8 tasks green, full-turbo cache hit; no source changes).
