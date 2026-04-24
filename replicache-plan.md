@@ -277,7 +277,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - list/get return shapes unchanged (frontend contract)
 - Members see shared assets; owners see theirs + shared-out
 
-### Task 29: Verify no REST/Replicache double-writes for comments and moments
+### ~~Task 29: Verify no REST/Replicache double-writes for comments and moments~~ ✓
 
 **Files**: `packages/api/src/modules/comments/{service,index}.ts`, `moments/{service,index}.ts`, `packages/sync/src/mutators/{comments,moments}.ts`
 **What**:
