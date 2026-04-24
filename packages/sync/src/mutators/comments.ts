@@ -65,10 +65,15 @@ export async function commentUpdateClient(
 	const key = commentKey(args.assetId, args.id);
 	const existing = (await tx.get(key)) as SyncedComment | undefined;
 	if (!existing) return;
-	const { id: _id, assetId: _a, ...patch } = args;
+	// Mirror the server's explicit per-field gate
+	// (server-mutators.ts `commentUpdate`). See momentUpdateClient for the
+	// full reasoning — summary: rest-spread left `{ body: undefined }`
+	// callers wiping `existing.body`, and no-op calls drifted the local
+	// `rowVersion` ahead of the server's.
+	if (args.body === undefined) return;
 	const next: SyncedComment = {
 		...existing,
-		...patch,
+		body: args.body,
 		rowVersion: existing.rowVersion + 1,
 	};
 	await tx.set(key, next as unknown as import('replicache').ReadonlyJSONValue);

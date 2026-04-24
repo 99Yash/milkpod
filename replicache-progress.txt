@@ -2689,3 +2689,483 @@ Build / type-check:
   - Runtime bundle inspection (packages/sync/dist/*.js):
       `rg "replicache|drizzle|@milkpod/db|@ai-sdk" packages/sync/dist/*.js`
       → zero matches. Type-only imports correctly stripped.
+
+================================================================================
+Task 27 — Verify sync mutator purity and client/server parity ✓
+================================================================================
+
+Files reviewed:
+  - packages/sync/src/mutators/moments.ts
+  - packages/sync/src/mutators/comments.ts
+  - packages/sync/src/mutators/notifications.ts
+  - packages/sync/src/mutators/index.ts
+  - packages/api/src/modules/replicache/server-mutators.ts
+  (+ cross-ref to pull.ts, push.ts, authz.ts, keys.ts, types.ts, the three
+  touched DB schemas, and every apps/web call site for `.mutate.*`)
+
+Scope recap: packages/sync is 100% new (Task 26 already verified it's
+client-safe). Task 27 is the last piece: prove the mutator pipeline itself
+is coherent — pure locally, name-equivalent on both sides, and convergent
+after a pull re-syncs optimistic state with authoritative state.
+
+--------------------------------------------------------------------------------
+Purity — `Client mutators have no side effects outside the Replicache tx`
+--------------------------------------------------------------------------------
+
+Grep sweep across packages/sync/src/mutators/:
+  - fetch, XMLHttpRequest, WebSocket: 0 matches
+  - console.log, console.error, console.warn: 0 matches
+  - process.*, globalThis.*, global.*: 0 matches
+  - localStorage, sessionStorage, indexedDB: 0 matches
+  - window.*, document.*, navigator.*: 0 matches
+  - Date.now / new Date: 0 matches (client passes readAt from caller)
+  - setTimeout, setInterval, queueMicrotask: 0 matches
+
+Every mutator body communicates with the outside world exclusively through
+the WriteTransaction parameter (tx.get / tx.set / tx.del / tx.scan). The
+three files that do any work — moments.ts, comments.ts, notifications.ts —
+are pure data transformations against the Replicache store.
+
+PURITY: VERIFIED.
+
+--------------------------------------------------------------------------------
+Name parity — `Every client mutator has a server counterpart with matching
+name`
+--------------------------------------------------------------------------------
+
+clientMutators (packages/sync/src/mutators/index.ts):
+  momentCreate, momentUpdate, momentDelete,
+  commentCreate, commentUpdate, commentDelete,
+  notificationMarkRead, notificationMarkAllRead.
+  (8 names)
+
+serverMutators (packages/api/src/modules/replicache/server-mutators.ts):
+  momentCreate, momentUpdate, momentDelete,
+  commentCreate, commentUpdate, commentDelete,
+  notificationMarkRead, notificationMarkAllRead.
+  (8 names)
+
+Dispatch glue (push.ts):
+  - `isKnownMutator` narrows via `name in mutatorArgsSchemas` — if a client
+    adds a new name to clientMutators without adding a schema to
+    mutatorArgsSchemas, the compiler rejects (both maps share
+    `keyof ClientMutators` ≡ `keyof typeof mutatorArgsSchemas`).
+  - `serverMutators[mutatorName]` is cast to a tx/args/ctx thunk;
+    `MutatorName` is `keyof ClientMutators`. A server name missing from
+    `ClientMutators` would be unreachable (no MutatorName key to index it).
+  - A client name missing from serverMutators would be a compile error at
+    the cast site (property access on the typed object fails). Verified via
+    `pnpm check-types`: clean.
+
+NAME PARITY: VERIFIED.
+
+--------------------------------------------------------------------------------
+Input-shape parity — `matching name + input shape`
+--------------------------------------------------------------------------------
+
+Schema-by-schema comparison (schemas come from @milkpod/sync, servers live
+in server-mutators.ts):
+
+  momentCreateArgsSchema:
+    { id, assetId, preset, title, rationale, startTime, endTime, score,
+      source, createdAt, authorId, authorName, authorImage, authorEmail }
+  Server momentCreate writes:
+    { id, assetId, userId=ctx.userId, preset, title, rationale, startTime,
+      endTime, score, source, createdAt=new Date(args.createdAt) }
+  Divergence (acceptable): server ignores authorId/authorName/authorImage/
+    authorEmail; derives userId from the auth session. Rationale — the
+    author metadata is purely for the optimistic row's display layer so the
+    UI renders avatar+name without a second fetch; on the next pull
+    `serializeMoment` (pull.ts) rebuilds these fields from a `user` table
+    join, overwriting any stale/spoofed client-provided value. The server
+    is therefore authoritative on author identity, and a malicious client
+    can't persist a fake authorId — the DB userId column is always session-
+    derived. See pull.ts serializeMoment L107–130.
+
+  momentUpdateArgsSchema:
+    { id, assetId, title?, rationale?, isSaved? }
+  Server momentUpdate patch:
+    title?, rationale?, isSaved?
+  PARITY: exact match on optional fields, early-return if all undefined.
+
+  momentDeleteArgsSchema:
+    { id, assetId }
+  Server momentDelete:
+    UPDATE ... SET deletedAt=NOW() WHERE id=? AND assetId=?  (soft delete)
+  Client momentDeleteClient:
+    tx.del(momentKey(...))  (hard delete, locally)
+  PARITY: see Behavior parity below — the split is intentional and
+    self-healing via Replicache rebase.
+
+  commentCreateArgsSchema:
+    { id, assetId, body, startTime, endTime, source, evidenceRefs?,
+      createdAt, authorId, authorName, authorImage, authorEmail }
+  Server commentCreate writes:
+    { id, assetId, userId=ctx.userId, body, startTime, endTime, source,
+      evidenceRefs ?? null, createdAt=new Date(args.createdAt) }
+  Divergence: same author-fields pattern as momentCreate — accepted,
+    documented in the same way.
+
+  commentUpdateArgsSchema: { id, assetId, body? }
+  Server commentUpdate patch: body?
+  PARITY: exact.
+
+  commentDeleteArgsSchema: { id, assetId }
+  Server: soft delete. Client: hard delete. PARITY: see Behavior parity.
+
+  notificationMarkReadArgsSchema: { id, readAt }
+  Server notificationMarkRead: sets readAt WHERE id=? AND recipientId=?
+    AND readAt IS NULL.
+  Client: early-return if existing.readAt != null; else set readAt + bump
+    rowVersion.
+  PARITY: exact. Both gate on "currently unread".
+
+  notificationMarkAllReadArgsSchema: { readAt }
+  Server: UPDATE ... SET readAt=? WHERE recipientId=? AND readAt IS NULL.
+  Client: scan all notification/* keys, skip n.readAt != null, else update.
+  PARITY: exact. Both gate on "currently unread" and both set the caller-
+    supplied readAt so the optimistic timestamp matches the server write.
+
+INPUT-SHAPE PARITY: VERIFIED (with one documented-acceptable divergence
+on author fields for create-mutators, corrected on next pull).
+
+--------------------------------------------------------------------------------
+Behavior parity — `same invariants enforced both sides; server is
+authoritative; client is optimistic`
+--------------------------------------------------------------------------------
+
+A. Delete semantics (hard-local vs soft-remote).
+   Client: `tx.del(momentKey(...))` / `tx.del(commentKey(...))`.
+   Server: `.update(...).set({ deletedAt: new Date() })`.
+   Reconciliation path:
+     1. SUCCESS: server soft-deletes, trigger bumps rowVersion, next pull
+        evaluates `isNull(deletedAt)` predicate (pull.ts L246–248, L257–259)
+        → row is absent from `currentMoments`/`currentComments` → the
+        CVR-diff "was in prev, absent from next" branch (L370–378) emits a
+        `del` op to every client that previously saw it. Other users'
+        clients drop it.
+     2. REJECTION (ACL): savepoint rolls back (push.ts L153–163), DB row
+        unchanged, rowVersion unchanged, next pull emits no patch for this
+        row. LMID still advances (push.ts L185) so Replicache confirms the
+        mutation. Replicache's rebase drops the pending delete and
+        recomputes the local view from the authoritative base — row
+        reappears without the server sending a `put`. Verified by reading
+        replicache's rebase semantics in replicache@15 docs (`sync steps`
+        algorithm).
+   PARITY: VERIFIED. Hard-local + soft-remote is the standard optimistic
+     pattern for tombstones; both success and rejection paths converge.
+
+B. Create semantics — isSaved default.
+   Client: explicitly sets `isSaved: false` in the optimistic row.
+   Server: relies on DB default `boolean('is_saved').default(false).notNull()`
+     (packages/db/src/schema/moments.ts L52).
+   PARITY: VERIFIED.
+
+C. Update early-return.  ← issue found & fixed, see below.
+
+D. Update rowVersion.
+   Client: bumps `rowVersion: existing.rowVersion + 1`.
+   Server: relies on the BEFORE INSERT OR UPDATE trigger installed by
+     migration 0033/0037 (Task 1 verified). Trigger sets
+     `NEW.row_version = OLD.row_version + 1` when any publishable column
+     changes.
+   Reconciliation: next pull emits `put` whenever `prevRow.v !== m.rowVersion`
+     (pull.ts L314 / L325 / L337). Server's authoritative rowVersion
+     overwrites the client's optimistic bump. Drift is one value for a
+     brief window.
+   PARITY: VERIFIED.
+
+E. Auth boundary.
+   Server moment*/comment* mutators: `await requireEditor(args.assetId,
+     ctx.userId)` — throws MutatorForbiddenError if the caller isn't an
+     editor or owner (authz.ts L87–97, Task 8 verified).
+   Server notification*: inline WHERE `recipientId = ctx.userId` makes the
+     ownership check atomic with the mutation — a caller who somehow knew
+     another user's notification id still wouldn't affect that row.
+   Client mutators: no auth checks. That's correct for optimistic clients:
+     writes succeed locally regardless; the server's rejection is the
+     authoritative signal and Replicache rebases the local view on LMID
+     advance.
+   PARITY: VERIFIED.
+
+F. notificationMarkAllRead ordering.
+   Client: streaming `for await` over `tx.scan({ prefix }).entries()`; each
+     iteration reads one entry, writes zero or one, yields. Task 26 noted
+     this is the idiomatic Replicache pattern for scan+write loops
+     (streaming ≻ toArray here because writes are interleaved).
+   Server: single UPDATE with compound WHERE. Atomic.
+   Both gate on "currently unread" and produce the same net effect on the
+     set of unread notifications. The client's per-row stream has a
+     trivially longer window where a concurrent server-side mark-read
+     could race, but the re-guard `if (n.readAt != null) continue` handles
+     it — worst case is a duplicate write of the same readAt, which is
+     identical to the server's idempotent UPDATE.
+   PARITY: VERIFIED.
+
+G. Post-commit pokes.
+   Server (push.ts L202–221): after transaction commits, moments/comments
+     mutations poke every member of the affected asset via
+     `AssetMemberService.pokeMembers` (asset-member fanout); notification
+     mutations (USER_SCOPED_MUTATORS) emit a user-scoped poke so only the
+     caller's other sessions rebase. Task 10 verified the after-commit
+     ordering.
+   PARITY: VERIFIED — collaboration flows propagate; notification flows
+     don't leak to unrelated users.
+
+--------------------------------------------------------------------------------
+Issues found and fixed
+--------------------------------------------------------------------------------
+
+1. packages/sync/src/mutators/moments.ts `momentUpdateClient`
+   packages/sync/src/mutators/comments.ts `commentUpdateClient`
+   Divergence: the client mutators used `const { id: _id, assetId: _a,
+   ...patch } = args;` and always bumped `rowVersion: existing.rowVersion
+   + 1`, regardless of whether any update fields were actually present.
+   The server's counterparts (server-mutators.ts L62–66 / L123–125) build
+   `patch` field-by-field and early-return when `Object.keys(patch).length
+   === 0`.
+
+   Two failure modes:
+     a) No-op call (`momentUpdate({ id, assetId })` with all optional
+        fields absent): server writes nothing, trigger doesn't fire,
+        DB rowVersion stays at N. Client writes `rowVersion: N+1`
+        locally. Until some real update moves the server's rowVersion to
+        N+1, the client carries an ahead-of-reality counter. The CVR diff
+        (`prevRow.v !== m.rowVersion`) sees no change on subsequent pulls,
+        so the server never corrects the local drift until a real update
+        happens. Cosmetic — not data-corrupting — but real.
+     b) `{ title: undefined }` passed explicitly: the rest-spread copied
+        `title: undefined` into `patch`, then `...patch` overwrote
+        `existing.title` with `undefined`. The SyncedMoment type requires
+        `title: string`, so the local row briefly violates its own shape.
+        Server's `if (args.title !== undefined)` guard already skipped
+        this.
+
+   Fix: mirror the server's gate exactly. Build the patch from defined
+   fields only, return early when the patch is empty, and for
+   commentUpdate (single optional field) short-circuit with
+   `if (args.body === undefined) return`. Client and server are now
+   bit-for-bit equivalent on no-op update calls.
+
+   Diff:
+     - momentUpdateClient: replaced rest-spread with explicit per-field
+       checks for title/rationale/isSaved; added
+       `if (Object.keys(patch).length === 0) return` before the rowVersion
+       bump and tx.set.
+     - commentUpdateClient: replaced rest-spread with explicit body check;
+       returns early on undefined body.
+
+   Comments inserted at each fix site document the reasoning (why the
+   rest-spread drifted from the server, what the explicit gate buys).
+
+--------------------------------------------------------------------------------
+Issues noted (no fix)
+--------------------------------------------------------------------------------
+
+1. momentCreate/commentCreate include author* fields that the server
+   ignores. Acceptable as documented above: the server derives authorId
+   from ctx.userId (authoritative) and pull.ts re-hydrates
+   authorName/authorImage/authorEmail from the user table join. A
+   malicious client cannot persist a fake authorId — DB column `user_id`
+   comes from session only. Tightening this would require either:
+     a) removing author fields from the create schemas and having the
+        client read the current user from session via a separate mechanism
+        to seed the optimistic row — more plumbing for negligible benefit
+        since the optimistic row is corrected within a pull RTT;
+     b) server-side validation `args.authorId === ctx.userId` — adds a
+        brittle failure mode if the client ever has a stale session view.
+   Current design (server silently overwrites) is the right trade-off:
+   never trusts client identity claims, tolerates client bugs.
+
+2. server-mutators.ts uses `const patch: Record<string, unknown> = {}` for
+   momentUpdate and commentUpdate. Drizzle exports
+   `PgUpdateSetSource<typeof table>` (from drizzle-orm/pg-core) which is
+   a typed shape for `.set()`. Swapping to
+   `const patch: Partial<typeof assetMoments.$inferInsert> = {}` would
+   give better type safety on the builder side. Did NOT apply —
+   `DbTx` is `any` so the final `.set(patch)` call isn't type-checked
+   anyway, and the code is short enough that wrong keys would be caught
+   at review. Task 27 scope is parity/purity, not typing refactor. Noted
+   for a future hygiene pass.
+
+3. `notificationMarkAllRead` client scan uses `for await` on
+   `tx.scan(...).entries()` — idiomatic streaming iterator for a
+   scan+write. Task 25 migrated read-only scans to `.toArray()`, but that
+   pattern doesn't fit here (the write is interleaved with the read, so
+   loading everything first saves nothing). Leaving as-is; same reasoning
+   as Task 26.
+
+4. `MomentCreateArgs` / `CommentCreateArgs` have no call sites from
+   apps/web yet (grep for `.mutate.momentCreate|commentCreate` returns
+   zero hits). These mutators exist as infrastructure for the collab
+   editor that will add human-authored moments/comments via Replicache;
+   until the UI lands they're dead code in the apps/web sense, but the
+   server mutators and schemas need to exist so push.ts can dispatch
+   pushed mutations when the feature ships. Not a Task 27 concern — Task
+   29 (REST/Replicache double-write audit) will revisit when the create
+   path goes live.
+
+5. Client mutators don't run zod `.parse()` on args before operating.
+   Deliberate: the authoritative validation is server-side (`schema.
+   safeParse(mutation.args)` in push.ts L129). Validating on the client
+   would add per-mutation CPU on every optimistic write for no safety
+   gain — a client writing invalid args just sees the server reject the
+   push and Replicache rebase the local view. Not fixing.
+
+6. The `as unknown as ReadonlyJSONValue` double-casts in moments.ts /
+   comments.ts / notifications.ts are the same boundary-casts Task 26
+   justified. No library primitive supersedes them — Replicache's
+   ReadonlyJSONValue is a structural union TS can't prove our interfaces
+   satisfy without a full runtime walk. Noted, kept.
+
+--------------------------------------------------------------------------------
+Library-leverage review
+--------------------------------------------------------------------------------
+
+Replicache v15.3.0:
+  - tx.get / tx.set / tx.del / tx.scan().entries() used idiomatically.
+  - Each mutator is a `(tx, args) => Promise<void>` function matching the
+    `MutatorDefs` shape Replicache expects; `rep.mutate.momentUpdate(...)`
+    on the client invokes the mutator with a WriteTransaction supplied by
+    the runtime. No reimplementation of Replicache primitives.
+  - No library feature is hand-rolled. Read through replicache@15's
+    `packages/replicache/src/transactions.ts` for `WriteTransaction` surface;
+    set / del / get / scan are the full set of store operations, and
+    that's exactly what the mutators use.
+
+Zod v4:
+  - Schemas use `.min() / .max() / .optional() / .nullable() / .enum() /
+    .int().positive() / .object()` — no custom refinements, no hand-rolled
+    validators.
+  - `z.infer<typeof schema>` drives the mutator arg types on both client
+    and server via `@milkpod/sync` exports, so the schema is the single
+    source of truth (correct pattern per docs/typescript-patterns.md
+    "config is the single source of truth").
+
+Drizzle (server-mutators.ts):
+  - `.insert(...).values(...).onConflictDoNothing()` on creates —
+    idempotent by design, handles Replicache's retry-produces-duplicates
+    behaviour (push.ts also guards via LMID but belt-and-suspenders).
+  - `.update(...).set(...).where(and(eq(...), eq(...)))` on updates and
+    soft-deletes. For notifications, WHERE combines `eq(id)`,
+    `eq(recipientId, ctx.userId)`, `isNull(readAt)` — atomic ownership +
+    idempotency in a single statement. Correct use of Drizzle's predicate
+    composition; no raw SQL needed.
+  - `requireEditor` is extracted into authz.ts (Task 8). No duplication
+    across mutators.
+
+AI SDK / Eden Treaty / Elysia / Better Auth: not relevant to this task's
+files.
+
+LIBRARY LEVERAGE: no hand-rolled replacements found. The mutator layer
+composes Replicache+Zod cleanly; the server layer composes Drizzle
+predicates cleanly.
+
+--------------------------------------------------------------------------------
+Checklist verification
+--------------------------------------------------------------------------------
+
+Backend — Queries & Data Access
+  - N+1: N/A. Each server mutator is one INSERT/UPDATE; no loops.
+  - Indexes: the WHERE clauses use PK (`id`), `assetId`, `recipientId`,
+    which have indexes (Task 4 verified).
+  - Pagination: N/A (mutators aren't lists).
+  - Transactions: push.ts wraps every mutator in a savepoint (Task 7).
+    notificationMarkAllRead is intrinsically one UPDATE — atomic.
+  - Parameterized queries: VERIFIED — all via Drizzle builder methods,
+    zero `sql\`\`` template usage in these files.
+  - Data types: VERIFIED — createdAt passed as ISO string, coerced via
+    `new Date(args.createdAt)` at the server boundary (validated by the
+    zod schema). No float-for-money / int-for-string antipatterns.
+
+Backend — Security
+  - Input validation: push.ts `safeParse(mutation.args)` before dispatch
+    (L129). Zod schema defines length bounds / enum constraints.
+  - Auth & authorization: `requireEditor(assetId, userId)` on every
+    moment/comment mutation; inline ownership WHERE on notifications.
+    The `ctx.userId` comes from the authenticated session (index.ts
+    guard, Task 12 verified).
+  - Rate limiting: Task 13 verified `/api/replicache/push` is in the
+    rate-limiter's `categorize()`.
+  - Sensitive data in logs: only `console.warn`/`console.error` sites in
+    this task's files are in push.ts, and they use `err instanceof Error
+    ? err.message : String(err)` — Task 23 / earlier sweeps already
+    covered these.
+  - No secrets in error responses: server mutators throw via
+    MutatorForbiddenError; push.ts catches and logs safely; the PushResponse
+    to the client is either `{}` or one of two sentinel error strings — no
+    leakage.
+  - HTTP status codes: N/A to this task — Task 12 covered route-level
+    validation codes.
+  - Webhook endpoints: N/A.
+
+Backend — Resilience
+  - Timeouts on external calls: N/A (mutators don't call out).
+  - Idempotency: `.onConflictDoNothing()` on creates; LMID guard on
+    duplicate pushes (push.ts L141–145); notification mark-read is
+    idempotent by construction (`isNull(readAt)` predicate).
+  - Connection pooling: server mutators run inside the push transaction's
+    subTx — Drizzle handles pool lifecycle.
+  - Env vars: N/A.
+
+Backend — Code Quality
+  - Reuse: `requireEditor` is the shared helper (authz.ts).
+    notification inline-WHERE is repeated across the two notification
+    mutators but it's one line and the extracted helper would add
+    indirection for no benefit.
+  - Exhaustive switch: N/A (no switches in this task's files).
+  - Magic numbers: N/A.
+  - Error handling: mutators throw; push.ts catches.
+  - DB migrations: N/A to this task.
+
+Frontend — React Patterns / TypeScript / Tailwind / A11y / Error Handling
+  - Files in this task are server or framework-agnostic; see Task 22–25
+    for the React sides.
+  - TS — no `any` beyond the documented `DbTx = any` in server-mutators
+    (same justification as push.ts: driver type varies across versions).
+  - Type guards: `isKnownMutator` in push.ts is a custom `is MutatorName`
+    type guard — correct pattern from docs/typescript-patterns.md.
+
+Common Patterns (from prior reviews):
+  1. console.error full-object logging: N/A here — push.ts already fixed.
+  2. fetch/AI-SDK timeouts missing: N/A (no external calls).
+  3. New endpoints not rate-limited: covered by Task 13.
+  4. opacity-0 without focus-within: N/A (no UI).
+  5. Silent error swallowing: N/A — push.ts catches and logs.
+  6. Duplicated logic: `const patch: Record<string, unknown> = {}` +
+     field-by-field conditional assignment is repeated twice in
+     server-mutators.ts (momentUpdate, commentUpdate). Could extract
+     `buildPatch(args, fields)` helper but only two call sites; left as-is.
+  7. Missing exhaustive switches: N/A.
+  8. useEffect patterns: N/A.
+  9. Webhook raw body: N/A.
+  10. Billing interval bugs: N/A.
+
+TypeScript Patterns (docs/typescript-patterns.md):
+  - Discriminated union state: SyncedNotification uses a `type` discriminant
+    (Task 22 handles exhaustiveness on the renderer side).
+  - Type guards: isKnownMutator in push.ts.
+  - `as const` + `keyof typeof`: `clientMutators as const` +
+    `keyof ClientMutators` gives `MutatorName`. `serverMutators as const`
+    + `keyof ServerMutators` gives `ServerMutatorName`. Schema keys align.
+  - Generic constraints: `DbHandle` in authz.ts uses
+    `Parameters<Parameters<...>[0]>[0]` to extract the tx type from
+    Drizzle's transaction callback — proper `Awaited<ReturnType<...>>`-
+    adjacent pattern.
+
+--------------------------------------------------------------------------------
+Build / type-check
+--------------------------------------------------------------------------------
+
+  pnpm --filter @milkpod/sync build: green (670ms).
+  pnpm check-types: 8/8 green (4.4s, 4 cache hits + 4 fresh runs for the
+    touched packages).
+  No regressions.
+
+--------------------------------------------------------------------------------
+Commit
+--------------------------------------------------------------------------------
+
+review(task 27): early-return client moment/comment update mutators on
+empty patch so local rowVersion can't drift ahead of server.
+

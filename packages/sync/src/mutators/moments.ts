@@ -70,7 +70,18 @@ export async function momentUpdateClient(
 	const key = momentKey(args.assetId, args.id);
 	const existing = (await tx.get(key)) as SyncedMoment | undefined;
 	if (!existing) return;
-	const { id: _id, assetId: _a, ...patch } = args;
+	// Mirror the server's explicit per-field gate
+	// (server-mutators.ts `momentUpdate`). The previous rest-spread pattern
+	// drifted two ways from the server: (a) a caller that passed
+	// `{ title: undefined }` explicitly would wipe `existing.title`, and
+	// (b) a no-op call with no optional fields bumped local `rowVersion`
+	// while the server early-returned — leaving the client one ahead of the
+	// authoritative counter until a real update reconciled them.
+	const patch: Partial<SyncedMoment> = {};
+	if (args.title !== undefined) patch.title = args.title;
+	if (args.rationale !== undefined) patch.rationale = args.rationale;
+	if (args.isSaved !== undefined) patch.isSaved = args.isSaved;
+	if (Object.keys(patch).length === 0) return;
 	const next: SyncedMoment = {
 		...existing,
 		...patch,
