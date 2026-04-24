@@ -708,3 +708,65 @@ Checklist verification (per review-prompt.md Backend + Library Leverage + Common
   - `as` casts — zero added.
   - SSR / frontend — N/A (server-only modules).
   - pnpm check-types: clean. 8/8 tasks green. @milkpod/auth + @milkpod/api cache-miss (source changes); @milkpod/server + @milkpod/web cache-miss downstream. @milkpod/{env,db,sync,ai} cache-hit.
+
+---
+
+## Task 17: Add timeout and generic failure path to invite email send
+
+Approach: single-file task (packages/auth/src/invite-email.ts). Task spec has two deliverables — (1) wrap the provider call in `AbortSignal.timeout(30_000)` and (2) catch provider errors with safe logging + generic client message. The second was already satisfied by Task 16's predecessor code (safe `error instanceof Error ? ... : String(error)` logger, plus a fire-and-forget caller pattern that guarantees no Resend error bubbles to the HTTP response). The first required verification of how Resend's SDK handles cancellation.
+
+Library / design verification before touching code:
+  - Read `node_modules/.pnpm/resend@6.9.3/node_modules/resend/dist/index.d.mts:1230-1237` for the Emails class signature: `send(payload: CreateEmailOptions, options?: CreateEmailRequestOptions): Promise<CreateEmailResponse>`.
+  - Read lines 185-198 + 344 for `CreateEmailRequestOptions extends PostOptions, IdempotentRequest`. Public surface is `{ query?: Record, headers?: HeadersInit, idempotencyKey?: string }`. No `signal` field.
+  - Searched `resend/resend-node` on GitHub for `signal` via mcp__grep__searchGitHub — zero matches in the source. Searched the Resend SDK for an AbortSignal pattern generally: no hits. Confirmed the SDK does not accept a signal through its public API.
+  - Read the SDK's internal `post()` at `resend/resend-node/src/resend.ts:136-162`. The options spread into `requestOptions` before `fetchRequest` calls native `fetch(url, requestOptions)`. So in principle a `signal` smuggled via a type cast would reach fetch — but this is undocumented and brittle (a future refactor that validates the options shape would silently drop it).
+  - Searched the codebase for existing timeout patterns (`rg 'AbortSignal\.timeout|Promise\.race|withTimeout' packages`): the project uses `AbortSignal.timeout(ms)` exclusively on raw fetch calls (polar.ts, assemblyai.ts, youtube.ts, rss.ts). No existing `Promise.race` helper. No generic withTimeout wrapper. No hidden convention to borrow.
+  - Decided: `Promise.race` with a setTimeout that clears in a `finally`. Rationale: (a) Resend doesn't take signal; smuggling via cast is fragile, (b) introducing a repo-wide `withTimeout` helper for a single site would be premature abstraction (per review-prompt.md §"Don't add features… beyond what the task requires"), (c) the function is already fire-and-forget so there is no caller waiting on true cancellation — the only semantic that matters is "this promise resolves within 30s so the timer+handler don't leak."
+
+Issues found and fixed:
+  1. packages/auth/src/invite-email.ts:27-45 (pre-task) — no wall-clock bound on the Resend call. If Resend's API hangs (network partition, provider incident), `await sendInviteEmail(...)` sits pending forever. Caller is `void AssetMemberService.sendInviteEmailIfPossible(...)` — the unsettled Promise holds its closure (including `to`, `templateInput`, template strings) plus an open HTTP connection in Node's undici pool. Under any sustained provider outage this leaks memory and exhausts the pool, eventually wedging the process. Fixed by racing the send against a 30s setTimeout-backed rejection, and clearing the timer in `finally` so the success path doesn't leak the timer object.
+  2. Same file, added a module-level `INVITE_EMAIL_TIMEOUT_MS = 30_000` with a doc comment explaining why we can't use AbortSignal here (SDK limitation). Matches the review-prompt.md value for "30s for APIs" and mirrors the project's existing 30s choice in packages/api/src/index.ts:103 and polar.ts:{128,154,178}.
+
+Issues noted (no fix needed):
+  1. Same two-Resend-instances issue flagged at Task 16 (packages/auth/src/index.ts:16 + invite-email.ts:12). Not fixed in Task 17 — out of scope, and the fix is a broader auth-module refactor (extract a shared `getResend()` or move both call sites through one module). Re-flagged for completeness.
+  2. The `setTimeout` is not `.unref()`'d. In a long-running HTTP server this is moot — the process is kept alive by the HTTP listener, not this timer. `.unref()` only matters for graceful shutdown with background tasks in flight. The finally-clear is the real guarantee; `.unref()` would be belt-and-braces with no functional benefit here. Skipped.
+  3. The timeout error is generic (`"Invite email send timed out after 30000ms"`) and logged via the same safe path as any other provider error. No client ever sees this — the caller is `void ...` — so there's no generic-message-to-client concern beyond what the fire-and-forget design already provides.
+  4. Could have passed `signal: AbortSignal.timeout(ms)` via a `as unknown as CreateEmailRequestOptions & { signal: AbortSignal }` cast, relying on Resend's internal options spread. Considered and rejected: (a) depends on SDK internals (`...options` in resend.ts post()) staying this way, (b) review-prompt.md TS section says `as` casts must be justified and this isn't — Promise.race is a standard-library primitive with no casting, (c) the cancellation benefit is marginal because the function is fire-and-forget and the fetch connection will be GC'd eventually regardless. Promise.race wins.
+  5. The outer try/catch already caught errors safely — the new try/finally is nested around the existing try/catch flow (try { race } catch { log } finally { clearTimeout }). JS's try/catch/finally semantics guarantee the finally runs on both the resolution and rejection paths.
+
+Library improvements made:
+  - None library-sourced. Resend doesn't provide a cancellation primitive. The implementation uses Node/web-standard `Promise.race` + `setTimeout` — there's no library-native version of this for this SDK. Review-prompt.md's library-leverage nudge for timeouts is "every `fetch()` needs `signal: AbortSignal.timeout(ms)`"; that applies when the caller owns the fetch, which is not the case here. For SDK-wrapped calls without signal support, Promise.race is the idiomatic fallback.
+
+Checklist verification (per review-prompt.md Backend + Library Leverage + Common Patterns):
+  - No N+1 queries — N/A (no DB access in this file).
+  - Appropriate database indexes — N/A.
+  - Pagination on list endpoints — N/A.
+  - Transactions for atomic operations — N/A.
+  - Use parameterized queries or ORM methods — N/A.
+  - Appropriate data types in schemas — N/A.
+  - Input validation on every route — N/A (this is a helper, not a route). The caller `sendInviteEmailIfPossible` at service.ts:248 validates via the service boundary + `AssetInviteRole` union narrowing.
+  - Auth on every endpoint — N/A.
+  - Rate limiting — N/A (no route added). Invite email is triggered by /api/assets/:id/members, which is in the crud bucket (verified Task 15).
+  - No sensitive data in logs — the catch block logs `to` (recipient email, intentional — needed for operator debug), `actorName` (user-supplied string, intentional — needed to identify which invite failed), and `errorMessage` via the safe `error instanceof Error ? error.message : String(error)` pattern. The full `error` object is never logged — Resend SDK errors can carry HTTP request bodies and response headers that we don't want in log shipping.
+  - No secrets in error responses — function returns `void`; no error reaches the client. Fire-and-forget design preserved.
+  - Proper HTTP status codes — N/A (no response).
+  - Webhook endpoints — N/A.
+  - Timeouts on external API calls — NOW PRESENT. 30s Promise.race-based bound. Matches the 30s convention for non-streaming APIs in the codebase.
+  - Idempotency — invite-email send has no idempotency key. Resend's SDK accepts one via `options.idempotencyKey`. Not added here because Task 17's spec is narrowly "timeout + generic failure path." Idempotency for send retries would require a stable key (likely `invite_id` if we have it, but this function doesn't receive that; it's keyed on to+actor+asset). Noted for future: the service-layer `invite()` has an `invite_id` via the asset_invite row; plumbing it into `sendInviteEmailIfPossible` would enable Resend-side dedup. Out of scope here.
+  - Connection pooling — unchanged. The Resend SDK uses the global undici pool.
+  - Environment variables — `RESEND_API_KEY` and `AUTH_FROM_EMAIL` read via `serverEnv()`. Unchanged.
+  - Reuse existing utilities — `buildInviteEmail` + `InviteEmailInput` from `./invite-email-template` are reused. Resend singleton pattern (`getResend`) is preserved. No new utility introduced — Promise.race is a language primitive.
+  - Exhaustive switch statements — N/A (no switches in this file).
+  - No magic numbers — `INVITE_EMAIL_TIMEOUT_MS` is a named constant with a doc comment.
+  - Proper error handling — try/catch logs safely, finally clears the timer. No errors propagate. The behavior contract (fire-and-forget) is unchanged; only the maximum wall-clock time is now bounded.
+  - Migrations safe — no schema changes.
+  - Common Patterns #1 (full-error logging) — already safe from Task 16 (uses `error instanceof Error ? error.message : String(error)`). Unchanged.
+  - Common Patterns #2 (missing timeouts) — RESOLVED for this file. This was the specific gap Task 17 was scoped to close.
+  - Common Patterns #3 (rate limiter) — N/A (not a route).
+  - Common Patterns #6 (duplicated logic) — none added. Resend-singleton-duplication across auth/src/index.ts and auth/src/invite-email.ts remains (noted Task 16); still out of scope for Task 17.
+  - Common Patterns #8 (async patterns) — the Promise.race does not create an unhandled rejection: both arms of the race reject via the same try/catch. The setTimeout is cleared in finally, so no dangling timer survives. No state updates after unmount (server-only, N/A).
+  - No `any` — zero. `ReturnType<typeof setTimeout>` is the idiomatic cross-platform type for the timer handle (Node + DOM both fit).
+  - No unjustified `!` — zero.
+  - `as` casts — zero added. Explicitly chose Promise.race over a `signal`-smuggling cast.
+  - SSR / frontend — N/A (server-only module in @milkpod/auth, used by @milkpod/api).
+  - pnpm check-types: clean. 8/8 tasks green. @milkpod/auth + @milkpod/api cache-miss (source changes); @milkpod/server + @milkpod/web cache-miss downstream. @milkpod/{env,db,sync,ai} cache-hit.
