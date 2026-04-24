@@ -63,7 +63,13 @@ function consume(
 
 // --- Route categorization ---
 
-type RateCategory = 'ingest' | 'chat' | 'crud' | 'auth' | 'billing';
+type RateCategory =
+  | 'ingest'
+  | 'chat'
+  | 'crud'
+  | 'auth'
+  | 'billing'
+  | 'replicache';
 
 const LIMITS = {
   ingest: { capacity: 10, refillRate: 10 / 60 },
@@ -71,6 +77,10 @@ const LIMITS = {
   crud: { capacity: 100, refillRate: 100 / 60 },
   auth: { capacity: 10, refillRate: 10 / 60 },
   billing: { capacity: 10, refillRate: 10 / 60 },
+  // Sync hot path: pull/push fire on every user action and every realtime
+  // poke. Sized ~6x crud so normal collab bursts never trip the limiter; a
+  // sustained >10 req/s per user is anomalous.
+  replicache: { capacity: 600, refillRate: 600 / 60 },
 } satisfies Record<RateCategory, BucketConfig>;
 
 function categorize(path: string): RateCategory | null {
@@ -78,6 +88,7 @@ function categorize(path: string): RateCategory | null {
   if (path.startsWith('/api/chat')) return 'chat';
   if (path.startsWith('/api/auth/')) return 'auth';
   if (path.startsWith('/api/billing')) return 'billing';
+  if (path.startsWith('/api/replicache')) return 'replicache';
   if (path.startsWith('/api/comments')) return 'ingest';
   if (path.startsWith('/api/admin/')) return 'ingest';
   if (path.startsWith('/api/shares/chat/')) return 'chat';
