@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { api } from '~/lib/api';
 import { queryKeys } from '~/lib/query-keys';
 import { toToastErrorMessage } from '~/lib/api';
+import { authClient } from '~/lib/auth/client';
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
@@ -25,6 +26,9 @@ interface CollaboratorsSectionProps {
 
 type InviteRole = 'editor' | 'viewer';
 
+const REVEAL_ON_HOVER_FOCUS =
+  'opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100';
+
 function getInitials(name: string, email: string): string {
   const source = name.trim() || email;
   const parts = source.split(/[\s@.]+/).filter(Boolean);
@@ -36,6 +40,8 @@ function getInitials(name: string, email: string): string {
 export function CollaboratorsSection({ assetId }: CollaboratorsSectionProps) {
   const queryClient = useQueryClient();
   const queryKey = queryKeys.assetMembers(assetId);
+  const { data: session } = authClient.useSession();
+  const currentUserId = session?.user?.id;
 
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<InviteRole>('editor');
@@ -72,6 +78,8 @@ export function CollaboratorsSection({ assetId }: CollaboratorsSectionProps) {
       setEmail('');
       await invalidate();
       toast.success('Invite sent');
+    } catch (err) {
+      toast.error(toToastErrorMessage(err, 'Failed to invite'));
     } finally {
       setInviting(false);
     }
@@ -89,6 +97,8 @@ export function CollaboratorsSection({ assetId }: CollaboratorsSectionProps) {
         return;
       }
       await invalidate();
+    } catch (err) {
+      toast.error(toToastErrorMessage(err, 'Failed to remove member'));
     } finally {
       setRemovingUserId(null);
     }
@@ -108,6 +118,8 @@ export function CollaboratorsSection({ assetId }: CollaboratorsSectionProps) {
         return;
       }
       await invalidate();
+    } catch (err) {
+      toast.error(toToastErrorMessage(err, 'Failed to revoke invite'));
     } finally {
       setRevokingInviteId(null);
     }
@@ -115,42 +127,57 @@ export function CollaboratorsSection({ assetId }: CollaboratorsSectionProps) {
 
   const members = data?.members ?? [];
   const pendingInvites = data?.pendingInvites ?? [];
+  // The server's service-layer authz (`AssetMemberService.invite/remove/revoke`)
+  // is the source of truth; this flag only shapes the UI so non-owners don't
+  // see controls that would 403. Until the session loads we pessimistically
+  // treat the caller as non-owner to avoid flashing the invite form.
+  const isOwner =
+    !!currentUserId &&
+    members.some((m) => m.userId === currentUserId && m.role === 'owner');
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        <Input
-          type="email"
-          placeholder="Add people by email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !inviting) handleInvite();
-          }}
-          disabled={inviting}
-          className="flex-1"
-        />
-        <Select
-          value={role}
-          onValueChange={(v) => setRole(v as InviteRole)}
-          disabled={inviting}
-        >
-          <SelectTrigger size="sm" className="w-24 shrink-0">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="editor">Editor</SelectItem>
-            <SelectItem value="viewer">Viewer</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button
-          size="sm"
-          onClick={handleInvite}
-          disabled={inviting || !email.trim()}
-        >
-          {inviting ? <Spinner className="size-4" /> : 'Invite'}
-        </Button>
-      </div>
+      {isOwner ? (
+        <div className="flex gap-2">
+          <Input
+            type="email"
+            placeholder="Add people by email"
+            aria-label="Invitee email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !inviting) handleInvite();
+            }}
+            disabled={inviting}
+            className="flex-1"
+          />
+          <Select
+            value={role}
+            onValueChange={(v) => setRole(v as InviteRole)}
+            disabled={inviting}
+          >
+            <SelectTrigger
+              size="sm"
+              className="w-24 shrink-0"
+              aria-label="Invitee role"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="editor">Editor</SelectItem>
+              <SelectItem value="viewer">Viewer</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleInvite}
+            disabled={inviting || !email.trim()}
+          >
+            {inviting ? <Spinner className="size-4" /> : 'Invite'}
+          </Button>
+        </div>
+      ) : null}
 
       {isLoading ? (
         <div className="flex justify-center py-2">
@@ -186,20 +213,23 @@ export function CollaboratorsSection({ assetId }: CollaboratorsSectionProps) {
                     <span className="text-xs capitalize text-muted-foreground">
                       {m.role}
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="size-7 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
-                      onClick={() => handleRemove(m.userId)}
-                      disabled={removingUserId === m.userId}
-                      aria-label={`Remove ${m.name}`}
-                    >
-                      {removingUserId === m.userId ? (
-                        <Spinner className="size-3.5" />
-                      ) : (
-                        <Trash2 className="size-3.5" />
-                      )}
-                    </Button>
+                    {isOwner ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={`size-7 p-0 text-muted-foreground hover:text-destructive ${REVEAL_ON_HOVER_FOCUS}`}
+                        onClick={() => handleRemove(m.userId)}
+                        disabled={removingUserId === m.userId}
+                        aria-label={`Remove ${m.name}`}
+                      >
+                        {removingUserId === m.userId ? (
+                          <Spinner className="size-3.5" />
+                        ) : (
+                          <Trash2 className="size-3.5" />
+                        )}
+                      </Button>
+                    ) : null}
                   </>
                 )}
               </li>
@@ -219,25 +249,28 @@ export function CollaboratorsSection({ assetId }: CollaboratorsSectionProps) {
                     Pending invite · {inv.role}
                   </p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-7 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
-                  onClick={() => handleRevokeInvite(inv.id)}
-                  disabled={revokingInviteId === inv.id}
-                  aria-label={`Revoke invite for ${inv.email}`}
-                >
-                  {revokingInviteId === inv.id ? (
-                    <Spinner className="size-3.5" />
-                  ) : (
-                    <Trash2 className="size-3.5" />
-                  )}
-                </Button>
+                {isOwner ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className={`size-7 p-0 text-muted-foreground hover:text-destructive ${REVEAL_ON_HOVER_FOCUS}`}
+                    onClick={() => handleRevokeInvite(inv.id)}
+                    disabled={revokingInviteId === inv.id}
+                    aria-label={`Revoke invite for ${inv.email}`}
+                  >
+                    {revokingInviteId === inv.id ? (
+                      <Spinner className="size-3.5" />
+                    ) : (
+                      <Trash2 className="size-3.5" />
+                    )}
+                  </Button>
+                ) : null}
               </li>
             ))}
           </ul>
 
-          {members.length === 1 && pendingInvites.length === 0 ? (
+          {isOwner && members.length === 1 && pendingInvites.length === 0 ? (
             <p className="pt-2 text-xs text-muted-foreground">
               Only you can see this. Invite someone above to collaborate.
             </p>
