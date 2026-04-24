@@ -105,7 +105,7 @@ export const assets = new Elysia({ prefix: '/api/assets' })
   .get(
     '/:id/search',
     async ({ params, query, user }) => {
-      const asset = await AssetService.getById(params.id, user.id);
+      const asset = await AssetService.getByIdAsMember(params.id, user.id);
       if (!asset) return status(404, { message: 'Asset not found' });
       const limit = query.limit ? Math.min(Math.max(Number(query.limit) || 50, 1), 100) : undefined;
       return TranscriptSearchService.search(

@@ -268,7 +268,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 
 ## Phase 6: Touched existing modules (regression surface)
 
-### Task 28: Audit assets/service.ts membership migration
+### ~~Task 28: Audit assets/service.ts membership migration~~ ✓
 
 **Files**: `packages/api/src/modules/assets/service.ts`
 **What**:

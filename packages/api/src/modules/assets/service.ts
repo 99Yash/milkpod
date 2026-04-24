@@ -298,6 +298,12 @@ export abstract class AssetService {
     return row ? AssetService.sanitize(row.asset) : null;
   }
 
+  /**
+   * Membership-scoped transcript read. Visible to the owner and every
+   * collaborator in `asset_member`. Owners keep access because the
+   * backfill (migrations 0031/0035) and `AssetService.create` seed an
+   * `asset_member` row with role='owner' for every asset.
+   */
   static async getWithTranscript(id: string, userId: string): Promise<AssetWithTranscript | null> {
     const rows = await db()
       .select({
@@ -306,9 +312,16 @@ export abstract class AssetService {
         segment: transcriptSegments,
       })
       .from(mediaAssets)
+      .innerJoin(
+        assetMembers,
+        and(
+          eq(assetMembers.assetId, mediaAssets.id),
+          eq(assetMembers.userId, userId),
+        ),
+      )
       .leftJoin(transcripts, eq(transcripts.assetId, mediaAssets.id))
       .leftJoin(transcriptSegments, eq(transcriptSegments.transcriptId, transcripts.id))
-      .where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId)))
+      .where(eq(mediaAssets.id, id))
       .orderBy(desc(transcripts.createdAt), desc(transcripts.id), transcriptSegments.startTime);
 
     if (rows.length === 0) return null;

@@ -3169,3 +3169,339 @@ Commit
 review(task 27): early-return client moment/comment update mutators on
 empty patch so local rowVersion can't drift ahead of server.
 
+
+
+================================================================================
+Task 28: Audit assets/service.ts membership migration
+================================================================================
+
+Files reviewed (diff vs main):
+  packages/api/src/modules/assets/service.ts   (+157 / -32)
+  packages/api/src/modules/assets/index.ts     (callers, unchanged by diff)
+  packages/api/src/modules/assets/model.ts     (+3 for scope filter)
+  packages/api/src/types.ts                    (+AssetRole/AssetOwner/AssetWithAccess)
+
+Scope of the review:
+  - Verify every owner-scoped (`eq(mediaAssets.userId, userId)`) query is
+    REPLACED where design intent is membership, not merely supplemented.
+  - list/get return shapes unchanged for the frontend contract.
+  - Members see shared assets; owners see theirs + shared-out.
+
+--------------------------------------------------------------------------------
+Per-method audit
+--------------------------------------------------------------------------------
+
+A. create (L160-176) — Transaction wraps the insert + owner membership
+   seed via `.onConflictDoNothing()`. Owner identity = authenticated user.
+   Owner-scope by construction (`userId` is the creator). CORRECT.
+
+B. list / search / listPage (L178-266) — Joins `assetMembers` on
+   `(assetId = mediaAssets.id, userId = caller)`, joins `user` on
+   `mediaAssets.userId` to hydrate owner display info. Returns
+   `AssetWithAccess[]` (Asset + role + owner). Scope filter via
+   `buildSearchConditions` adds `ne(assetMembers.role, 'owner')` when the
+   query param `scope === 'shared'`. Every accessible asset appears
+   regardless of who owns it; owners keep their own rows because
+   migration 0031/0035 backfills seeded owner `asset_member` rows.
+   CORRECT.
+
+C. getById (L268-274) — owner-scoped (`eq(mediaAssets.userId, userId)`)
+   intentionally. Callers (verified via grep):
+     - shares/index.ts:55   (public share link creation — owner only)
+     - collections/index.ts:78 (personal collection add — comment:
+       "Verify user owns the asset being added")
+     - chat/index.ts:30     (chat Q&A — sync-engine-plan.md L72 marks
+       viewer Q&A as v2 and out of scope for v1, so owner-only is the
+       current contract)
+     - assets/index.ts:137  (speaker-name update — transcript metadata
+       edit; owner-only pending editor-mode feature)
+     - assets/index.ts:169  (retry — owner pays the ingest cost)
+   All owner-only by v1 design. CORRECT.
+
+D. getByIdAsMember (L283-299) — new membership-scoped lookup for
+   collaborative reads/writes. Callers: moments/index.ts (generate+list),
+   comments/index.ts (generate+list). CORRECT.
+
+E. getWithTranscript (L301-329) — BEFORE this review, still owner-scoped
+   via `eq(mediaAssets.userId, userId)`. Callers:
+     - assets/index.ts:101  (GET /api/assets/:id — library detail view)
+     - moments/generate.ts:428 (internal, called after getByIdAsMember)
+     - comments/generate.ts:172 (internal, called after getByIdAsMember)
+   BUG: every caller is a member-read path. Shared members who saw the
+   asset in their library (via the new member-scoped list) would 404 on
+   click-through (fetchAssetDetail → /api/assets/:id), and moments/
+   comments generate would silently return [] (the guard was
+   `!assetData?.transcript`) because the inner owner check swallowed
+   non-owner members. FIXED — see Issue #1.
+
+F. getTranscriptLanguage / hasTranscriptSegments / hasEmbeddings /
+   deleteEmbeddingsForAsset / getStoredSegmentsForEmbedding (L351-437)
+   — operate on assetId only, no userId check. Called from the BullMQ
+   worker (ingest-worker.ts) and internal chat handler after an owner
+   check upstream. Correct: the caller has already authorized the
+   asset; these are pure data accessors.
+
+G. updateSpeakerNames (L439-467) — operates on assetId only. Caller
+   (assets/index.ts:137) guards with owner-scoped getById first. Scope
+   correctness is at the route, not the helper. CORRECT.
+
+H. update (L469-476) — owner-scoped. Title / source-url edits. Not in
+   the v1 collab surface (moments + comments only per
+   sync-engine-plan.md L47-51). Owner-only is intentional. CORRECT.
+
+I. remove (L478-484) — owner-scoped. Destroying the asset must be
+   owner-only. CORRECT.
+
+--------------------------------------------------------------------------------
+Callers audit (cross-module)
+--------------------------------------------------------------------------------
+
+/api/assets/:id/search (assets/index.ts:108) — used `getById` (owner).
+  Transcript search is a read operation; shared members reading a
+  transcript should be able to search it. FIXED — see Issue #2.
+
+/api/moments/generate, /api/moments (moments/index.ts) — already
+  authorize with getByIdAsMember. Downstream generateMoments called
+  getWithTranscript; after Issue #1 fix, the downstream call inherits
+  the member scope. CORRECT post-fix.
+
+/api/comments/generate, /api/comments (comments/index.ts) — same as
+  moments. CORRECT post-fix.
+
+/api/shares, /api/chat, /api/collections, /api/assets/:id/speakers,
+/api/assets/:id/retry — all retain owner-scoped getById per v1 design.
+CORRECT.
+
+--------------------------------------------------------------------------------
+Frontend contract verification
+--------------------------------------------------------------------------------
+
+  list / search / listPage previously returned Asset[]. Now return
+  AssetWithAccess[] = Asset & { role, owner: { id, name, image } }.
+  Additive: every original Asset field is preserved, two new fields
+  are added. Eden treaty inference picks the wider type up automatically.
+
+  Frontend consumers confirmed via grep on `asset.role` / `asset.owner`:
+    - apps/web/src/components/library/asset-card.tsx L115, 167-177 —
+      reads `asset.role === 'owner'` for the retry button and
+      `asset.owner.name/image` for the "Shared by" avatar. Positive
+      evidence the new shape is the intended frontend contract.
+
+  getById / getWithTranscript still return Asset / AssetWithTranscript
+  (no shape change). CORRECT.
+
+--------------------------------------------------------------------------------
+Issues found and fixed
+--------------------------------------------------------------------------------
+
+1. packages/api/src/modules/assets/service.ts:getWithTranscript (L301)
+   The WHERE predicate was `and(eq(mediaAssets.id, id),
+   eq(mediaAssets.userId, userId))` — owner-scoped. Every current caller
+   is a member-read path:
+     (a) GET /api/assets/:id — library detail view. The new member-
+         scoped list surfaces shared assets; click-through hit
+         fetchAssetDetail → /api/assets/:id → this method → 404 for a
+         non-owner member.
+     (b) generateMoments — moments/index.ts already gates with
+         getByIdAsMember; the downstream getWithTranscript in
+         generate.ts:428 bypassed the gate with its own owner check, so
+         non-owner members would pass the gate and then silently get
+         `[]` (the guard `!assetData?.transcript` treats 404 as "no
+         transcript").
+     (c) generateComments — identical issue to (b).
+
+   Fix: replace the `eq(mediaAssets.userId, userId)` filter with an
+   inner join on `assetMembers` keyed by `(assetId, userId)`. Owners
+   continue to pass because:
+     - 0031_backfill_asset_member_owners.sql seeded a role='owner'
+       asset_member row for every pre-existing asset;
+     - 0035_backfill_orphan_asset_member_owners.sql covered the
+       migration gap;
+     - AssetService.create now seeds the owner membership inside the
+       creation transaction (L170-173) for every new asset.
+   Same three callers auto-inherit the fix; no call-site changes needed.
+   Added a docstring explaining the scope expansion + why owners still
+   pass.
+
+   Sync-engine-plan.md L47-51 and L212 back the design: CVR is keyed
+   on asset_members, and "Pull ACL: pull query itself joins
+   asset_members, so the CVR snapshot is intrinsically user-filtered."
+   The REST read-path must align with that, not hold a stricter owner
+   gate.
+
+2. packages/api/src/modules/assets/index.ts:108 (/api/assets/:id/search)
+   Used AssetService.getById (owner-only). Transcript search is a
+   read-only operation over data the member already has access to
+   (moment/comment reads succeed on shared assets). A shared member
+   opening the detail view can call moment/comment list endpoints but
+   would be rejected from the transcript search endpoint — inconsistent
+   and user-visible as a broken search bar on shared videos.
+   Fix: switch to getByIdAsMember.
+
+--------------------------------------------------------------------------------
+Issues noted (no fix)
+--------------------------------------------------------------------------------
+
+1. list() embeds the userId filter in the innerJoin; search()/listPage()
+   put it in the WHERE via buildSearchConditions. Functionally
+   equivalent — the `(assetId, userId)` PK on asset_members guarantees
+   one row per accessible asset in either case — but the style
+   divergence is a minor readability snag. Not fixing: consolidating
+   would require either threading query params through list() (over-
+   generalization) or duplicating the buildSearchConditions prefix
+   (DRY violation). The current split is the best trade-off.
+
+2. `buildSearchConditions` returns `SQL[]` — loose typing. Drizzle
+   exports the more specific type through `SQL<unknown>[]`. The
+   existing file uses `SQL[]` and the compiler accepts it; tightening
+   is cosmetic and outside Task 28 scope (the surrounding code already
+   uses the same pattern for the cursor filter).
+
+3. `chat/index.ts:30` chat over a shared asset is v2 per sync-engine-
+   plan.md L72. Noted for the v2 plan; not a Task 28 concern. When v2
+   lands, chat should switch to getByIdAsMember with an asset-level
+   `allow_viewer_qa` flag (per the plan's L72 design sketch).
+
+4. `update` (L469) and `remove` (L478) keep owner-scope. If editors
+   are ever granted metadata-edit rights in a future phase, those
+   paths gain an `AsEditor` variant. Not in scope for v1.
+
+5. The `getByIdAsMember` method exists but `update` / `remove` /
+   `updateSpeakerNames` still compose owner-only `getById`. That's
+   deliberate per the v1 capability matrix (owner = all, editor =
+   moments+comments, viewer = moments+comments reads). Documented
+   in the docstring on `getByIdAsMember` (service.ts:276-282).
+
+--------------------------------------------------------------------------------
+Library-leverage review
+--------------------------------------------------------------------------------
+
+Drizzle ORM:
+  - Owner-info hydration is a straightforward `innerJoin(user, eq(user.id,
+    mediaAssets.userId))` on the list queries — could alternately use
+    Drizzle's relational query API with `with: { owner: true }` if
+    mediaAssets has a declared relation. Searched the schema file; the
+    current code uses select+join rather than the relational API
+    consistently across the module. Not refactoring here: the explicit
+    select shape is equally idiomatic, the join columns are narrow
+    (id/name/image only) so there's no "with + transform" penalty, and
+    Task 28's scope is scoping correctness, not query-style unification.
+    Noted for a future sweep if the `with:` pattern gets adopted
+    elsewhere in the module.
+
+  - `getWithTranscript` now composes an innerJoin (asset_members) +
+    two leftJoins (transcripts, transcript_segments). Single round-trip;
+    no N+1. Drizzle's `.orderBy(desc(transcripts.createdAt),
+    desc(transcripts.id), transcriptSegments.startTime)` gives a stable
+    sort for the downstream Map-based transcript selection logic.
+
+  - `.onConflictDoNothing()` in create() makes the owner-membership
+    seeding safe against concurrent requests (same asset, re-run
+    mutation) without needing explicit locking.
+
+Elysia:
+  - Route-level `{ auth: true }` on every handler (.post/.get/.patch/
+    .delete). Verified Task 12 checked Replicache-route guards; same
+    pattern applies here. No opportunity to collapse into a .guard()
+    block because every route consumes `user.id` via macro — moving to
+    a group guard would not de-duplicate material code.
+
+No hand-rolled logic that could be replaced by a library primitive
+was found in this task's scope.
+
+--------------------------------------------------------------------------------
+Checklist verification
+--------------------------------------------------------------------------------
+
+Backend — Queries & Data Access
+  - N+1: no loops with queries; list/search/listPage do single-query
+    joins; getWithTranscript is one round-trip with inner+left joins.
+  - Indexes: `asset_member (assetId, userId)` PK covers the primary
+    filters; `asset_member_user_idx` covers userId-only lookups
+    (Task 4 verified). `mediaAssets.userId` FK to user is used in the
+    user join — index on the FK side.
+  - Pagination: listPage uses cursor-based pagination with a sane max
+    (`Math.min(limit, 100)`). Correct.
+  - Transactions: create() wraps asset insert + member seed in a single
+    db.transaction. Atomic. Correct.
+  - Parameterized queries: all via Drizzle builder; no raw `sql\`\``
+    with string interpolation.
+  - Data types: createdAt is timestamp, role is enum, userId is text
+    FK — all appropriate.
+
+Backend — Security
+  - Input validation: Elysia `AssetModel.listQuery` / `AssetModel.create`
+    validate the route layer.
+  - Auth & authorization: every route has `auth: true`; every query
+    scopes by user.id (membership or ownership as documented).
+  - Rate limiting: `/api/assets` is a pre-existing prefix covered by
+    the rate limiter (out of Task 28's scope to re-verify; Task 13
+    covered Replicache routes explicitly).
+  - No sensitive data in logs: the DELETE route already uses
+    `err instanceof Error ? err.message : String(err)` for the upload-
+    cleanup warn (index.ts:161).
+  - HTTP status codes: 404 / 409 / 422 used correctly on the retry
+    handler; 404 on missing assets; no 200-for-error patterns.
+
+Backend — Resilience
+  - Timeouts: no external HTTP from this service.
+  - Idempotency: `.onConflictDoNothing()` on the owner-membership seed
+    in create makes re-runs safe.
+  - Connection pooling: Drizzle db() handles it; transactions release
+    connections via the library.
+
+Backend — Code Quality
+  - Reuse: buildSearchConditions is the shared filter helper;
+    toAssetWithAccess is the shared shape helper.
+  - Exhaustive switch: no switches in this file.
+  - Magic numbers: MAX_SPEAKER_NAME_ENTRIES / MAX_SPEAKER_ID_LENGTH /
+    MAX_SPEAKER_NAME_LENGTH are extracted (L24-26).
+  - Error handling: create throws with a contextual message; update /
+    remove return null on not-found for the route to 404.
+
+Frontend checklist
+  - N/A — Task 28 is a backend scope review.
+
+Common Patterns (prior-review nudges)
+  1. console.error full-object logging — N/A (no new logging in Task 28).
+  2. Missing timeouts — N/A.
+  3. New endpoints not rate-limited — N/A (no new routes).
+  4. Keyboard-invisible interactive elements — N/A.
+  5. Silent error swallowing — N/A (the refresh-asset .catch silence
+     at asset-shell.tsx:83 is documented as intentional "polling
+     failures are not actionable").
+  6. Duplicated logic across modules — one minor style split between
+     list and search/listPage noted above; not duplicating material
+     logic.
+  7. Missing exhaustive switches — N/A.
+  8. useEffect patterns — N/A (backend).
+  9. Webhook raw body — N/A.
+  10. Yearly/interval billing bugs — N/A.
+
+TypeScript Patterns (docs/typescript-patterns.md)
+  - AssetRole uses a literal string union ('owner' | 'editor' | 'viewer')
+    mirroring the DB enum; AssetWithAccess composes via intersection,
+    preserving Asset's field set. Correct use of intersection over
+    extension for nominal "base + additive" composition.
+  - toAssetWithAccess is a plain mapper, not a type guard; since the
+    input row is strongly typed from the select projection, no guard
+    is needed.
+  - SyncedNotification-style discriminated unions not applicable here
+    (Task 22 covers that).
+
+--------------------------------------------------------------------------------
+Build / type-check
+--------------------------------------------------------------------------------
+
+  pnpm build --filter=@milkpod/api: green (3.7s).
+  pnpm check-types: 8/8 green (6.6s, 5 cache hits + 3 fresh runs for the
+    touched packages @milkpod/api, apps/server, apps/web).
+  No regressions.
+
+--------------------------------------------------------------------------------
+Commit
+--------------------------------------------------------------------------------
+
+review(task 28): switch getWithTranscript and /assets/:id/search to
+membership scope so shared collaborators can load the asset detail view,
+transcript search, and moment/comment generation paths.
