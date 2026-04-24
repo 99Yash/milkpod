@@ -22,6 +22,53 @@ export interface SyncedMoment {
   rowVersion: number;
 }
 
+/**
+ * Shape of a notification in the Replicache client cache. Mirrors the
+ * discriminated union from `@milkpod/api/types` but kept here as a structural
+ * contract so the sync package doesn't import from the API package (which
+ * would pull server-only deps into the client bundle).
+ */
+export type SyncedNotificationRole = 'editor' | 'viewer';
+
+export interface SyncedNotificationActor {
+  id: string;
+  name: string;
+  image: string | null;
+}
+
+interface SyncedNotificationBase {
+  id: string;
+  recipientId: string;
+  actorId: string | null;
+  resourceType: 'asset';
+  resourceId: string;
+  /** Epoch ms. Null = unread. */
+  readAt: number | null;
+  /** Epoch ms. */
+  createdAt: number;
+  rowVersion: number;
+  actor: SyncedNotificationActor | null;
+}
+
+export type SyncedNotification = SyncedNotificationBase &
+  (
+    | {
+        type: 'asset.member.added';
+        body: { role: SyncedNotificationRole };
+      }
+    | {
+        type: 'asset.member.role_changed';
+        body: {
+          fromRole: SyncedNotificationRole;
+          toRole: SyncedNotificationRole;
+        };
+      }
+    | {
+        type: 'asset.member.removed';
+        body: Record<string, never>;
+      }
+  );
+
 export interface SyncedComment {
   id: string;
   assetId: string;

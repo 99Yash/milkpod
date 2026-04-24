@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   commentPrefix,
   momentPrefix,
+  notificationPrefix,
   type SyncedComment,
   type SyncedMoment,
+  type SyncedNotification,
 } from '@milkpod/sync';
 import { useReplicache } from './context';
 
@@ -58,6 +60,32 @@ export function useSubscribedComments(
   assetId: string,
 ): SubscriptionResult<SyncedComment> {
   return usePrefixSubscription<SyncedComment>(commentPrefix(assetId));
+}
+
+export interface NotificationsSubscription {
+  items: SyncedNotification[];
+  unreadCount: number;
+  ready: boolean;
+}
+
+/**
+ * Subscribe to the caller's notification stream. Always returns rows sorted
+ * newest-first by `createdAt`, with the unread count computed from the same
+ * data so the bell badge stays in sync without a second round-trip.
+ */
+export function useSubscribedNotifications(): NotificationsSubscription {
+  const { items, ready } = usePrefixSubscription<SyncedNotification>(
+    notificationPrefix,
+  );
+  const sorted = useMemo(
+    () => [...items].sort((a, b) => b.createdAt - a.createdAt),
+    [items],
+  );
+  const unreadCount = useMemo(
+    () => sorted.reduce((n, it) => n + (it.readAt == null ? 1 : 0), 0),
+    [sorted],
+  );
+  return { items: sorted, unreadCount, ready };
 }
 
 /**

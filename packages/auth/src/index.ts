@@ -6,6 +6,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { emailOTP } from 'better-auth/plugins/email-otp';
 import { Resend } from 'resend';
 import { buildOtpEmail } from './otp-email-template';
+import { claimPendingInvitesOnSignup } from './signup-hooks';
 
 let _auth: ReturnType<typeof betterAuth<BetterAuthOptions>> | undefined;
 
@@ -66,6 +67,12 @@ export function auth() {
               const prefix = user.email?.split('@')[0] ?? 'User';
               return { data: { ...user, name: prefix } };
             }
+          },
+          after: async (user) => {
+            // Convert any pending asset invites targeted at this email into
+            // real memberships + notifications. Fire-and-forget — signup must
+            // not fail because an invite claim hit a transient error.
+            await claimPendingInvitesOnSignup(user.id, user.email);
           },
         },
       },

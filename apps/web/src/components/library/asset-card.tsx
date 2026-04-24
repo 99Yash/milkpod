@@ -13,18 +13,24 @@ import {
 import { cn } from '~/lib/utils';
 import { api } from '~/lib/api';
 import { toast } from 'sonner';
-import type { Asset, AssetStatus } from '@milkpod/api/types';
+import type { Asset, AssetStatus, AssetWithAccess } from '@milkpod/api/types';
 import { isProcessingStatus, STALE_ASSET_THRESHOLD_MS } from '@milkpod/api/types';
+import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar';
 import { AddToCollectionDialog } from './add-to-collection-dialog';
 
 interface AssetCardProps {
-  asset: Asset;
+  /** Either the richer AssetWithAccess (from library) or a bare Asset. */
+  asset: Asset | AssetWithAccess;
   onSelect?: (assetId: string) => void;
   onRetry?: (assetId: string) => void;
   /** Real-time progress (0–100) from SSE, if available */
   progress?: number;
   /** Human-readable progress message from SSE */
   progressMessage?: string;
+}
+
+function hasAccess(a: Asset | AssetWithAccess): a is AssetWithAccess {
+  return 'role' in a && 'owner' in a;
 }
 
 const statusLabels: Record<AssetStatus, string> = {
@@ -104,6 +110,10 @@ export function AssetCard({
   const overallProgress = computeOverallProgress(status, progress);
   const displayLabel = progressMessage || statusLabels[status] || status;
 
+  // Retry is owner-only. If we don't know the role (bare Asset), assume owner
+  // for back-compat with callers that haven't migrated to AssetWithAccess.
+  const canRetry = !hasAccess(asset) || asset.role === 'owner';
+
   const handleRetry = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setRetrying(true);
@@ -154,6 +164,19 @@ export function AssetCard({
         <p className="text-sm font-medium text-foreground line-clamp-2">
           {asset.title}
         </p>
+        {hasAccess(asset) && asset.role !== 'owner' ? (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Avatar className="size-4">
+              {asset.owner.image ? (
+                <AvatarImage src={asset.owner.image} alt={asset.owner.name} />
+              ) : null}
+              <AvatarFallback className="text-[8px]">
+                {asset.owner.name.charAt(0).toUpperCase() || '?'}
+              </AvatarFallback>
+            </Avatar>
+            <span className="truncate">Shared by {asset.owner.name}</span>
+          </div>
+        ) : null}
         {isFailed && asset.lastError && (
           <p className="text-xs text-destructive line-clamp-2">{asset.lastError}</p>
         )}
@@ -179,7 +202,7 @@ export function AssetCard({
                 <FolderPlus className="size-3.5" />
               </Button>
             )}
-            {(isFailed || isStale) && (
+            {(isFailed || isStale) && canRetry && (
               <Button
                 variant="destructive"
                 size="sm"

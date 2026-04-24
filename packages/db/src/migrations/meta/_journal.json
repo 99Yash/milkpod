@@ -253,6 +253,20 @@
       "when": 1776867555730,
       "tag": "0035_backfill_orphan_asset_member_owners",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1777017958468,
+      "tag": "0036_nasty_tony_stark",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1777017972551,
+      "tag": "0037_notification_row_version_trigger",
+      "breakpoints": true
     }
   ]
 }

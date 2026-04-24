@@ -49,6 +49,7 @@ export const assetMembers = new Elysia({ prefix: '/api/assets' })
       const result = await AssetMemberService.removeMember(
         params.id,
         params.userId,
+        user.id,
       );
       if (!result.removed) {
         if (result.reason === 'owner_protected') {

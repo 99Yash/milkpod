@@ -3,7 +3,17 @@ import { replicacheClient, replicacheClientGroup } from '@milkpod/db/schemas';
 import { mutatorArgsSchemas, type MutatorName } from '@milkpod/sync';
 import { eq } from 'drizzle-orm';
 import { AssetMemberService } from '../asset-members/service';
+import { emitReplicachePokes } from '../../events/replicache-events';
 import { MutatorForbiddenError, serverMutators } from './server-mutators';
+
+/**
+ * Mutators that operate on user-scoped data (no assetId in args). They
+ * require a user-channel poke after success rather than asset-member fanout.
+ */
+const USER_SCOPED_MUTATORS: ReadonlySet<MutatorName> = new Set([
+  'notificationMarkRead',
+  'notificationMarkAllRead',
+]);
 
 export interface PushMutationV1 {
   id: number;
@@ -89,6 +99,7 @@ export async function handlePush(
   }
 
   const affectedAssetIds = new Set<string>();
+  let userPokeNeeded = false;
 
   for (const mutation of mutations) {
     if (!isKnownMutator(mutation.name)) {
@@ -148,8 +159,14 @@ export async function handlePush(
             set: { lastMutationId: mutation.id, lastModified: new Date() },
           });
       });
-      const assetId = (parsed.data as { assetId: string }).assetId;
-      affectedAssetIds.add(assetId);
+      if (USER_SCOPED_MUTATORS.has(mutation.name)) {
+        // User-scoped: the only client that needs to rebase is the caller's
+        // other sessions. No assetId to fan out against.
+        userPokeNeeded = true;
+      } else {
+        const assetId = (parsed.data as { assetId: string }).assetId;
+        affectedAssetIds.add(assetId);
+      }
     } catch (err) {
       if (err instanceof MutatorForbiddenError) {
         console.warn('[replicache:push] ACL rejected', mutation.name, err.message);
@@ -171,6 +188,19 @@ export async function handlePush(
   // the authoritative server state. Also picks up LMID advancements.
   for (const assetId of affectedAssetIds) {
     await AssetMemberService.pokeMembers(assetId);
+  }
+  if (userPokeNeeded) {
+    // User-scoped mutators only need the caller's other sessions to rebase.
+    // Empty assetId is fine — the SSE handler filters on userId, and the
+    // client listener triggers a pull regardless of assetId payload.
+    try {
+      emitReplicachePokes([userId], '');
+    } catch (err) {
+      console.warn(
+        '[replicache:push] user poke failed:',
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   return {};
