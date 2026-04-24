@@ -12,8 +12,8 @@ import { user } from './auth';
 
 /**
  * Finite set of notification types. Extend as new categories are added
- * (mentions, comment replies, transcript ready, etc.). The `body` shape for
- * each type lives in the discriminated union exported by the API package.
+ * (mentions, comment replies, transcript ready, etc.). `NotificationBody`
+ * below keeps the row-level discriminant + payload pair in sync with `type`.
  */
 export type NotificationType =
   | 'asset.member.added'
@@ -21,6 +21,23 @@ export type NotificationType =
   | 'asset.member.removed';
 
 export type NotificationResourceType = 'asset';
+
+/**
+ * Non-owner roles a user can hold on an asset. Mirrors `assetMemberRoleEnum`
+ * minus 'owner' — notification payloads never reference owner transitions
+ * because ownership isn't granted via the member flow.
+ */
+type NotifiableRole = 'editor' | 'viewer';
+
+/**
+ * Payload stored in `notification.body`, keyed by the row's `type`. The
+ * union branches MUST stay in lockstep with `NotificationType` — extend both
+ * together. Use `NotificationBodyFor<T>` when you know the concrete type.
+ */
+export type NotificationBody =
+  | { role: NotifiableRole }
+  | { fromRole: NotifiableRole; toRole: NotifiableRole }
+  | Record<string, never>;
 
 export const notifications = pgTable(
   'notification',
@@ -38,10 +55,11 @@ export const notifications = pgTable(
     resourceType: text('resource_type').$type<NotificationResourceType>(),
     resourceId: text('resource_id'),
     /**
-     * Type-specific payload. The shape is narrowed by `type` in the public
-     * discriminated union; stored as opaque JSON at the DB level.
+     * Type-specific payload. The concrete shape is narrowed by `type` in the
+     * public discriminated union (see `@milkpod/api` `Notification`); the
+     * column-level type is the union of all branches.
      */
-    body: jsonb('body').notNull().default({}),
+    body: jsonb('body').$type<NotificationBody>().notNull().default({}),
     readAt: timestamp('read_at'),
     rowVersion: integer('row_version').notNull().default(0),
     ...lifecycle_dates,

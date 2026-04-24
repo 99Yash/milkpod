@@ -44,7 +44,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - `asset_member`: PK covers `(assetId, userId)`; verify `userId`-only lookup has an index (per schema line 37 it does — confirm it matches the service's queries)
 - Replicache CVR / client-group tables: index on whatever pull queries by
 
-### Task 5: Verify `$type<>()` on new jsonb columns
+### ~~Task 5: Verify `$type<>()` on new jsonb columns~~ ✓
 
 **Files**: `packages/db/src/schema/{notifications,replicache,asset-members,comments,moments}.ts`
 **What**:
