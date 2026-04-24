@@ -28,6 +28,11 @@ export function buildInviteEmail(input: InviteEmailInput): InviteEmailTemplate {
   const title = escapeHtml(input.assetTitle);
   const role = input.role;
   const cta = input.requiresSignup ? 'Accept invite & sign up' : 'Open in Milkpod';
+  // Defense-in-depth: today's callers build targetUrl from a trusted origin
+  // plus encodeURIComponent-wrapped email/ID, so quotes are already %-encoded.
+  // Escaping here ensures the href stays safe if the construction rules ever
+  // drift (e.g. someone adds an unencoded display name to the query string).
+  const href = escapeHtml(input.targetUrl);
 
   const subject = `${input.actorName} invited you to “${input.assetTitle}” on Milkpod`;
 
@@ -46,7 +51,7 @@ export function buildInviteEmail(input: InviteEmailInput): InviteEmailTemplate {
               You've been added as <strong>${role}</strong> on <strong>“${title}”</strong>.
             </p>
             <p style="margin:0 0 24px 0;">
-              <a href="${input.targetUrl}" style="display:inline-block;padding:10px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:500;">
+              <a href="${href}" style="display:inline-block;padding:10px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:500;">
                 ${cta}
               </a>
             </p>
