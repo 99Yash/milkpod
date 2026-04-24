@@ -267,6 +267,13 @@
       "when": 1777017972551,
       "tag": "0037_notification_row_version_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1777622400000,
+      "tag": "0038_sync_row_version_distinctness_guard",
+      "breakpoints": true
     }
   ]
 }

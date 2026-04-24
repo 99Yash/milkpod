@@ -1,0 +1,40 @@
+Replicache PR review progress log.
+
+Populated per-iteration by loop.sh. Format for each task:
+
+## Task N: <title>
+
+Issues found and fixed:
+  1. path/to/file.ts:LINE — <what was wrong> — <what you did>
+
+Issues noted (no fix needed):
+  1. path/to/file.ts:LINE — <why acceptable>
+
+Library improvements made:
+  - <replaced hand-rolled X with library primitive Y>
+
+Checklist verification:
+  - [checklist item] — [evidence]
+
+---
+
+## Task 1: Verify row-version triggers fire on INSERT + UPDATE with distinctness guard
+
+Issues found and fixed:
+  1. packages/db/src/migrations/0033_sync_row_version_triggers.sql — `bump_row_version()` had no no-op guard. Combined with `lifecycle_dates.updatedAt` using Drizzle's `$onUpdate(() => new Date())`, every `.update()` call auto-bumps `updated_at`, so even a semantic no-op UPDATE (e.g. momentUpdate called twice with identical payload) would satisfy a vanilla `WHEN (OLD.* IS DISTINCT FROM NEW.*)` clause and bump `row_version`, emitting a redundant `put` on the next CVR diff. Fixed by adding migration 0038_sync_row_version_distinctness_guard.sql which replaces the function with a body-level guard: compare `to_jsonb(NEW) - 'row_version' - 'updated_at'` vs OLD's equivalent, and short-circuit when they're IS NOT DISTINCT FROM. Exclude the metadata columns so Drizzle-generated timestamp bumps don't count as a change. Also updated _journal.json (idx 38) and copied 0037_snapshot.json → 0038_snapshot.json (schema unchanged; new snapshot id + prevId chain).
+
+Issues noted (no fix needed):
+  1. packages/db/src/migrations/0033_sync_row_version_triggers.sql:10-22 — Trigger is `BEFORE UPDATE` only (no INSERT). Confirmed intentional and correct: the in-migration comment explains it, and pull.ts step 6 relies on presence-in-current vs presence-in-prev (not row_version) to detect new rows. A new row's row_version defaults to 0, and the CVR diff emits `put` because `prevSnapshot.{table}[id]` is undefined, independent of row_version value. Adding `BEFORE INSERT` would be redundant.
+  2. packages/api/src/modules/replicache/pull.ts:141-183 — Pull publishes three entity types: assetMoments, assetComments, notifications. All three schemas have `row_version integer NOT NULL DEFAULT 0` (comments.ts:42-43, moments.ts:54-55, notifications.ts:46) and all three have a bump trigger (0033 for moments/comments, 0037 for notifications). Cross-reference complete — no synced entity is missing a trigger.
+
+Library improvements made:
+  - None applicable — the fix is a Postgres trigger function, not a library call. Verified the `to_jsonb(record) - 'col'` pattern is idiomatic (confirmed via mcp__grep__searchGitHub in kuestcom/prediction-market audit trigger).
+
+Checklist verification:
+  - BEFORE INSERT OR UPDATE — UPDATE covered by 0033/0037. INSERT deliberately omitted; CVR diff emits puts on presence, not row_version. Design documented in 0033 header comment.
+  - No-op UPDATE guard — 0038 adds body-level guard excluding updated_at + row_version. Handles Drizzle $onUpdate auto-bump case where a simple WHEN clause would not.
+  - Every synced table has a trigger — assetMoments (0033), assetComments (0033), notifications (0037). All three match the entities emitted by pull.ts.
+  - Appropriate data types — rowVersion is integer (not bigint; 2^31 updates per row is effectively infinite for this domain). jsonb body column on notifications uses `.$type<>()`-style narrowing via NotificationType discriminants at the serialization layer (service.ts).
+  - Idempotent DDL — 0033 uses CREATE OR REPLACE FUNCTION + DROP TRIGGER IF EXISTS. 0037 does the same. 0038 reuses CREATE OR REPLACE FUNCTION — safe to re-run.
+  - Migration safety for zero-downtime — 0038 is a function replacement only; no table locks, no column changes. Safe on large tables.
+  - pnpm check-types: clean (8/8 tasks green).
