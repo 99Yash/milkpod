@@ -31,6 +31,15 @@ import { AssetMemberService } from '../asset-members/service';
  */
 
 /**
+ * Drizzle handle type that accepts either the pool (`db()`) or a tx passed
+ * to `.transaction(async (tx) => …)`. Extracted via Parameters so it tracks
+ * the driver version automatically.
+ */
+type DbHandle =
+  | ReturnType<typeof db>
+  | Parameters<Parameters<ReturnType<typeof db>['transaction']>[0]>[0];
+
+/**
  * Thrown by write-side auth checks (see {@link requireEditor}). The push
  * handler catches this, logs, and advances LMID so Replicache drops the
  * rejected mutation instead of retrying forever.
@@ -42,9 +51,21 @@ export class MutatorForbiddenError extends Error {
   }
 }
 
-/** Every asset the user can see — i.e. every asset they have an asset_member row on. */
-export async function getAccessibleAssetIds(userId: string): Promise<string[]> {
-  const rows = await db()
+/**
+ * Every asset the user can see — i.e. every asset they have an asset_member
+ * row on. Accepts an optional Drizzle handle so the caller can run the
+ * membership read inside their transaction. pull.ts passes its tx so the
+ * membership read is scheduled on the same connection as the subsequent
+ * moments/comments reads, narrowing the window in which a concurrent
+ * revocation could cause an inconsistent view within a single pull. (Race
+ * is self-healing regardless — next pull emits the correct `del` ops — but
+ * tighter timing means fewer stale responses to begin with.)
+ */
+export async function getAccessibleAssetIds(
+  userId: string,
+  dbHandle: DbHandle = db(),
+): Promise<string[]> {
+  const rows = await dbHandle
     .select({ assetId: assetMembers.assetId })
     .from(assetMembers)
     .where(eq(assetMembers.userId, userId));
