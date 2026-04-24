@@ -7,11 +7,16 @@ import {
   replicacheClientGroup,
   user as userTable,
 } from '@milkpod/db/schemas';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Comment, Moment, Notification } from '../../types';
 import { NotificationService } from '../notifications/service';
 import { getAccessibleAssetIds } from './authz';
-import { getCVRStore, type CVRSnapshot } from './cvr';
+import {
+  getCVRStore,
+  type CVRRow,
+  type CVRSnapshot,
+  type NotificationCVRRow,
+} from './cvr';
 
 export type PatchOp =
   | { op: 'put'; key: string; value: Record<string, unknown> }
@@ -81,6 +86,22 @@ function serializeComment(
   };
 }
 
+function serializeNotification(n: Notification): Record<string, unknown> {
+  return {
+    id: n.id,
+    recipientId: n.recipientId,
+    actorId: n.actorId,
+    resourceType: n.resourceType,
+    resourceId: n.resourceId,
+    readAt: n.readAt,
+    createdAt: n.createdAt,
+    rowVersion: n.rowVersion,
+    actor: n.actor,
+    type: n.type,
+    body: n.body,
+  };
+}
+
 export async function handlePull(
   userId: string,
   body: PullRequestBody,
@@ -134,7 +155,12 @@ export async function handlePull(
       notifications: {},
     };
 
-    // 4. Query current visible rows.
+    // 4. Query current visible rows. Each query ORDERs BY a stable id
+    //    column so the patch array is deterministic: two pulls on identical
+    //    (cookie, clientGroupID, userID, DB state) produce byte-identical
+    //    output, and the stored snapshot's insertion order is stable across
+    //    writes — which in turn keeps the del-loop iteration order
+    //    (Object.entries over prev snapshot) deterministic.
     const assetIds = await getAccessibleAssetIds(userId);
     let currentMoments: Moment[] = [];
     let currentComments: Comment[] = [];
@@ -148,7 +174,8 @@ export async function handlePull(
             isNull(assetMoments.dismissedAt),
             isNull(assetMoments.deletedAt),
           ),
-        );
+        )
+        .orderBy(asc(assetMoments.id));
       currentComments = await tx
         .select()
         .from(assetComments)
@@ -158,7 +185,8 @@ export async function handlePull(
             isNull(assetComments.dismissedAt),
             isNull(assetComments.deletedAt),
           ),
-        );
+        )
+        .orderBy(asc(assetComments.id));
     }
 
     // 4b. Notifications — user-scoped, always included regardless of which
@@ -181,7 +209,8 @@ export async function handlePull(
       })
       .from(notifications)
       .leftJoin(userTable, eq(userTable.id, notifications.actorId))
-      .where(eq(notifications.recipientId, userId));
+      .where(eq(notifications.recipientId, userId))
+      .orderBy(asc(notifications.id));
     const currentNotifications = notificationRows
       .map((r) => NotificationService.serialize(r))
       .filter((n): n is Notification => n !== null);
@@ -206,17 +235,19 @@ export async function handlePull(
       }
     }
 
-    // 6. Build the next snapshot and diff patch.
-    const nextSnapshot: CVRSnapshot = {
-      moments: {},
-      comments: {},
-      notifications: {},
-    };
+    // 6. Build the next snapshot and diff patch. Accumulate into locals so
+    //    we can assemble `nextSnapshot` once at the end — avoids `!`
+    //    non-null assertions on the optional `notifications` / `clients`
+    //    fields (they're optional in CVRSnapshot for backwards-compat with
+    //    Redis-persisted snapshots from earlier schema versions).
+    const nextMoments: Record<string, CVRRow> = {};
+    const nextComments: Record<string, CVRRow> = {};
+    const nextNotifications: Record<string, NotificationCVRRow> = {};
     const patch: PatchOp[] = [];
     if (isColdSync) patch.push({ op: 'clear' });
 
     for (const m of currentMoments) {
-      nextSnapshot.moments[m.id] = { v: m.rowVersion, a: m.assetId };
+      nextMoments[m.id] = { v: m.rowVersion, a: m.assetId };
       const prevRow = prevSnapshot.moments[m.id];
       if (!prevRow || prevRow.v !== m.rowVersion) {
         patch.push({
@@ -227,7 +258,7 @@ export async function handlePull(
       }
     }
     for (const c of currentComments) {
-      nextSnapshot.comments[c.id] = { v: c.rowVersion, a: c.assetId };
+      nextComments[c.id] = { v: c.rowVersion, a: c.assetId };
       const prevRow = prevSnapshot.comments[c.id];
       if (!prevRow || prevRow.v !== c.rowVersion) {
         patch.push({
@@ -239,30 +270,30 @@ export async function handlePull(
     }
     const prevNotifications = prevSnapshot.notifications ?? {};
     for (const n of currentNotifications) {
-      nextSnapshot.notifications![n.id] = { v: n.rowVersion };
+      nextNotifications[n.id] = { v: n.rowVersion };
       const prevRow = prevNotifications[n.id];
       if (!prevRow || prevRow.v !== n.rowVersion) {
         patch.push({
           op: 'put',
           key: `notification/${n.id}`,
-          value: n as unknown as Record<string, unknown>,
+          value: serializeNotification(n),
         });
       }
     }
     // Deletions: rows present in prev snapshot but not current.
     if (!isColdSync) {
       for (const [id, row] of Object.entries(prevSnapshot.moments)) {
-        if (!nextSnapshot.moments[id]) {
+        if (!nextMoments[id]) {
           patch.push({ op: 'del', key: `moment/${row.a}/${id}` });
         }
       }
       for (const [id, row] of Object.entries(prevSnapshot.comments)) {
-        if (!nextSnapshot.comments[id]) {
+        if (!nextComments[id]) {
           patch.push({ op: 'del', key: `comment/${row.a}/${id}` });
         }
       }
       for (const id of Object.keys(prevNotifications)) {
-        if (!nextSnapshot.notifications![id]) {
+        if (!nextNotifications[id]) {
           patch.push({ op: 'del', key: `notification/${id}` });
         }
       }
@@ -272,14 +303,16 @@ export async function handlePull(
     //    rejects responses where the cookie is unchanged but
     //    `lastMutationIDChanges` is non-empty, so we track LMIDs in the CVR
     //    and emit only the diffs. A cookie bump means either the patch is
-    //    non-empty OR at least one client's LMID moved.
+    //    non-empty OR at least one client's LMID moved. ORDER BY id keeps
+    //    the snapshot's `clients` insertion order stable.
     const clients = await tx
       .select({
         id: replicacheClient.id,
         lastMutationId: replicacheClient.lastMutationId,
       })
       .from(replicacheClient)
-      .where(eq(replicacheClient.clientGroupId, clientGroupID));
+      .where(eq(replicacheClient.clientGroupId, clientGroupID))
+      .orderBy(asc(replicacheClient.id));
     const currentLmids: Record<string, number> = {};
     for (const c of clients) currentLmids[c.id] = c.lastMutationId;
     const prevLmids = prevSnapshot.clients ?? {};
@@ -287,7 +320,13 @@ export async function handlePull(
     for (const [cid, lmid] of Object.entries(currentLmids)) {
       if (prevLmids[cid] !== lmid) lastMutationIDChanges[cid] = lmid;
     }
-    nextSnapshot.clients = currentLmids;
+
+    const nextSnapshot: CVRSnapshot = {
+      moments: nextMoments,
+      comments: nextComments,
+      notifications: nextNotifications,
+      clients: currentLmids,
+    };
 
     // 8. Bump cvr_version when anything changed (patch or LMID). No change →
     //    return prev cookie with empty patch + empty LMID changes.
