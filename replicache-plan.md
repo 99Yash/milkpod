@@ -244,7 +244,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Any inline object/array in a `useSubscribe` arg is a new reference every render → resubscribe storm
 - Memoize, or pass primitives only
 
-### Task 26: Enforce packages/sync client-safety
+### ~~Task 26: Enforce packages/sync client-safety~~ ✓
 
 **Files**: `packages/sync/src/**/*`, `packages/sync/package.json`
 **What**:

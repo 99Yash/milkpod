@@ -2459,3 +2459,233 @@ Build / type-check:
     regressions. The `as T[]` cast resolves cleanly because
     ReadonlyJSONValue[] is structurally assignable to the SyncedMoment/
     Comment/Notification-typed arrays consumers use.
+
+
+================================================================================
+Task 26: Enforce packages/sync client-safety
+================================================================================
+
+Scope: packages/sync/src/**/* + packages/sync/package.json. Verify the sync
+package stays client-safe so apps/web can import the barrel without dragging
+server-only code (drizzle, @milkpod/db, @ai-sdk/*, node: builtins) into the
+browser bundle. Per docs/package-boundaries.md, every src/*.ts must be free of
+server imports since the `./*` wildcard in exports exposes every file.
+
+Pre-fix library-API verification:
+  - Read packages/config/tsconfig.base.json — `verbatimModuleSyntax: true`
+    means `import type` statements are erased at build time. Confirmed by
+    reading the compiled dist/moments-*.js (head -5):
+      `import { i as momentKey } from "./keys-...js";`
+      `import { z } from "zod";`
+    …no runtime replicache import.
+  - Grep'd the compiled dist/**/*.js for replicache|drizzle|@milkpod/db|
+    @ai-sdk → zero matches. Type-only imports of replicache correctly drop
+    out of the runtime bundle.
+  - Read packages/sync/package.json. `dependencies: { zod: catalog: }`.
+    `devDependencies: { @milkpod/config, replicache ^15.3.0, tsdown }`.
+    `peerDependencies: { replicache ^15 (optional), typescript ^5 }`.
+  - Confirmed sibling package @milkpod/ai uses the same exports shape (. +
+    ./* wildcard with types → dist, default → src), so the pattern is
+    repo-standard. Next.js resolves the src/*.ts via its built-in
+    workspace-package transpilation.
+  - Confirmed `replicache` is NOT in pnpm-workspace.yaml's catalog (only
+    apps/web declares it at ^15.3.0). The sync package's devDep pins the
+    same version manually. Not a problem for this task, but noted.
+  - Read packages/api/src/modules/replicache/server-mutators.ts:7-16 —
+    imports from @milkpod/sync are type-only (CommentCreateArgs, etc.),
+    so backend consumers don't need replicache at runtime. This is
+    exactly why `peerDependenciesMeta.replicache.optional: true` is
+    correct: backend pulls schemas/types without bringing replicache.
+
+Diff scope: packages/sync is entirely new on this branch (no pre-existing
+files to regress). 6 files total: package.json, tsconfig.json,
+tsdown.config.ts, src/index.ts, src/keys.ts, src/types.ts, src/mutators/
+{index,comments,moments,notifications}.ts.
+
+Issues found and fixed:
+
+  None. All four mandated greps come back clean:
+    1. `rg "@milkpod/db" packages/sync/src` → 0 matches.
+    2. `rg "drizzle-orm" packages/sync/src` → 0 matches.
+    3. `rg "@ai-sdk/" packages/sync/src` → 0 matches.
+    4. `rg "node:" packages/sync/src` (bonus — node: builtins would
+       also poison the bundle) → 0 matches.
+
+  Additionally scanned for fetch / console / process / require / fs / path /
+  crypto — all zero. The package is pure data-transformation (key builders,
+  zod schemas, replicache-tx mutators); no side effects, no IO.
+
+  Import inventory across all src files:
+    - src/index.ts: re-exports keys, types, mutators
+    - src/keys.ts: no imports
+    - src/types.ts: no imports (pure type declarations)
+    - src/mutators/index.ts: internal imports only (./moments, ./comments,
+      ./notifications)
+    - src/mutators/{moments,comments,notifications}.ts: `zod` (runtime),
+      `import type { WriteTransaction } from 'replicache'` (erased),
+      `../keys`, `../types`
+    - Inline `import('replicache').ReadonlyJSONValue` casts in mutator
+      bodies — type-only positions, also erased.
+
+  Package-deps verification:
+    - `zod` (dependency, catalog ^4.1.11) — client-safe; emits runtime
+      code that ships with the bundle.
+    - `replicache` (devDep ^15.3.0 + optional peerDep ^15) — type-only
+      at runtime for our code; apps/web brings its own runtime replicache.
+    - `@milkpod/config` (devDep workspace:*) — tsconfig extension only,
+      no code.
+    - `tsdown` (devDep catalog) — build tool.
+    - `typescript` (peerDep ^5) — non-emitted.
+  Nothing in this dependency closure drags in pg/dns/node-fetch/etc.
+
+Issues noted (no fix needed):
+
+  1. Task 26 brief suggested `rg "@milkpod/db" packages/sync/src → zero`
+     as the first check. It passes. For completeness I also ran the check
+     against packages/sync/package.json and tsconfig — zero references in
+     either. No server-only package leaks through the dep closure.
+
+  2. `replicache` is not in pnpm-workspace.yaml's `catalog:`. apps/web
+     declares it as a direct dep at ^15.3.0 and packages/sync's devDep
+     mirrors that version. If web bumps replicache, sync's dev/peer
+     ranges may drift. Adding `replicache` to the catalog would eliminate
+     the drift risk. Out of scope for Task 26 (which is scoped to
+     client-safety), noting for future hygiene.
+
+  3. `peerDependenciesMeta.replicache.optional: true` is unusual but
+     correct given the dual-consumer pattern (web uses clientMutators
+     with a runtime replicache; backend uses type-only MutatorName /
+     mutatorArgsSchemas without replicache). Setting `optional: false`
+     would nag apps/server at install time with "missing peer". Leaving
+     as-is.
+
+  4. The `as unknown as import('replicache').ReadonlyJSONValue` casts in
+     the three mutator files (moments.ts:49, comments.ts:46/74,
+     notifications.ts:33/65) are justified double-casts. Replicache's
+     `ReadonlyJSONValue` is a union that excludes non-JSON types
+     (functions, symbols, Date). Our `SyncedMoment` / `SyncedComment` /
+     `SyncedNotification` interfaces are structurally JSON-safe but
+     TypeScript can't prove it without an unsafe assertion. This is a
+     documented pattern for writing to Replicache. Same reasoning for
+     the `as SyncedX | undefined` on `tx.get(key)`.
+
+  5. notifications.ts:52-54 uses `for await (const entry of tx.scan(...)
+     .entries())` to iterate + mutate. Task 25 replaced a similar
+     for-await with `.toArray()` in the hooks.ts subscription body, but
+     that was collecting values for a read. Here the loop is a write
+     path: each iteration conditionally calls `tx.set`. Using
+     `.toArray()` would read all entries into memory first, which saves
+     nothing (we still need to walk + write) and loses the streaming
+     benefit of the native iterator. Leaving as-is — idiomatic Replicache
+     mutator usage.
+
+  6. The `docs/package-boundaries.md` rule "Keep client-safe modules free
+     of server imports. If a file is reachable from apps/web … it must
+     not import @ai-sdk/openai, @ai-sdk/google, drizzle-orm, or any
+     @milkpod/db module" — packages/sync satisfies this transitively.
+     Every file is reachable from apps/web via the barrel; every file is
+     clean.
+
+  7. tsconfig.base.json `lib: ["ESNext"]` (no DOM). The mutators and keys
+     don't reach for DOM APIs — all operations are via Replicache's
+     WriteTransaction / ReadonlyJSONValue abstractions. Compatible with
+     both browser and Node (server-side validation via zod schemas).
+
+Library-leverage review:
+
+  Replicache v15.3.0:
+    - `WriteTransaction` import is type-only, correct.
+    - `tx.set` / `tx.get` / `tx.del` / `tx.scan(opts).entries()` all used
+      idiomatically. Alternatives considered:
+        - Replicache's `deepClone` for building the updated object —
+          unnecessary, spread + override reconstructs the shape fine.
+        - `experimentalDiff` — lower-level primitive, not a mutator
+          concern.
+    - No library primitive is reimplemented. Schemas (zod) and Replicache
+      tx methods compose cleanly.
+  Zod v4:
+    - Schemas use `.min()` / `.max()` bounds (strings and numbers),
+      `.nullable()`, `.optional()`, `.enum()`, `.int().positive()`. All
+      first-class zod APIs; no hand-rolled validators.
+  Drizzle / Elysia / AI SDK / Eden Treaty / Better Auth: N/A. Absent by
+  design — that's what Task 26 verifies.
+
+Checklist verification:
+
+  Backend (Queries, Security, Resilience, Code Quality):
+    - All N/A. packages/sync is client+server-boundary-crossing but
+      contains no direct DB queries, no network calls, no auth. Server
+      mutators (packages/api/src/modules/replicache/server-mutators.ts)
+      use the shared schemas for arg validation; that's the only
+      security-relevant interaction and it's covered by Task 12's auth
+      guard + Task 7's push transaction.
+
+  Frontend / React Patterns: N/A (no React).
+  Frontend / TypeScript:
+    - No `any`: VERIFIED (only the justified `as unknown as
+      ReadonlyJSONValue` double-casts, per Issues Noted #4).
+    - No unjustified non-null assertions: VERIFIED — none present.
+    - Exhaustive switches: N/A (no switches in this task's files;
+      parseKey uses if/else on a narrow 3-case discriminant which could
+      be switched but is equally exhaustive via the early returns).
+    - Type guards over casts: the casts here are write-to-store (our
+      type → ReadonlyJSONValue) and read-from-store (unknown JSON →
+      our type). Neither can be a runtime type guard without bundling
+      a full schema walk on every read; the structural contract
+      enforced by the server mutators + zod validation on push is the
+      runtime guarantee.
+  Frontend / Tailwind v4: N/A.
+  Frontend / Accessibility: N/A.
+  Frontend / Error Handling & UX:
+    - No console.log: VERIFIED.
+    - Error handling: mutator bodies are pure. Errors surface to
+      Replicache's caller (the push pipeline), which reports back via
+      PushResponse. No silent swallow.
+    - No secrets: VERIFIED.
+
+  Library Leverage & Composability:
+    - Replicache: tx.get / tx.set / tx.del / tx.scan().entries() used
+      natively. WriteTransaction imported as a type. No library
+      primitive re-implemented.
+    - Zod: schemas declarative, no custom validators.
+    - Package layout: barrel + wildcard exports follows the repo-wide
+      pattern (matches @milkpod/ai). TypeScript resolves types from
+      dist/, runtime resolves to src/ — consistent.
+
+  TypeScript Patterns:
+    - Discriminated union: `SyncedNotification` uses a `type` discriminant
+      (3 variants), consumed exhaustively by notification-row.tsx (Task 22
+      fixed that). The mutators don't branch on the type — they just copy
+      the existing object with updates, so no switch needed here.
+    - `as const` + `keyof typeof`: SYNC_ENTITIES in keys.ts uses this
+      pattern to derive the SyncEntity union.
+    - Generic constraints: mutator args are zod-inferred types; schemas
+      and functions share the same source-of-truth declaration.
+    - Branded types: not used; IDs are plain strings. Could brand
+      AssetId / MomentId / CommentId / NotificationId for extra safety,
+      but none of the current call sites swap them in error-prone ways.
+      Not in scope.
+
+  Common Patterns (from prior reviews):
+    1. console.error full-object logging: N/A (no logging in this file).
+    2. Missing fetch/AI-SDK timeouts: N/A (no fetch / AI calls).
+    3. New endpoints not rate-limited: N/A (not routing).
+    4. opacity-0 group-hover missing group-focus-within: N/A.
+    5. Silent error swallowing: N/A (errors bubble to Replicache).
+    6. Duplicated logic: the three mutator files share the
+       `as unknown as ReadonlyJSONValue` idiom. Factoring into a helper
+       `writeRow<T>(tx, key, value: T)` would centralize the cast but
+       also erase the per-entity type narrowing. Not a net win — the
+       boilerplate is ~1 line per call and the explicit cast documents
+       the Replicache boundary. Leaving.
+    7. Missing exhaustive switches: N/A.
+    8. useEffect async patterns: N/A.
+    9. Webhook raw body: N/A.
+    10. Yearly/interval billing: N/A.
+
+Build / type-check:
+  - pnpm --filter @milkpod/sync check-types: green (no output).
+  - pnpm check-types: 8/8 green, 8 cached (FULL TURBO). No regressions.
+  - Runtime bundle inspection (packages/sync/dist/*.js):
+      `rg "replicache|drizzle|@milkpod/db|@ai-sdk" packages/sync/dist/*.js`
+      → zero matches. Type-only imports correctly stripped.
