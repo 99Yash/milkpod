@@ -293,32 +293,62 @@ export abstract class AssetMemberService {
     const callerRole = await AssetMemberService.getRole(assetId, removedBy);
     if (callerRole !== 'owner') return { removed: false, reason: 'forbidden' };
 
-    const role = await AssetMemberService.getRole(assetId, userIdToRemove);
-    if (!role) return { removed: false, reason: 'not_found' };
-    if (role === 'owner') return { removed: false, reason: 'owner_protected' };
+    // Last-owner protection. Every asset has exactly one `role = 'owner'`
+    // membership row (seeded in `AssetService.create`; the invite endpoint
+    // refuses `owner` at the model layer and the `asset_invite` CHECK
+    // constraint refuses it at the DB). This service is the choke point
+    // that preserves that invariant on the way out.
+    //
+    // The target-row `SELECT ... FOR UPDATE` lives inside the tx so the
+    // role check + delete + notification commit atomically — a future
+    // role-change API (see notifications' `asset.member.role_changed`) can
+    // be added without re-introducing a TOCTOU window where two concurrent
+    // callers each observe the victim as 'editor' and race a demote past
+    // the owner check.
+    const result = await db().transaction(
+      async (tx): Promise<RemoveMemberResult> => {
+        const [target] = await tx
+          .select({ role: assetMembers.role })
+          .from(assetMembers)
+          .where(
+            and(
+              eq(assetMembers.assetId, assetId),
+              eq(assetMembers.userId, userIdToRemove),
+            ),
+          )
+          .for('update');
 
-    await db().transaction(async (tx) => {
-      await tx
-        .delete(assetMembers)
-        .where(
-          and(
-            eq(assetMembers.assetId, assetId),
-            eq(assetMembers.userId, userIdToRemove),
-          ),
-        );
-      await NotificationService.record(tx, {
-        type: 'asset.member.removed',
-        recipientId: userIdToRemove,
-        actorId: removedBy,
-        assetId,
-      });
-    });
+        if (!target) return { removed: false, reason: 'not_found' };
+        if (target.role === 'owner') {
+          return { removed: false, reason: 'owner_protected' };
+        }
+
+        await tx
+          .delete(assetMembers)
+          .where(
+            and(
+              eq(assetMembers.assetId, assetId),
+              eq(assetMembers.userId, userIdToRemove),
+            ),
+          );
+        await NotificationService.record(tx, {
+          type: 'asset.member.removed',
+          recipientId: userIdToRemove,
+          actorId: removedBy,
+          assetId,
+        });
+        return { removed: true };
+      },
+    );
+
+    if (!result.removed) return result;
 
     // Poke the removed user so their Replicache pulls immediately and CVR
     // diffing emits `del` ops for every row on this asset. Without this, the
     // removed user's client would keep showing the asset's rows until their
     // next manual pull or page reload. The same poke also delivers the
-    // "removed" notification row to their bell.
+    // "removed" notification row to their bell. Post-commit only — pokes
+    // inside an uncommitted tx cause the client to pull stale data.
     try {
       emitReplicachePokes([userIdToRemove], assetId);
     } catch (err) {
@@ -327,7 +357,7 @@ export abstract class AssetMemberService {
         err instanceof Error ? err.message : String(err),
       );
     }
-    return { removed: true };
+    return result;
   }
 
   static async revokeInvite(

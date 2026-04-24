@@ -165,7 +165,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Wrap provider call in `AbortSignal.timeout(30_000)`
 - Catch provider errors — log safely server-side (`err instanceof Error ? err.message : String(err)`), return a generic "Could not send invite" to the client. No raw provider error bubbled.
 
-### Task 18: Verify last-owner protection
+### ~~Task 18: Verify last-owner protection~~ ✓
 
 **Files**: `packages/api/src/modules/asset-members/service.ts`
 **What**:
