@@ -126,7 +126,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Dedicated bucket with a generous limit — these hit on every user action — separate from chat/ingest/crud
 - User-keyed, not IP (per existing pattern)
 
-### Task 14: Prepare the hot-path pull query
+### ~~Task 14: Prepare the hot-path pull query~~ ✓
 
 **Files**: `packages/api/src/modules/replicache/pull.ts`, `cvr.ts`
 **What**:

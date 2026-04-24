@@ -19,6 +19,62 @@ import {
 } from './cvr';
 import type { ReplicacheModel } from './model';
 
+/**
+ * Module-scope prepared statement for the per-user notifications row-version
+ * lookup. This runs on every pull and has a fixed shape (single `userId`
+ * placeholder, joined actor metadata, ordered by id), so it's the ideal
+ * candidate for PostgreSQL's server-side plan cache — each PoolClient
+ * prepares the statement on first use and reuses the cached plan on every
+ * subsequent pull from that same client.
+ *
+ * Build via Drizzle's `.prepare('name')` with `sql.placeholder('userId')` so
+ * the SQL string is generated once at first call (not per-pull) and the
+ * `name` passed to node-postgres triggers the server-side PREPARE/EXECUTE
+ * protocol rather than unnamed parsed-per-call statements.
+ *
+ * Lazy-initialized so the prepared statement isn't constructed until the DB
+ * pool is live (mirrors the `getCVRStore()` pattern in cvr.ts). The prepared
+ * statement binds to the pool session, so `execute()` checks out its own
+ * connection separate from the caller's `db.transaction(...)`; that's safe
+ * here because the notifications read is pure-read and the pull operates
+ * under READ COMMITTED, which takes a fresh per-statement snapshot whether
+ * the read runs on the tx's connection or a different pool connection —
+ * semantically equivalent.
+ */
+let _notificationsPullStmt:
+  | ReturnType<typeof buildNotificationsPullStmt>
+  | undefined;
+
+function buildNotificationsPullStmt() {
+  return db()
+    .select({
+      id: notifications.id,
+      recipientId: notifications.recipientId,
+      type: notifications.type,
+      actorId: notifications.actorId,
+      resourceType: notifications.resourceType,
+      resourceId: notifications.resourceId,
+      body: notifications.body,
+      readAt: notifications.readAt,
+      rowVersion: notifications.rowVersion,
+      createdAt: notifications.createdAt,
+      actorName: userTable.name,
+      actorImage: userTable.image,
+    })
+    .from(notifications)
+    .leftJoin(userTable, eq(userTable.id, notifications.actorId))
+    .where(eq(notifications.recipientId, sql.placeholder('userId')))
+    .orderBy(asc(notifications.id))
+    .prepare('replicache_pull_notifications');
+}
+
+function getNotificationsPullStmt() {
+  if (!_notificationsPullStmt) {
+    _notificationsPullStmt = buildNotificationsPullStmt();
+  }
+  return _notificationsPullStmt;
+}
+
 export type PatchOp =
   | { op: 'put'; key: string; value: Record<string, unknown> }
   | { op: 'del'; key: string }
@@ -194,25 +250,15 @@ export async function handlePull(
     // 4b. Notifications — user-scoped, always included regardless of which
     // asset the client is viewing. The join to `user` pulls actor display
     // info so the bell can render avatar + name without a separate fetch.
-    const notificationRows = await tx
-      .select({
-        id: notifications.id,
-        recipientId: notifications.recipientId,
-        type: notifications.type,
-        actorId: notifications.actorId,
-        resourceType: notifications.resourceType,
-        resourceId: notifications.resourceId,
-        body: notifications.body,
-        readAt: notifications.readAt,
-        rowVersion: notifications.rowVersion,
-        createdAt: notifications.createdAt,
-        actorName: userTable.name,
-        actorImage: userTable.image,
-      })
-      .from(notifications)
-      .leftJoin(userTable, eq(userTable.id, notifications.actorId))
-      .where(eq(notifications.recipientId, userId))
-      .orderBy(asc(notifications.id));
+    // Executed via the module-scope prepared statement (see
+    // `getNotificationsPullStmt` above) so every PoolClient reuses the
+    // cached plan across pulls. Runs on a pool connection rather than `tx`
+    // — semantically equivalent under READ COMMITTED (per-statement
+    // snapshot), and the notifications read doesn't depend on any earlier
+    // mutation in this transaction.
+    const notificationRows = await getNotificationsPullStmt().execute({
+      userId,
+    });
     const currentNotifications = notificationRows
       .map((r) => NotificationService.serialize(r))
       .filter((n): n is Notification => n !== null);
