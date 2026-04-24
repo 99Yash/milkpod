@@ -227,7 +227,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 
 ## Phase 5: Client-side Replicache integration
 
-### Task 24: SSR-guard Replicache init; memoize provider; per-user DB name
+### ~~Task 24: SSR-guard Replicache init; memoize provider; per-user DB name~~ ✓
 
 **Files**: `apps/web/src/lib/replicache/client.ts`, `context.tsx`
 **What**:

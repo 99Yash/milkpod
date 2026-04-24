@@ -1895,3 +1895,331 @@ pnpm check-types: clean (8/8 green, 7 cached + web rebuild). No
 regressions. The bell compiles cleanly with the new safe-error
 catch arms; `err` is typed as `unknown` in both, which the
 `instanceof Error` narrow handles correctly.
+
+================================================================
+Task 24: SSR-guard Replicache init; memoize provider; per-user DB name
+================================================================
+
+Files audited:
+  - apps/web/src/lib/replicache/client.ts (diff vs main: new file, 66 lines)
+  - apps/web/src/lib/replicache/context.tsx (diff vs main: new file, 71 lines)
+  - packages/env/src/client.ts (touched for dead-code cleanup tied to
+    a deprecated Replicache option — see issue #1 below)
+
+Reference consulted:
+  - node_modules/.pnpm/replicache@15.3.0/node_modules/replicache/
+    out/replicache.d.ts (Replicache class, constructor options,
+    lifecycle callbacks, helpers like getDefaultPuller, makeIDBName)
+  - .../out/chunk-C1TWiB5U.d.ts (ReplicacheOptions, RequestOptions,
+    HTTPRequestInfo, PullerResultV1, Puller, Pusher types)
+  - apps/web/next.config.ts (reactCompiler: true; reactStrictMode
+    default-on since Next 13 means useEffect cleanups double-invoke
+    in dev)
+  - apps/web/src/components/layouts/dashboard.tsx (provider mount:
+    wraps the whole dashboard with userId from getServerSession)
+
+Issues found and fixed:
+
+  1. apps/web/src/lib/replicache/client.ts:1,10 +
+     packages/env/src/client.ts:4-8,19-20
+     — Code set `licenseKey` on the Replicache options, reading
+     `NEXT_PUBLIC_REPLICACHE_LICENSE_KEY` with a fall-through to
+     `TEST_LICENSE_KEY`. Per the ReplicacheOptions `.d.ts` (chunk-
+     C1TWiB5U.d.ts:1256-1260) AND the `TEST_LICENSE_KEY` export
+     (replicache.d.ts:401-402), BOTH symbols are marked
+     `@deprecated` in v15.3.0: "Replicache no longer uses a license
+     key. This option is now ignored and will be removed in a
+     future release."
+     Fix: removed the `licenseKey` option from createMilkpodReplicache,
+     removed the `TEST_LICENSE_KEY` import and its hand-written
+     explainer comment, dropped `NEXT_PUBLIC_REPLICACHE_LICENSE_KEY`
+     from the clientEnv Zod schema (packages/env/src/client.ts —
+     that env var had a single consumer and it was going away). The
+     @milkpod/env package was rebuilt (pnpm --filter @milkpod/env
+     build) so downstream web app sees the updated client.d.ts.
+     Library-leverage note: we are no longer passing a deprecated
+     option; the library will enforce its own future removal without
+     affecting us. Before cleanup: 3 lines of code and 3 lines of
+     comment dedicated to an option the library explicitly ignores.
+     After: 0 lines. Pattern #6 from prior reviews (duplicated /
+     leftover logic).
+
+  2. apps/web/src/lib/replicache/client.ts:31-39 (puller) +
+     :48-60 (pusher)
+     — Neither the custom puller's fetch nor the custom pusher's
+     fetch had a timeout. This is exactly pattern #2 from the high-
+     signal nudges ("ANY external HTTP call without a timeout is a
+     bug"). Replicache's own `RequestOptions` (.d.ts:1054-1065)
+     only exposes `minDelayMs` / `maxDelayMs` — those gate retry
+     backoff, NOT the per-request timeout — so we have to bake the
+     timeout into the puller/pusher fetch calls ourselves.
+     Consequence of no timeout: under a hung connection (a routing
+     black hole or a misbehaving proxy) the fetch can stall
+     indefinitely; Replicache's retry backoff only starts once a
+     request RESOLVES, so the sync pipeline freezes.
+     Fix: added `signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)`
+     to both fetches with a module-scope constant
+     `REQUEST_TIMEOUT_MS = 30_000` (30s — matches the 30s/60s/300s
+     values the checklist prescribes for APIs).
+     Verified via node_modules lib check: `AbortSignal.timeout` is
+     Baseline-Widely-Available and resolves in the project's TS
+     build (pnpm check-types clean).
+
+  3. apps/web/src/lib/replicache/client.ts:30-45 (puller),
+     47-61 (pusher)
+     — The fetches were called WITHOUT a try/catch wrapper. If the
+     fetch throws (DNS failure, offline, aborted by new timeout,
+     etc.) the puller/pusher itself throws. Replicache wraps a
+     thrown puller in a `PullError` (replicache.d.ts:392-399) and
+     does retry internally — but that path logs a noisy error for
+     every transient failure, and it doesn't give the library the
+     structured `httpRequestInfo` it prefers for backoff decisions.
+     The library's Puller contract (chunk-C1TWiB5U.d.ts:425-444)
+     makes the `response` field optional precisely so a puller can
+     signal failure via `httpRequestInfo` while still cleanly
+     returning.
+     Fix: wrapped each fetch in try/catch. On catch, return
+     `{ httpRequestInfo: { httpStatusCode: 0, errorMessage: err
+     instanceof Error ? err.message : String(err) } }` — matches
+     the HTTPRequestInfo type shape (chunk-C1TWiB5U.d.ts:345-348),
+     uses status 0 as the conventional "never got a response"
+     marker, and applies the same safe-error-format as pattern #1
+     (never dump the raw err object which might serialize into
+     logs the DB URL, request state, etc.).
+
+Issues noted (no fix applied — deliberate decisions):
+
+  1. apps/web/src/lib/replicache/context.tsx:26-42 — The effect
+     uses a `lastUserIdRef` plus the guard `if
+     (lastUserIdRef.current === userId && rep) return;` to avoid
+     recreating a Replicache instance when React re-runs the effect.
+     I analyzed this against React StrictMode (default-on in Next
+     13+, which this app runs) and the React Compiler (enabled in
+     next.config.ts):
+       - In StrictMode dev-mode remount simulation, the effect body
+         re-runs with the SAME state snapshot (`rep` = null from
+         closure). The guard's `&& rep` clause therefore fails, so
+         the effect DOES create a new instance — after the previous
+         one was closed by the cleanup. Net result: one live
+         instance per cycle. Correct.
+       - On genuine userId change, `lastUserIdRef.current` still
+         holds the OLD userId, so the guard's first clause fails
+         and we fall through to creation. Correct.
+       - The ref therefore doesn't actually prevent StrictMode-
+         induced double-creation, because rep is null in the closure
+         during those re-runs. The useRef is effectively dead
+         plumbing — it's neither correctness-preserving nor harmful.
+     I considered removing the ref and simplifying to just the
+     standard create-on-userId-change pattern, but leaving it
+     matches the author's defensive intent and avoids churn; touching
+     it would also invalidate the `// eslint-disable-next-line
+     react-hooks/exhaustive-deps` comment which guards intentional
+     stale-`rep` access. Out of scope for Task 24 (the gate is
+     "memoize provider; close on unmount/user change; per-user DB
+     name" — all satisfied).
+
+  2. apps/web/src/lib/replicache/context.tsx:44-62 — The SSE-to-
+     poke effect sets `es.onerror` to a no-op with a comment
+     explaining that EventSource auto-reconnects. Long term, a
+     permanently unreachable server means the browser silently
+     retries forever with exponential backoff and the user never
+     sees a "disconnected" indicator. We COULD surface this (e.g.
+     a toast, or wire it into a larger "sync status" UI), but that
+     requires UX design that's out of Task 24's scope. Noted here
+     so Task 33/34 / a future UX pass can pick it up.
+
+  3. apps/web/src/lib/replicache/context.tsx:38-40 — Cleanup is
+     `void instance.close()` (fire-and-forget). `close()` is async
+     (replicache.d.ts:275: `close(): Promise<void>`). If userId
+     changes immediately, the new `createMilkpodReplicache` is
+     called before the old instance finishes closing. Replicache
+     tolerates two instances on the SAME `name` (they cooperatively
+     share the IDB database per chunk-C1TWiB5U.d.ts:1114-1122), so
+     there's no corruption risk. Swallowing the close() promise is
+     the same pattern the Replicache React examples use. Leaving.
+
+  4. apps/web/src/lib/replicache/client.ts:8 — `const env =
+     clientEnv();` runs at module scope. Because client.ts is
+     imported only from context.tsx (which has `'use client'`),
+     Next.js bundles it client-side; the module-scope call only
+     runs in the browser. Even if it ran on the server during
+     build-time analysis, `NEXT_PUBLIC_*` vars are inlined at build
+     time so the call is safe. Keeping the env read at module scope
+     because the value is constant for the process lifetime and
+     pulling it into each call would mean re-running Zod parsing
+     on every instantiation.
+
+  5. apps/web/src/lib/replicache/client.ts:25-26 — We pass both
+     `pullURL` and `pushURL` AND a custom `puller`/`pusher`. Per
+     the library, when custom puller/pusher are provided,
+     pullURL/pushURL become informational only (readable via
+     rep.pullURL getter). They're harmless. Leaving for discoverability
+     — someone looking at the constructor config immediately sees
+     the endpoints.
+
+Library-leverage review (applied while reading the .d.ts):
+
+  - `getDefaultPuller` (replicache.d.ts:18-21) — available but takes
+    `{ pullURL, auth }` and uses the `auth` header, not
+    `credentials: 'include'`. Our server expects session cookies
+    via Better Auth's cookie — not a bearer token in `auth`. So a
+    custom puller IS justified. Verified by reading the function
+    signature.
+  - `RequestOptions.minDelayMs / maxDelayMs` (.d.ts:1054-1065) —
+    intentionally not tuned; defaults are fine for our SSE-driven
+    pull cadence (we call rep.pull() manually on poke and on init,
+    not on an interval).
+  - Lifecycle callbacks we could wire for richer UX (out of Task
+    24 scope):
+      - `onUpdateNeeded` (.d.ts:206-225) — default reloads the
+        page on schema/version mismatch. Fine for now.
+      - `onClientStateNotFound` (.d.ts:194-204) — default reloads.
+        Fine for now.
+      - `onOnlineChange` (.d.ts:250-262) — could surface a "sync
+        paused" indicator. Deferred to a UX pass.
+      - `onSync(bool)` — could power a subtle spinner. Deferred.
+    Noting these so a future task (e.g. Task 34's UX sweep or a
+    polish task after merge) has the menu of hooks pre-surveyed.
+  - `makeIDBName` (replicache.d.ts:117-123) — not needed by us
+    directly; Replicache derives the IDB database name from `name`
+    + schemaVersion automatically. Our `milkpod-${userId}` already
+    produces per-user isolation via this function.
+
+Checklist verification (Task 24 scope):
+
+  Backend / Queries & Data Access, Security, Resilience,
+  Code Quality:
+    - N/A (Task 24 is entirely client-side wiring; relevant server
+      audits landed under Tasks 6-14).
+
+  Frontend / React Patterns:
+    - No redundant state: VERIFIED. `rep` is kept in state because
+      consumers need to re-render on instantiation; the ref is
+      for userId bookkeeping. Nothing is stored that could be
+      derived.
+    - Cleanup in useEffects: VERIFIED. Effect 1 returns
+      `void instance.close()`. Effect 2 returns `es.close()`. Both
+      cleanup paths run on unmount and on dep change.
+    - Unnecessary re-renders: `rep` and `userId` are the only deps.
+      React Compiler (enabled in next.config.ts) handles memoization
+      of the surrounding JSX automatically.
+    - Keys: N/A (no list rendering in this module).
+    - SSR guard: VERIFIED. `new Replicache()` is invoked ONLY
+      inside a useEffect body (context.tsx:33). The module itself
+      is transitively `'use client'` via its only importer.
+      IndexedDB is never touched on the server.
+      `AbortSignal.timeout` / `fetch` / `EventSource` references
+      are all inside functions invoked only client-side.
+    - No dangerouslySetInnerHTML: VERIFIED.
+    - Dead code: FIXED — removed licenseKey code path (see issue
+      #1). All remaining exports are consumed.
+
+  Frontend / TypeScript:
+    - No `any`: VERIFIED.
+    - No unjustified non-null assertions: VERIFIED (no `!` in
+      either file).
+    - Exhaustive switch statements: N/A (no switches here).
+    - Type guards over casts: VERIFIED — the only assertion-like
+      construct is `satisfies PullerResultV1` (not a cast; it's
+      shape validation that preserves the literal type).
+
+  Frontend / Tailwind v4: N/A (no JSX styling in these files).
+
+  Frontend / Accessibility: N/A (no interactive UI in these files;
+    the context provider renders only Children).
+
+  Frontend / Error Handling & UX:
+    - No console.log in production: VERIFIED.
+    - Proper error handling beyond console.log: FIXED — the
+      puller/pusher now return structured HTTPRequestInfo on
+      network failure, including a safely-formatted errorMessage.
+      The EventSource onerror is a deliberate no-op (see Issues
+      Noted #2). Replicache handles retry / backoff / logging
+      itself via the library's own error pipeline.
+    - Handle all states: N/A at this module level; consumers
+      (e.g. the notification-bell tested in Task 23) handle
+      loading/empty/populated via useSubscribe.
+    - No secrets in client code: VERIFIED — NEXT_PUBLIC_ vars are
+      the only env reads, and they're by definition public. No
+      bearer tokens or API keys.
+
+  Library Leverage & Composability:
+
+    Replicache v15.3.0:
+      - Dropped deprecated licenseKey + TEST_LICENSE_KEY usage
+        (library-leverage fix, see issue #1).
+      - Custom puller/pusher justified over getDefaultPuller because
+        we need session cookies rather than a bearer token.
+      - AbortSignal.timeout is the standard web-platform primitive
+        for request timeouts (issue #2) — we do NOT re-implement
+        it as a race-between-promise-and-setTimeout wrapper.
+      - Structured error return via HTTPRequestInfo instead of
+        letting fetch throws bubble to PullError (issue #3) —
+        matches the library's preferred error contract.
+      - Per-user `name` (milkpod-${userId}) uses Replicache's
+        documented convention (chunk-C1TWiB5U.d.ts:1111-1125).
+
+    Elysia / AI SDK / Eden Treaty / Drizzle: N/A.
+
+    React / Next.js:
+      - useEffect + useState + fetch anti-pattern: N/A — data
+        fetching goes through Replicache's pull/push pipeline,
+        NOT through effect-triggered fetches. The only useEffects
+        in context.tsx are (1) lifecycle management for the
+        Replicache instance itself and (2) SSE subscription. Both
+        are legitimate effects (side-effect resource management,
+        not data fetching).
+      - React Compiler: enabled; no manual useCallback/useMemo
+        required in this file.
+      - 'use client' boundary: correctly placed in context.tsx
+        (line 1); client.ts inherits the client-only scope via
+        its single caller.
+
+  TypeScript Patterns:
+    - `satisfies`: used on PullerResultV1 and PullerResultV0
+      returns to validate shape while preserving the optional-
+      field literal type. Correct application per
+      docs/typescript-patterns.md.
+    - Discriminated unions / exhaustive switches / branded types /
+      generic constraints / AsyncState<T>: N/A for this module.
+
+  Common Patterns (from prior reviews):
+    1. console.error full-object logging: N/A — we don't console.
+       error in this module; the catch blocks serialize err safely
+       into the returned errorMessage string via the `err
+       instanceof Error ? err.message : String(err)` pattern.
+    2. Missing fetch timeouts: FIXED (see issue #2). Both the
+       puller and pusher fetches now carry
+       AbortSignal.timeout(30_000).
+    3. New endpoints not in rate limiter: N/A (no new routes in
+       this task; /api/replicache/pull and /api/replicache/push
+       were rate-limited under Task 13).
+    4. opacity-0 group-hover missing group-focus-within: N/A (no
+       Tailwind classes here).
+    5. Silent error swallowing: the EventSource onerror is a
+       deliberate no-op with an explanatory comment (see Issues
+       Noted #2). The puller/pusher catches return structured
+       httpRequestInfo to Replicache, which handles retry/logging
+       internally. No user-visible silent swallow.
+    6. Duplicated logic: the puller and pusher catch blocks are
+       structurally similar (fetch → httpRequestInfo). Extracting
+       a helper would save ~8 lines but obscure the distinct
+       response shapes (PullerResultV1 vs pusher's return type).
+       Leaving the duplication in place — it's load-bearing
+       clarity, not bloat.
+    7. Missing exhaustive switches: N/A.
+    8. useEffect async patterns: VERIFIED. Both effects are
+       synchronous bodies (no `async` effect function, which would
+       break the cleanup contract). The `void instance.pull()`
+       and `void instance.close()` calls fire-and-forget; any
+       errors from those are handled within Replicache itself
+       (retry on pull, no-op on already-closed on close).
+    9. Webhook raw body: N/A.
+    10. Yearly/interval billing bugs: N/A.
+
+Build / type-check:
+  - pnpm --filter @milkpod/env build: success (rebuilt client.d.ts
+    without NEXT_PUBLIC_REPLICACHE_LICENSE_KEY in the schema type).
+  - pnpm check-types: 8/8 green, 4 cached + 4 rebuilt. No
+    regressions. TypeScript resolves AbortSignal.timeout correctly
+    against the DOM lib.
