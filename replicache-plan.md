@@ -117,7 +117,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Add TypeBox validators: `t.Object({ cookie, clientGroupID: t.String(), mutations: t.Array(...) })` on push; cookie + clientGroupID on pull
 - Reject oversized pushes (e.g. `mutations.length > 100`) with 413
 
-### Task 13: Register Replicache routes in the rate limiter
+### ~~Task 13: Register Replicache routes in the rate limiter~~ ✓
 
 **Files**: `packages/api/src/middleware/rate-limit.ts`, `packages/api/src/modules/replicache/index.ts`
 **What**:
