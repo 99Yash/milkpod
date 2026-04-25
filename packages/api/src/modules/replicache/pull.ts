@@ -97,7 +97,7 @@ export type PatchOp =
 export type PullRequestBody = ReplicacheModel.Pull;
 
 export interface PullResponse {
-  cookie: number;
+  cookie: ReplicacheModel.PullCookie;
   lastMutationIDChanges: Record<string, number>;
   patch: PatchOp[];
 }
@@ -209,10 +209,16 @@ export async function handlePull(
         .onConflictDoNothing();
     }
 
-    // 3. Load previous snapshot. If cookie is null or the stored CVR expired,
-    //    treat as a cold sync and emit `clear`.
-    const prev: CVRSnapshot | null =
-      cookie != null ? await cvrStore.get(clientGroupID, cookie) : null;
+    // 3. Load previous snapshot. The cookie embeds the clientGroupID it was
+    //    issued for, so a mismatch (cookie carried over from a different
+    //    group — e.g. user logged out + back in with a fresh client group)
+    //    is treated as cold sync rather than silently missing the CVR cache.
+    //    Cold sync also covers cookie==null (first pull) and CVR TTL expiry.
+    const cookieMatchesGroup =
+      cookie != null && cookie.clientGroupID === clientGroupID;
+    const prev: CVRSnapshot | null = cookieMatchesGroup
+      ? await cvrStore.get(clientGroupID, cookie.order)
+      : null;
     const isColdSync = prev == null;
     const prevSnapshot: CVRSnapshot = prev ?? {
       moments: {},
@@ -428,7 +434,7 @@ export async function handlePull(
     }
 
     return {
-      cookie: nextVersion,
+      cookie: { order: nextVersion, clientGroupID },
       lastMutationIDChanges,
       patch,
     };
