@@ -402,7 +402,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Diff should only reflect genuinely new dependencies (replicache, email provider, anything for packages/sync)
 - No drive-by version bumps of unrelated packages
 
-### Task 42: Remove debug leftovers
+### ~~Task 42: Remove debug leftovers~~ ✓
 
 **Files**: all files in the branch diff
 **What**:
