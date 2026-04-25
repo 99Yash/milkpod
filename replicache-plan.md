@@ -337,7 +337,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Every switch on a union/enum has `default: { const _: never = x; throw new Error(...); }`
 - Adding a variant must force a TS error
 
-### Task 36: Sweep `as` assertions
+### ~~Task 36: Sweep `as` assertions~~ ✓
 
 **Files**: all files in the branch diff
 **What**:

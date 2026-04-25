@@ -189,9 +189,11 @@ export async function handlePush(
           // User-scoped: the only client that needs to rebase is the
           // caller's other sessions. No assetId to fan out against.
           userPokeNeeded = true;
-        } else {
-          const assetId = (parsed.data as { assetId: string }).assetId;
-          affectedAssetIds.add(assetId);
+        } else if ('assetId' in parsed.data) {
+          // Every non-user-scoped mutator's args carry `assetId` (verified by
+          // the schemas in @milkpod/sync); `in`-narrowing makes the compiler
+          // enforce that without a cast.
+          affectedAssetIds.add(parsed.data.assetId);
         }
       }
     }

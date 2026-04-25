@@ -45,6 +45,12 @@ export interface ReplicachePoke {
 
 type PokeListener = (payload: ReplicachePoke) => void;
 
+function isReplicachePoke(value: unknown): value is ReplicachePoke {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as { userId?: unknown; assetId?: unknown };
+  return typeof v.userId === 'string' && typeof v.assetId === 'string';
+}
+
 /** Per-user event name on the local bus. */
 const eventFor = (userId: string) => `poke:${userId}`;
 
@@ -87,13 +93,14 @@ export async function initReplicachePokeBridge(): Promise<void> {
       const userId = userIdFromChannel(channel);
       if (userId === null) return;
       try {
-        const event = JSON.parse(raw) as ReplicachePoke;
+        const parsed: unknown = JSON.parse(raw);
+        if (!isReplicachePoke(parsed)) return;
         // Only re-emit if payload.userId matches the channel's userId. Guards
         // against a misaddressed publish — the channel is the authority here.
-        if (event.userId !== userId) return;
-        emitter.emit(eventFor(userId), event);
+        if (parsed.userId !== userId) return;
+        emitter.emit(eventFor(userId), parsed);
       } catch {
-        // malformed — drop
+        // malformed JSON — drop
       }
     });
 

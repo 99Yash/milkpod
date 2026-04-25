@@ -1,4 +1,8 @@
-import { notifications, type NotificationType } from '@milkpod/db/schemas';
+import {
+  notifications,
+  type NotificationBody,
+  type NotificationType,
+} from '@milkpod/db/schemas';
 import type { Notification, AssetRole, AssetOwner } from '../../types';
 import { emitReplicachePokes } from '../../events/replicache-events';
 
@@ -64,7 +68,7 @@ export abstract class NotificationService {
       .insert(notifications)
       .values({
         recipientId: input.recipientId,
-        type: input.type as NotificationType,
+        type: input.type,
         actorId: input.actorId,
         resourceType: 'asset',
         resourceId: input.assetId,
@@ -103,7 +107,7 @@ export abstract class NotificationService {
     actorId: string | null;
     resourceType: string | null;
     resourceId: string | null;
-    body: unknown;
+    body: NotificationBody;
     readAt: Date | null;
     rowVersion: number;
     createdAt: Date;
@@ -134,21 +138,29 @@ export abstract class NotificationService {
     };
 
     switch (row.type) {
-      case 'asset.member.added':
+      case 'asset.member.added': {
+        // `body` is `NotificationBody` (jsonb $type) — narrow via `in` to the
+        // role-bearing branch. A row whose body shape mismatches its `type`
+        // means the server wrote inconsistent data; skip it rather than
+        // surface garbage.
+        if (!('role' in row.body)) return null;
         return {
           ...base,
           type: 'asset.member.added',
-          body: row.body as { role: Exclude<AssetRole, 'owner'> },
+          body: { role: row.body.role },
         };
-      case 'asset.member.role_changed':
+      }
+      case 'asset.member.role_changed': {
+        if (!('fromRole' in row.body) || !('toRole' in row.body)) return null;
         return {
           ...base,
           type: 'asset.member.role_changed',
-          body: row.body as {
-            fromRole: Exclude<AssetRole, 'owner'>;
-            toRole: Exclude<AssetRole, 'owner'>;
+          body: {
+            fromRole: row.body.fromRole,
+            toRole: row.body.toRole,
           },
         };
+      }
       case 'asset.member.removed':
         return { ...base, type: 'asset.member.removed', body: {} };
       default: {
