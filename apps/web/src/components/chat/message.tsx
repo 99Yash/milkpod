@@ -18,13 +18,17 @@ import { ShimmerText } from './shimmer-text';
 import { SpeakerLabel } from './speaker-label';
 import { TimestampLink } from './timestamp-link';
 
-// Matches [MM:SS], [HH:MM:SS], and ranges like [MM:SS–MM:SS] or [MM:SS-MM:SS]
-// Also strips optional surrounding parentheses, e.g. ([08:03]) → [08:03]
+// Matches a bracketed timestamp, range, or comma list:
+//   [MM:SS]                       single
+//   [MM:SS–MM:SS] / [MM:SS-MM:SS] range
+//   [MM:SS, MM:SS, ...]           comma list
+// Also strips optional surrounding parentheses, e.g. ([08:03]) → [08:03].
 const TS = /\d+(?::\d{2}){1,2}/;
 const TIMESTAMP_RE = new RegExp(
-  `\\(?\\[(${TS.source})(?:[–\\-](${TS.source}))?\\](?!\\()\\)?`,
+  `\\(?\\[(${TS.source}(?:\\s*[,–\\-]\\s*${TS.source})*)\\](?!\\()\\)?`,
   'g',
 );
+const TIMESTAMP_SPLIT_RE = /\s*([,–\-])\s*/;
 
 function parseSeconds(ts: string): number {
   const parts = ts.split(':').map(Number);
@@ -33,17 +37,17 @@ function parseSeconds(ts: string): number {
 }
 
 function linkifyTimestamps(text: string): string {
-  return text.replace(
-    TIMESTAMP_RE,
-    (_match, start: string, end: string | undefined) => {
-      const startSec = parseSeconds(start);
-      if (end) {
-        const endSec = parseSeconds(end);
-        return `[\\[${start}\\]](#t=${startSec}) – [\\[${end}\\]](#t=${endSec})`;
-      }
-      return `[\\[${start}\\]](#t=${startSec})`;
-    },
-  );
+  return text.replace(TIMESTAMP_RE, (_match, body: string) => {
+    const tokens = body.split(TIMESTAMP_SPLIT_RE);
+    return tokens
+      .map((tok, i) => {
+        if (i % 2 === 0) {
+          return `[\\[${tok}\\]](#t=${parseSeconds(tok)})`;
+        }
+        return tok === ',' ? ', ' : ' – ';
+      })
+      .join('');
+  });
 }
 
 // Matches [@speakerId] — speaker references emitted by the AI
