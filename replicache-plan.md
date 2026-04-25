@@ -313,7 +313,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Every `fetch(` has `signal: AbortSignal.timeout(ms)` — 30s APIs, 60s streaming, 300s long AI/transcription jobs
 - Same for `generateText`, `streamText`, third-party SDK calls
 
-### Task 33: Sweep `opacity-0 group-hover` for missing `group-focus-within`
+### ~~Task 33: Sweep `opacity-0 group-hover` for missing `group-focus-within`~~ ✓
 
 **Files**: all `.tsx` in the branch diff
 **What**:
