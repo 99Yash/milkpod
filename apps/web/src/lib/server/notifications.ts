@@ -43,7 +43,7 @@ export async function markNotificationsReadForAsset(
   } catch (err) {
     console.warn(
       '[notifications] auto-mark-read failed:',
-      err instanceof Error ? err.message : err,
+      err instanceof Error ? err.message : String(err),
     );
   }
 }

@@ -4111,3 +4111,182 @@ Commit
 
 review(task 30): surface moment save/dismiss failures, drop dead
   rows allocation
+
+================================================================================
+Task 31 — Sweep `console.error` for full-error-object logging
+================================================================================
+
+Scope: every file in `git diff main...HEAD --name-only`. Goal: ensure no
+console.{error,warn} site logs the raw `err` value, since unknown
+catch bindings can carry connection strings, SQL state, raw response
+bodies, or full stack traces (review-prompt.md §Common Patterns #1).
+
+The branch-touched file list was filtered to .ts/.tsx (87 files total
+in the diff; 64 .ts/.tsx). All console.error and console.warn calls in
+that set were inspected. The fix pattern is uniform:
+
+  console.error('ctx', err)                       -> unsafe
+  console.error('ctx', err instanceof Error ? err.message : err)  -> still unsafe (raw err in fallback)
+  console.error('ctx', err instanceof Error ? err.message : String(err))  -> safe
+
+--------------------------------------------------------------------------------
+Issues found and fixed
+--------------------------------------------------------------------------------
+
+(1) apps/server/src/index.ts:31 — recoverStaleAssets catch logged
+    `err instanceof Error ? err.message : err`. The non-Error fallback
+    forwards the raw `err` (could be a Postgres pool error object with
+    connection string in `err.cause` or `err.code`/`err.severity`/
+    `err.detail` chained from drizzle/pg). Changed to `String(err)`.
+    The branch only added two import lines + two function calls in this
+    file (initReplicachePokeBridge + closeReplicachePokeBridge) so the
+    log was pre-existing on main, but the file is in the diff and the
+    sweep mandates fixing every unsafe site in branch-touched files.
+
+(2) apps/server/src/index.ts:75 — workers shutdown catch logged the
+    bare `err`. Same risk class. Changed to safe-format.
+
+(3) apps/server/src/index.ts:88 — Redis shutdown catch logged the bare
+    `err`. Same risk class. Changed to safe-format.
+
+(4) apps/server/src/index.ts:96 — DB pool shutdown catch logged the
+    bare `err`. Same risk class. Changed to safe-format.
+
+(5) apps/web/src/lib/server/notifications.ts:46 — markNotifications-
+    ReadForAsset catch had `err instanceof Error ? err.message : err`.
+    Non-Error fallback leaks. Changed to String(err). Same fix as (1).
+
+(6) packages/api/src/events/replicache-events.ts:104 — Redis pub/sub
+    init catch had `err instanceof Error ? err.message : err`. The pub
+    code path uses ioredis whose error objects carry `command` (raw
+    Redis command + args) and host/port. Changed to String(err).
+
+(7) packages/api/src/events/replicache-events.ts:176 — subscribeUser-
+    Pokes' subscribe().catch() handler had the same pattern. Same fix.
+
+(8) packages/api/src/modules/notifications/service.ts:89 — Notification-
+    Service.poke catch logged bare `err` in the non-Error path. Same
+    fix.
+
+console.error/warn was deliberately preserved (not switched to a
+silent swallow) because all of these are best-effort fire-and-forget
+side effects (poke fanout, shutdown drain, auto-mark-read) where the
+operator still wants visibility into transient errors during dev / on
+production tail logs — but the visibility must not include raw error
+bodies.
+
+--------------------------------------------------------------------------------
+Issues noted (no fix needed)
+--------------------------------------------------------------------------------
+
+(a) packages/api/src/modules/comments/index.ts:48 — already uses a
+    pre-derived `msg` variable (`err instanceof Error ? err.message :
+    String(err)`). Safe.
+
+(b) packages/api/src/modules/assets/index.ts:207, 215, 222, 228 —
+    retry / pipeline catch sites already use the safe-format inline.
+    Safe.
+
+(c) packages/api/src/modules/podcasts/episode-pipeline.ts:27 — only
+    logs the episode ID literal, no error object. Safe.
+
+(d) packages/api/src/modules/podcasts/episode-pipeline.ts:130 — uses
+    a derived `message` variable computed safely above. Safe.
+
+(e) packages/api/src/modules/replicache/push.ts:173 — uses safe-format
+    inline. (Already fixed in Task 7.) Safe.
+
+(f) packages/auth/src/index.ts:53 — Resend OTP send failure logs an
+    object `{ type, errorMessage }` where errorMessage is derived
+    safely. Safe.
+
+(g) packages/auth/src/invite-email.ts:59 — same pattern as (f). Safe.
+
+(h) packages/auth/src/signup-hooks.ts:106 — same pattern as (f). Safe.
+
+(i) apps/web/src/components/notifications/notification-bell.tsx:41,56
+    — both use safe-format inline. Safe.
+
+(j) apps/web/src/lib/replicache/hooks.ts:40 — onError callback uses
+    safe-format inline. Safe.
+
+(k) packages/api/src/modules/asset-members/service.ts:104, 279, 355 —
+    all three fire-and-forget catches use safe-format with String(err)
+    in fallback. Safe.
+
+(l) packages/api/src/modules/assets/index.ts:159 — deleteStoredUpload
+    catch uses safe-format. Safe.
+
+(m) packages/api/src/modules/replicache/push.ts:115, 132, 167, 216 —
+    all four console.warn sites either log fixed strings, log
+    `parsed.error.issues` (zod validation issues, structured + safe),
+    or `err.message` after an `err instanceof MutatorForbiddenError`
+    narrow, or `String(err)` fallback. All safe.
+
+--------------------------------------------------------------------------------
+Library improvements made
+--------------------------------------------------------------------------------
+
+None — the fix is a uniform string-coercion pattern, no library
+primitive replaces it. (Pino-style structured loggers with redactors
+would be the broader move, but this is out of scope for a single-line
+sweep task; would change every log site across the codebase.)
+
+--------------------------------------------------------------------------------
+Checklist verification
+--------------------------------------------------------------------------------
+
+Backend — Security
+  - "No sensitive data in logs":
+      * Every console.error in branch-touched files now formats `err`
+        through `err instanceof Error ? err.message : String(err)`.
+      * Every console.warn in branch-touched files does the same.
+      * The 4 server/index.ts sites (graceful shutdown + startup),
+        the 1 web/lib/server/notifications.ts site, the 2 events/
+        replicache-events.ts sites, and the 1 notifications/service.ts
+        site were the only unsafe ones; all fixed in this task.
+  - "No secrets in error responses": N/A — these are server-side
+    operational logs, not response bodies.
+
+Backend — Resilience
+  - No new fetch / LLM call introduced. Pre-existing AbortSignal /
+    Promise.race timeouts (invite-email, push poke fanout) untouched.
+
+Frontend — Error Handling & UX
+  - The two web .tsx sites (notification-bell, hooks) already had
+    safe formatting; sweep verified no regression.
+
+Common Patterns from prior reviews (high-signal nudges)
+  1. console.error('ctx', err) full-object logging — FIXED (4 server
+     sites + 4 api/web sites). Checklist item closed for this branch.
+  2. Missing timeouts — N/A (Task 32 scope).
+  3. Rate limiter coverage — N/A (Task 13 scope, complete).
+  4. Keyboard-invisible interactive elements — N/A (Task 33 scope).
+  5. Silent error swallowing — N/A (Task 34 scope).
+  6. Duplicated logic — could centralize the err->safe-string coercion
+     into a `safeErrorMessage(err)` helper. Already exists for the
+     ingest module (`toSafeErrorMessage` in modules/ingest/index.ts).
+     Out of scope: extending it to a top-level utils.ts would also
+     bring in 20+ pre-existing call sites on main that aren't touched
+     by this branch. Noted for a future cleanup task.
+  7. Missing exhaustive switches — N/A (Task 35 scope).
+  8. useEffect async patterns — N/A (Task 30 scope, complete).
+  9. Webhook raw body — N/A.
+ 10. Yearly billing — N/A.
+
+--------------------------------------------------------------------------------
+Build / type-check
+--------------------------------------------------------------------------------
+
+  pnpm check-types: 8/8 green (4.0s).
+    - 5 cache hits (env, db, sync, auth, ai) — no source changes.
+    - 3 cache misses (api, server, web) — touched files in each.
+    - No type errors. The String(err) pattern matches existing usage
+      across the codebase.
+
+--------------------------------------------------------------------------------
+Commit
+--------------------------------------------------------------------------------
+
+review(task 31): close raw-err leak in shutdown + best-effort poke logs
+
