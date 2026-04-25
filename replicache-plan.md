@@ -1,6 +1,6 @@
 # Replicache PR — Review Plan
 
-Ordered task list for getting `feat/replicache` to merge quality. Work through them in order. Each task references checklist items in `review-prompt.md` (apply the relevant sections). Design intent lives in `sync-engine-plan.md` — verify the implementation matches.
+Ordered task list for getting `feat/replicache` to merge quality. Work through them in order. Each task references checklist items in `review-prompt.md` (apply the relevant sections). Design intent lives in `docs/sync-engine-plan.md` — verify the implementation matches.
 
 **Scope**: 87 files, +39465 / -272. New subsystems: Replicache sync engine, asset members / collaboration, notifications, invite emails, 8 migrations.
 
@@ -386,7 +386,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 
 ## Phase 9: Pre-merge hygiene
 
-### Task 40: Decide the fate of sync-engine-plan.md
+### ~~Task 40: Decide the fate of sync-engine-plan.md~~ ✓
 
 **Files**: `sync-engine-plan.md`
 **What**:
