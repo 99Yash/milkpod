@@ -3839,3 +3839,275 @@ Commit
 
 review(task 29): verify no REST/Replicache double-writes for
 comments and moments — no code changes required.
+
+================================================================================
+Task 30 — Library / moments UI handles Replicache first-render undefined
+================================================================================
+
+Files in scope:
+  apps/web/src/components/library/{asset-card,asset-list,library-tab}.tsx
+  apps/web/src/components/moments/{moment-card,moments-tab}.tsx
+
+Library APIs verified:
+  - apps/web/src/lib/replicache/hooks.ts:20-51 — usePrefixSubscription
+    initializes items via useState<T[]>([]) and ready via useState(false),
+    so the wrapper NEVER returns `undefined` to consumers. Replicache's
+    rep.subscribe runs the scan against IndexedDB asynchronously inside
+    the effect; the initial render returns the [] / false state. No risk
+    of an undefined-deref crash on first render.
+  - useReplicache() returns null during SSR (provider's useState initial
+    is null; the instance is created in useEffect, which only runs on
+    the client). Components that use it are 'use client' but render on
+    the server during SSR with rep === null. The fall-through to
+    initialMoments handles that without crashing.
+  - rep.mutate.<name>(args) returns a promise that resolves once the
+    LOCAL transaction commits. Server-side rejections are surfaced via
+    the pusher's httpRequestInfo and Replicache's rebase/retry, NOT by
+    throwing from the mutate call. So a try/catch around rep.mutate
+    only catches sync errors (zod validation, IDB write failures).
+    Documented; this is the v15 behavior per the @rocicorp/replicache
+    .d.ts in node_modules.
+  - Eden treaty .post() returns { data, error } and never throws on
+    HTTP status codes — error must be checked explicitly.
+
+--------------------------------------------------------------------------------
+Issues found and fixed
+--------------------------------------------------------------------------------
+
+1. moments/moment-card.tsx:55-63 (handleAction)
+   - Wrong: try/finally with NO catch. If onSave or onDismiss reject,
+     the promise rejection bubbles up as an unhandled rejection and the
+     user gets ZERO feedback (loading state clears via finally, but the
+     bookmark/dismiss visibly does nothing). This violates the "every
+     API call's .catch() must give the user feedback" rule from
+     review-prompt.md and was the same silent-swallow pattern called
+     out as a high-signal nudge (#5).
+   - Fix: added a `catch { toast.error(...) }` branch that surfaces a
+     readable, action-specific message ("Could not save moment..." /
+     "Could not dismiss moment..."). Imported `toast` from 'sonner'.
+   - The toast lives in MomentCard rather than the parent because the
+     loading lifecycle (actionLoading) is owned here and the same catch
+     covers both Replicache mutators (which throw on zod/IDB failure)
+     and the REST fallback in moments-tab.
+
+2. moments/moments-tab.tsx:117-139 (handleSave / handleDismiss REST fallback)
+   - Wrong: the `if (rep) … else <REST>` fallback path called
+     `await api.api.moments({…}).feedback.post({…})` without
+     destructuring `error` from Eden's `{ data, error }` return. If the
+     server returned 4xx/5xx the call resolved (no throw) and the
+     parent's catch never fired — user sees the loading spinner clear,
+     no toast.
+   - Fix: destructure `{ error }` and rethrow on truthy. Now the
+     MomentCard.handleAction catch (fix #1) surfaces a toast. Both save
+     and dismiss handlers updated.
+   - The fallback path itself is reachable only when MomentsTab is
+     rendered outside the ReplicacheProvider — currently never in the
+     codebase, but defensively correct.
+
+3. moments/moments-tab.tsx:87 (redundant per-render array allocation)
+   - Wrong: `const moments = rows.map((r) => r.moment);` ran every
+     render outside the useMemo. Its only consumers were `.length`
+     checks (`moments.length > 0`, `isEmpty = … && moments.length === 0`),
+     so the entire mapped array was allocated and discarded just to read
+     its length.
+   - Fix: deleted the local `moments` binding; switched the two call
+     sites to `rows.length`. Same observable behavior, one fewer
+     allocation per render. Not "redundant state" per se (it was a
+     derived const, not state), but trimming it satisfies the
+     "no unnecessary re-renders" sweep cleanly.
+
+--------------------------------------------------------------------------------
+Issues noted (no fix needed)
+--------------------------------------------------------------------------------
+
+(1) moments-tab.tsx — first-render flash from SSR data → empty sync → populated.
+    On a fresh visit (no IndexedDB entry for this asset's moments yet),
+    the lifecycle is:
+      a. SSR renders rows from `initialMoments` (server-fetched moments).
+      b. ReplicacheProvider mounts, creates the instance (rep != null).
+      c. useSubscribedMoments runs scan() against an empty IDB → fires
+         onData([]) → ready = true → component switches to
+         `syncedMoments` = []. Briefly shows the empty state.
+      d. The kicked `rep.pull()` returns, populates IDB, subscribe re-fires
+         with the real rows.
+    A clean fix would require Replicache to expose a "first pull
+    completed" signal (it does not via the subscribe API — the only
+    callbacks are onData/onError, fired per query result, with no way
+    to distinguish "IDB hit" from "pull-then-IDB hit"). Heuristic
+    alternatives (delay 200ms, lock in once non-empty, hydrate IDB from
+    initialMoments) all have correctness trade-offs:
+      - locking in once non-empty inverts to stale-display when the user
+        truly empties the list from another device;
+      - delays add jitter to the populated case;
+      - IDB hydration from props duplicates the server's pull payload.
+    Task 30's explicit asks (no crash; no stale fetch overlapping sync)
+    are satisfied — this is a polish concern outside the task scope.
+    Worth a follow-up plan entry if the flash becomes a real complaint.
+
+(2) library-tab.tsx:50-66 — view toggle uses bare `<button>` elements
+    without `role="radiogroup"` / `role="radio"` / `aria-checked` (or
+    the `tablist` / `tab` / `aria-selected` alternative). The
+    review-prompt's a11y checklist calls for radiogroup roles on toggle
+    groups. Adding correct radiogroup semantics requires arrow-key
+    navigation and roving tabindex, which is a non-trivial change that
+    would also need to be applied consistently to the sibling
+    MomentPresetSwitcher (not in this task's scope) to keep the codebase
+    coherent. Recommend an a11y-sweep follow-up that converts both
+    toggles to a shared shadcn ToggleGroup primitive. Not fixed here.
+
+(3) moments-tab.tsx — `rep` value is null during the brief client-side
+    window between hydration and ReplicacheProvider mounting its
+    instance. During that window we render initialMoments (correct).
+    Mutations attempted in this window would take the REST fallback,
+    but the buttons that trigger save/dismiss only render once the row
+    list is populated, which after fix #2 is guarded by either the
+    Replicache path or a successful REST round-trip with error
+    propagation. No bug.
+
+(4) asset-card.tsx:32-34 — `hasAccess` is a hand-rolled type guard
+    using `'role' in a && 'owner' in a`. It is justified: Asset is
+    structurally a subset of AssetWithAccess (no required fields can
+    be runtime-checked to discriminate), so a TS-wide discriminator
+    isn't possible without changing the upstream model. This is the
+    correct pattern per docs/typescript-patterns.md.
+
+(5) moments-tab.tsx — handleGenerate empty `catch {}` (no err binding).
+    Acceptable: the network/upgrade path already invokes
+    handleUpgradeError for 402 responses; the catch only fires for
+    truly unexpected throws and shows a generic toast. The err object
+    is intentionally not inspected (no console.error of the raw
+    object — would leak per high-signal nudge #1).
+
+--------------------------------------------------------------------------------
+Library improvements made
+--------------------------------------------------------------------------------
+
+None — the existing implementation already uses the right primitives:
+  - Replicache: subscribe + mutate via clientMutators (via the wrapper
+    hooks task 25 hardened with onError).
+  - TanStack Query: useInfiniteQuery for the non-Replicache asset list
+    (assets are not yet sync'd; they remain a REST + SSE source). No
+    overlap with Replicache, so no duplication to consolidate.
+  - Eden treaty: { data, error } destructuring after fix #2.
+
+The asset-list path is intentionally not on Replicache — it serves
+both 'all' and 'shared' scopes via the same query infrastructure with
+a scope query param. Lifting assets onto sync would expand the CVR
+surface significantly and is a separate plan item, not Task 30 scope.
+
+--------------------------------------------------------------------------------
+Checklist verification
+--------------------------------------------------------------------------------
+
+Frontend — React Patterns
+  - No redundant state: removed the per-render `moments` array (fix #3).
+    Remaining state — preset, generating, retrying, collectionDialogOpen,
+    progressMap, refreshKey, view, filters — all needed.
+  - useEffect cleanup: asset-list.tsx:79-92 (refetch + error toast) and
+    SSE wiring via useAssetEvents (out of scope) all clean. moments-tab
+    has no effects after the fetchMoments removal. moment-card has no
+    effects.
+  - Re-renders / memoization: moments-tab `rows` is useMemo'd over
+    [rep, syncReady, syncedMoments, initialMoments, preset]. Removing
+    the trailing `moments` allocation (fix #3) eliminates the only
+    per-render array creation outside the memoized one.
+  - Keys: asset-list `key={asset.id}`, library-tab `key={v.value}`,
+    moments-tab `key={moment.id}`. All stable / unique.
+  - SSR guards: useReplicache returns null on SSR (provider initializes
+    in useEffect). All moments-tab logic falls through to initialMoments
+    in that case. AssetList and AssetCard never touch browser-only APIs
+    in render paths.
+  - No dangerouslySetInnerHTML: confirmed grep across the five files.
+  - Dead code: none introduced; `moments` derived const removed (fix #3).
+
+Frontend — TypeScript
+  - No `any`: only Eden-inference workaround `(data as Moment[])` in
+    handleGenerate (line 106), justified per CLAUDE.md memory.
+  - Non-null assertions: none.
+  - Exhaustive switches: no switches over union types in these five
+    files. `sourceLabels[moment.source] ?? moment.source` is a lookup
+    with safe fallback, not a switch.
+  - Type guards: `hasAccess(asset)` in asset-card.tsx:32-34 is a
+    proper user-defined type guard (returns `a is AssetWithAccess`).
+
+Frontend — Tailwind v4
+  - No arbitrary values where a token exists. `text-[8px]`,
+    `text-[10px]` justified for avatar fallbacks / tiny badge text
+    where no theme token covers that size.
+  - `size-4`, `size-3.5`, `size-3` used consistently (not split w/h).
+  - No inset / top/right/bottom/left misuse.
+
+Frontend — Accessibility
+  - Buttons: all interactive elements use <button type="button"> or
+    shadcn Button (which defaults to type="button" via @radix). The
+    Save/Dismiss buttons in moment-card have explicit type="button".
+  - Icon-only buttons in asset-card carry title/aria-label via the
+    Button title prop. Retry button has aria-label.
+  - Avatar in moment-card: title={author.email ?? undefined} and the
+    fallback shows initials with a visible name span next to it. Image
+    has alt={authorDisplayName(author)}.
+  - No color-only state indicators (saved state shows "Saved" text +
+    fill, not just color).
+  - Tab/toggle group a11y noted as deferred (note #2).
+
+Frontend — Error Handling & UX
+  - No console.log left.
+  - All catch blocks: moment-card.handleAction now toasts (fix #1);
+    moments-tab.handleGenerate already toasts; asset-card.handleRetry
+    toasts; asset-list useEffect[isError] toasts; moments-tab
+    handleSave/handleDismiss now propagate errors to MomentCard's catch
+    (fix #2).
+  - Loading / error / empty / populated states:
+      asset-list — isLoading / isError / empty (scope-aware copy) /
+        populated; explicit retry button on error.
+      moments-tab — generating / isEmpty / populated. SSR initialMoments
+        bridges the brief Replicache warm-up.
+      asset-card — per-status display (queued/fetching/.../failed/stale).
+      moment-card — actionLoading on save/dismiss; error toast on failure.
+      library-tab — three views, each rendering its own list state.
+
+Backend
+  - Out of scope (no backend files in Task 30).
+
+Common Patterns (prior-review nudges)
+  1. console.error full-object — none in scope.
+  2. Missing timeouts — no new fetch / LLM calls.
+  3. Rate limiter coverage — no new endpoints.
+  4. Keyboard-invisible interactive elements — no opacity-0
+     group-hover patterns in these five files (Task 33 sweep covers
+     elsewhere).
+  5. Silent error swallowing — fixed at moment-card.handleAction
+     (fix #1) and moments-tab REST fallback (fix #2).
+  6. Duplicated logic — none new.
+  7. Missing exhaustive switches — none in scope.
+  8. useEffect async patterns — moments-tab's old fetchMoments was
+     removed in the original branch; no orphan promise handlers
+     remain.
+  9. Webhook raw body — N/A.
+  10. Yearly billing — N/A.
+
+TypeScript Patterns (docs/typescript-patterns.md)
+  - Discriminated unions: AssetRole = 'owner' | 'editor' | 'viewer'
+    used via `asset.role !== 'owner'` checks (post-hasAccess narrow).
+    No exhaustive switch needed for the binary owner-vs-not-owner
+    decision.
+  - Type guards: `hasAccess` (asset-card) is the textbook
+    user-defined guard pattern; `is X`-style return type drives
+    flow-sensitive narrowing in the JSX downstream.
+  - generic constraints: not applicable in these components.
+  - satisfies / as const: not introduced.
+
+--------------------------------------------------------------------------------
+Build / type-check
+--------------------------------------------------------------------------------
+
+  pnpm check-types: 8/8 green (2.9s, web check-types cache miss as
+  expected since we touched two web files; all other packages cache
+  hit). No regressions.
+
+--------------------------------------------------------------------------------
+Commit
+--------------------------------------------------------------------------------
+
+review(task 30): surface moment save/dismiss failures, drop dead
+  rows allocation

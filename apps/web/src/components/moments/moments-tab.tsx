@@ -84,7 +84,6 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
     const filtered = source.filter((r) => r.moment.preset === preset);
     return filtered.sort((a, b) => b.moment.score - a.moment.score);
   }, [rep, syncReady, syncedMoments, initialMoments, preset]);
-  const moments = rows.map((r) => r.moment);
 
   async function handleGenerate(regenerate = false) {
     const quota = checkQuotaLocal('visual_segments');
@@ -125,7 +124,10 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
       return;
     }
     // Fallback for contexts outside the ReplicacheProvider.
-    await api.api.moments({ id: momentId }).feedback.post({ action: 'save' });
+    const { error } = await api.api
+      .moments({ id: momentId })
+      .feedback.post({ action: 'save' });
+    if (error) throw new Error(String(error));
   }
 
   async function handleDismiss(momentId: string) {
@@ -133,12 +135,13 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
       await rep.mutate.momentDelete({ id: momentId, assetId });
       return;
     }
-    await api.api.moments({ id: momentId }).feedback.post({
-      action: 'dismiss',
-    });
+    const { error } = await api.api
+      .moments({ id: momentId })
+      .feedback.post({ action: 'dismiss' });
+    if (error) throw new Error(String(error));
   }
 
-  const isEmpty = !generating && moments.length === 0;
+  const isEmpty = !generating && rows.length === 0;
 
   return (
     <div className="flex flex-col gap-4 p-5">
@@ -148,7 +151,7 @@ export function MomentsTab({ assetId, initialMoments }: MomentsTabProps) {
           onChange={setPreset}
           disabled={generating}
         />
-        {moments.length > 0 && (
+        {rows.length > 0 && (
           <Button
             variant="ghost"
             size="sm"

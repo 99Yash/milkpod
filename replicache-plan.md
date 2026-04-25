@@ -285,7 +285,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - If Replicache mutators are now the write path, the REST POST endpoints are either removed, reserved for non-sync clients only, or share the same service method (no duplicated insert)
 - Frontend: no component creates a comment/moment via fetch AND via Replicache
 
-### Task 30: Library / moments UI handles Replicache first-render `undefined`
+### ~~Task 30: Library / moments UI handles Replicache first-render `undefined`~~ ✓
 
 **Files**: `apps/web/src/components/library/{asset-card,asset-list,library-tab}.tsx`, `moments/{moment-card,moments-tab}.tsx`
 **What**:
