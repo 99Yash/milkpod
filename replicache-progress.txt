@@ -6514,3 +6514,219 @@ Next
 ----
 Task 43 — Consider squashing commits for surgical rollback (optional;
 the plan note says "skip if the history is already meaningful enough").
+
+
+================================================================================
+Task 43 — Consider squashing commits for surgical rollback
+================================================================================
+
+Goal
+----
+Per replicache-plan.md L412-418:
+  - "Current 5 commits include 'fix' and 'more changes' — optional
+    squash into ~3-4 meaningful commits (engine / asset-members /
+    notifications / wiring) so rollback is targeted"
+  - "Note, not required — skip if the history is already meaningful
+    enough"
+
+Method
+------
+1. Enumerated branch commits via `git log --oneline main..HEAD` (47
+   commits total).
+2. Inspected the six pre-review base commits with
+   `git show --stat --format= <sha>` to see what each one actually
+   touched (file lists, line counts).
+3. Checked upstream divergence (`git rev-parse @{upstream}` +
+   `git log @{upstream}..HEAD`) to understand the blast radius of any
+   history rewrite.
+
+Branch shape
+------------
+The branch holds 47 commits ahead of main, splitting cleanly:
+
+  Top  42 commits — one per review task (review(task 1)..review(task 42)).
+                    Each is a single, narrowly-scoped fix with a clear
+                    subject line. Already perfectly granular for
+                    targeted rollback.
+
+  Base  6 commits — the original feature implementation, time-ordered:
+    16ce298 refactor: replicache sync       (43 files, +19018 / -55)
+    b4f8593 more changes                    (22 files, +979  / -152)
+    d815d12 fix comments                    ( 8 files, +4389 / -13)   [~4336 of these are 0034 snapshot json]
+    85b4937 fix                             ( 7 files, +4409 / -11)   [~4336 of these are 0035 snapshot json]
+    1297719 feat: notifications             (43 files, +10965 / -336)
+    79d9ea6 fix build                       ( 2 files, +228  / -2)
+
+Upstream
+--------
+`origin/feat/replicache` already contains every base commit AND review
+tasks 1-37. Local is 5 commits ahead (tasks 38-42), so any history
+rewrite that touches the base commits — i.e. the entire premise of
+Task 43 — would require a force-push to `origin/feat/replicache`.
+Force-push is a destructive operation (overwrites remote refs, breaks
+in-flight PR review threads tied to specific commit SHAs, conflicts
+with anyone who has fetched the branch). Off-limits without explicit
+authorization per CLAUDE-Code's "Executing actions with care" rule.
+
+Could the proposed taxonomy work?
+---------------------------------
+The plan suggests "engine / asset-members / notifications / wiring".
+Cross-referencing the six base commits against that taxonomy:
+
+  asset-members/service.ts touched in:    16ce298, b4f8593, 85b4937, 1297719  (4 of 6)
+  replicache module (pull/push/cvr/...):  16ce298, b4f8593, d815d12          (3 of 6)
+  packages/sync mutators:                 16ce298 (skeleton), b4f8593 (fill)
+  notifications module + UI:              1297719 (43 files), 79d9ea6 (tiny)
+  Migration 0034 (asset_invite role):     d815d12 + 4336-line snapshot
+  Migration 0035 (orphan backfill):       85b4937 + 4336-line snapshot
+  Wiring (routes, deps, share dialog):    16ce298, b4f8593, 1297719
+
+The "domain buckets" are not separable along commit boundaries. The
+asset-members service alone was edited across four base commits.
+Migrations 0034 and 0035 are timestamp-ordered: they have to ship
+*together with* their drizzle-kit `meta/<n>_snapshot.json` (4336 lines
+each) and `meta/_journal.json`, so any cherry-pick that splits a
+migration from its snapshot produces a corrupt drizzle-kit metadata
+state. Repartitioning the base into "engine / asset-members /
+notifications / wiring" would require:
+
+  - Manually splitting 16ce298 (43 files, 19k insertions) by domain.
+  - Re-pairing each migration with its journal entry and snapshot.
+  - Resolving cross-file dependencies introduced by the original
+    commit ordering (e.g. apps/server/src/index.ts wiring the new
+    poke bridge AFTER the bridge module exists, otherwise an
+    intermediate commit fails type-check).
+  - Doing this for ~35,000 lines without introducing regressions.
+
+That is a non-trivial reshuffle with real risk of corrupting drizzle
+metadata or producing intermediate commits that don't compile (which
+breaks `git bisect` — the very thing surgical rollback is supposed to
+enable).
+
+Could a simpler squash work?
+----------------------------
+Two alternatives short of the 4-bucket reshuffle:
+
+  (a) Squash the bottom 6 base commits into a single "feat: replicache
+      sync foundation" commit. Mechanically straightforward
+      (`git rebase -i` + reword). Loses the one meaningful boundary
+      that does exist in the base — `feat: notifications` (1297719)
+      is genuinely a separable feature added on top of the engine.
+
+  (b) Squash all 47 commits into one "feat: replicache sync" commit.
+      Loses every surgical-rollback boundary, including the 42
+      cleanly-scoped review commits that we just spent days producing.
+      That is the OPPOSITE of what Task 43 is asking for.
+
+Neither moves the rollback story forward. (a) trades one bad name for
+one bigger commit; (b) actively destroys what the prior 42 tasks
+created.
+
+Why the current history already supports surgical rollback
+----------------------------------------------------------
+Three rollback scenarios cover the realistic cases:
+
+  1. "Undo a single review fix" — e.g. revert the `dropForeignKey`
+     change Task N introduced. Each review task is its own commit;
+     `git revert <sha>` is one command, surgical.
+
+  2. "Undo a whole subsystem" — e.g. yank notifications. Most of
+     notifications is in 1297719 (43 files, +10965). Reverting that
+     plus 79d9ea6 plus the related review-task commits (tasks 20-23,
+     34, 42) is greppable: `git log --oneline | grep notification`.
+     Cleaner than reshuffling the base.
+
+  3. "Undo the whole feature" — revert the merge commit on main.
+     That's a single command regardless of how many commits the
+     branch had. Squashing the branch doesn't change this story.
+
+The case where squashing would help — an operator wanting to revert a
+specific cross-cutting concern that was introduced over several base
+commits — is also the case where the proposed 4-bucket reshuffle
+would be the most error-prone to construct.
+
+Decision
+--------
+SKIP. The plan explicitly allows skipping ("Note, not required — skip
+if the history is already meaningful enough"). Three reinforcing
+reasons:
+
+  1. Force-push to origin/feat/replicache is destructive and not
+     authorized in this session. The user has not asked for it.
+  2. The 42 review commits already provide the surgical-rollback
+     property the task is chasing; squashing would destroy it.
+  3. The proposed 4-bucket repartition of the base commits requires
+     manually splitting heavily interleaved 35k-line diffs with risk
+     of breaking drizzle-kit migration metadata.
+
+If, before the merge, the user explicitly wants the base messages
+cleaned up, the lowest-risk path is `git rebase -i` to reword the four
+"fix" / "more changes" subjects in place (no diff reshuffle, no force-
+push surprise beyond the rewordings). That is a 5-minute manual
+change the user can do themselves once they decide; it does not
+require Task 43 to drive it.
+
+Issues found and fixed
+----------------------
+None — review-only task, no code changes.
+
+Issues noted (no fix needed)
+----------------------------
+1. Base commit messages "fix", "fix comments", "more changes",
+   "fix build" are uninformative on their own. They are out of scope
+   to rewrite this session because:
+     - they're already on origin
+     - rewording requires force-push the user has not authorized
+     - the 4-bucket repartition that would justify a force-push is
+       not feasible without splitting drizzle migration snapshots
+       from their SQL files, which would corrupt drizzle-kit
+       metadata
+   Recommend the user reword in place via `git rebase -i` themselves
+   before merging if message hygiene matters more than the force-push
+   cost. Otherwise the merge commit message can carry the narrative
+   for future archaeologists.
+
+Library improvements made
+-------------------------
+None — git history task with no code touch.
+
+Checklist verification
+----------------------
+review-prompt.md does not have a dedicated git-history section, so
+the relevant guidance is the plan task's own acceptance criteria
+(replicache-plan.md L412-418):
+
+  - "Current 5 commits include 'fix' and 'more changes'" — confirmed
+    by inspection. Six base commits, four with non-descriptive
+    messages.
+  - "optional squash into ~3-4 meaningful commits (engine /
+    asset-members / notifications / wiring)" — analyzed and rejected
+    on feasibility + risk grounds (see "Could the proposed taxonomy
+    work?" above).
+  - "Note, not required — skip if the history is already meaningful
+    enough" — invoked. The 42 review commits constitute the most
+    informative half of the history; the 6 base commits encapsulate
+    the feature as a whole-feature-revert unit. Adequate for
+    surgical rollback in the realistic scenarios.
+
+CLAUDE-Code "Executing actions with care" rule applied:
+  - History rewrites that require force-push are flagged as
+    destructive, not auto-executed.
+  - User confirmation would be needed before any rebase touching
+    commits already on origin/feat/replicache.
+
+Build / type-check
+------------------
+Not run — no source files changed in this task. Cache state from
+Task 42 is still authoritative: `pnpm check-types` → 8 packages, 8
+cached, 0 errors.
+
+Plan annotation
+---------------
+Marked Task 43 as ✓ (strikethrough) in replicache-plan.md with the
+note "(skipped per 'not required' clause; history already meaningful
+for rollback)".
+
+Next
+----
+All 43 tasks in replicache-plan.md are now ✓.

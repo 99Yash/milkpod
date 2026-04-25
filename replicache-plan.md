@@ -409,7 +409,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 
 - `rg 'console\.log|debugger|XXX|FIXME' <changed paths>` — each hit resolved (removed or promoted to a real TODO with ticket reference)
 
-### Task 43: Consider squashing commits for surgical rollback
+### ~~Task 43: Consider squashing commits for surgical rollback~~ ✓ (skipped per "not required" clause; history already meaningful for rollback)
 
 **Files**: git history
 **What**:
