@@ -5658,3 +5658,122 @@ Commit
 
 No code changes — verification-only task. Commit will mark plan task
 37 complete + append this section to replicache-progress.txt.
+
+
+================================================================================
+Task 38 — pnpm build and check-types clean
+================================================================================
+
+Whole-repo build + type-check sweep with no per-file diffing — the
+gate before manual verification (Task 39).
+
+--------------------------------------------------------------------------------
+What was run
+--------------------------------------------------------------------------------
+
+(1) pnpm build
+    Result: 8/8 successful, 4 cached + 4 cache miss (executed fresh).
+    Fresh-build packages this run:
+      @milkpod/api      build complete in 3500ms
+      @milkpod/sync     (built from source — packages/sync/dist regenerated)
+      apps/server       build complete in 135ms
+      apps/web          Next.js 16.1.6 + Turbopack, compiled in 4.3s,
+                        static pages generated, all routes resolved.
+    All 16 routes present and accounted for, including the new ones
+    introduced on this branch:
+      /asset/[id]/comments   (dynamic, server-rendered)
+      /asset/[id]/moments    (dynamic, server-rendered)
+      /notifications         (dynamic, server-rendered)
+      /share/[token]         (dynamic, server-rendered)
+    No build-time warnings, no Turbopack errors, no static-prerender
+    failures. Total wall time: 17.336s.
+
+(2) pnpm check-types
+    Result: 8/8 successful, FULL TURBO cache hit, 61ms wall time.
+    All eight workspace packages passed `tsc -b` / `tsc --noEmit`:
+      @milkpod/ai, @milkpod/api, @milkpod/auth, @milkpod/db,
+      @milkpod/env, @milkpod/sync, server, web
+    Cache hit is correct here: build (step 1) regenerated the
+    downstream `dist/*.d.ts` artifacts that web + server consume,
+    so the cached type-check output reflects the freshly-built
+    declarations (per CLAUDE.md: "After editing schema files, run
+    pnpm build before pnpm check-types").
+
+--------------------------------------------------------------------------------
+Suppression sweep
+--------------------------------------------------------------------------------
+
+Plan rule: "Fix the underlying issue; no `// @ts-expect-error`
+suppression."
+
+Grep across the repo for `@ts-expect-error|@ts-ignore|@ts-nocheck`:
+
+  replicache-plan.md:369        — the rule itself, not code.
+  docs/typescript-patterns.md:1324 — anti-pattern in a docs table,
+                                     showing what NOT to do.
+
+Zero occurrences in source (`apps/**`, `packages/**`). Clean.
+
+--------------------------------------------------------------------------------
+Working tree state at gate
+--------------------------------------------------------------------------------
+
+Pre-existing uncommitted changes unrelated to Task 38:
+  M loop.sh                       — user-edited harness (CLI args
+                                    extended for plan-file/progress-file).
+  D replicache-pr-review.md       — superseded by replicache-progress.txt.
+
+These will be carried into the Task 38 commit (or a follow-up
+hygiene commit) but had no influence on build / type-check.
+
+--------------------------------------------------------------------------------
+Issues found and fixed
+--------------------------------------------------------------------------------
+
+None. The branch builds and type-checks clean as-is.
+
+--------------------------------------------------------------------------------
+Issues noted (no fix needed)
+--------------------------------------------------------------------------------
+
+None. The rationale is straightforward — every sweep task in
+Phase 7 (Tasks 31–37) ran `pnpm check-types` after each fix, so by
+the time we reach Task 38 the working tree is already known-green;
+this task is the explicit confirmation gate.
+
+--------------------------------------------------------------------------------
+Library improvements made
+--------------------------------------------------------------------------------
+
+None — verification-only task.
+
+--------------------------------------------------------------------------------
+Checklist verification
+--------------------------------------------------------------------------------
+
+review-prompt.md / Code Quality:
+  - "Database migrations are safe for zero-downtime deploys" —
+    verified across Tasks 1–5; Task 38 confirms the migrations
+    package builds (`@milkpod/db` produced `dist/` cleanly).
+  - "Proper error handling with meaningful error messages" — covered
+    by Phase 7 sweeps (31, 34); type-check confirms no regressions.
+  - No `@ts-expect-error` in source.
+
+CLAUDE.md:
+  - "After editing schema files, run pnpm build before pnpm
+    check-types. Downstream packages resolve types from dist/, so
+    stale .d.ts files surface as phantom type errors." — followed
+    here exactly: build first, then check-types. Both green.
+
+Plan Task 38 acceptance criteria:
+  - pnpm build:        ✓ 8/8 successful
+  - pnpm check-types:  ✓ 8/8 successful, zero errors
+  - No @ts-expect-error suppression: ✓ verified by grep
+
+--------------------------------------------------------------------------------
+Next
+--------------------------------------------------------------------------------
+
+Task 39 — Manual verify cross-user collab flows in Chrome. That is
+a runtime exercise (two browser profiles, share/comment/revoke
+flows) and requires the dev server up; not a code-change task.

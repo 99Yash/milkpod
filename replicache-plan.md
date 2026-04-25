@@ -359,7 +359,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 
 ## Phase 8: Build and manual verification
 
-### Task 38: pnpm build and check-types clean
+### ~~Task 38: pnpm build and check-types clean~~ ✓
 
 **Files**: (entire repo)
 **What**:
