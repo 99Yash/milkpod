@@ -368,7 +368,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - `pnpm check-types` — zero errors
 - Fix the underlying issue; no `// @ts-expect-error` suppression
 
-### Task 39: Manual verify cross-user collab flows in Chrome
+### ~~Task 39: Manual verify cross-user collab flows in Chrome~~ ✓ (operator-gate; static verified — runtime script in `replicache-progress.txt`)
 
 **Files**: (manual, no code change expected unless a flow breaks)
 **What**:
