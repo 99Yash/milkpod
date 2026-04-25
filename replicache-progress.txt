@@ -4510,3 +4510,152 @@ Commit
 --------------------------------------------------------------------------------
 
 review(task 32): cap OTP email send so a hung Resend request can't wedge sign-in
+
+================================================================================
+Task 33: Sweep `opacity-0 group-hover` for missing `group-focus-within`
+================================================================================
+
+Scope: every .tsx in the branch diff. Per CLAUDE.md and review-prompt.md, any
+hover-revealed interactive control (e.g. `opacity-0 group-hover:opacity-100`)
+must also carry a keyboard-accessible reveal trigger
+(`group-focus-within:opacity-100`) so a Tab-only user can see the control when
+focus lands on the parent.
+
+--------------------------------------------------------------------------------
+Sweep methodology
+--------------------------------------------------------------------------------
+
+  git diff main...HEAD --name-only -- '*.tsx' > /tmp/branch_tsx.txt
+
+16 changed .tsx files. Searched each for:
+
+  - 'opacity-0' — initial-hidden controls
+  - 'group-hover' — group-scoped hover reveal
+  - 'group-focus' — group-scoped focus reveal
+  - 'peer-hover'  / 'peer-focus' — sibling-scoped variants
+  - 'invisible' / 'hover:visible' — visibility-toggled variants
+
+Also checked the diff itself (lines starting with '+') so any reveal pattern
+introduced *and later changed back* still gets reviewed.
+
+--------------------------------------------------------------------------------
+Findings
+--------------------------------------------------------------------------------
+
+The branch diff introduces exactly ONE hover-reveal pattern across all 16
+changed .tsx files:
+
+  apps/web/src/components/share/collaborators-section.tsx:29-30
+    const REVEAL_ON_HOVER_FOCUS =
+      'opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100';
+
+This shared class is applied to two Buttons (`Remove` member at line 221 and
+`Revoke invite` at line 257). Verified that:
+
+  (i)   The constant already includes `group-focus-within:opacity-100`, so a
+        keyboard user tabbing into the parent <li> will see the destructive
+        action button. No fix required.
+
+  (ii)  Each Button's *parent* `<li>` carries the `group` class so the
+        `group-hover` and `group-focus-within` modifiers actually scope to it
+        (collaborators-section.tsx:195 for members, :241 for pending invites).
+        Both confirmed.
+
+  (iii) Both Buttons declare `aria-label` (`Remove ${m.name}`, `Revoke invite
+        for ${inv.email}`), so a screen reader user lands on a labelled
+        control and the focus ring will reveal it visually too.
+
+  (iv)  Both Buttons have explicit `type="button"` (lines 218, 254), so they
+        won't accidentally submit any wrapping form when activated by keyboard.
+
+No other branch-touched file uses `opacity-0` + `group-hover`,
+`peer-hover` + reveal, `invisible` + `hover:visible`, or any other reveal
+mechanism that would hide a control from keyboard users.
+
+Files NOT introducing reveal patterns (verified empty grep on the patterns
+above):
+  apps/web/src/app/asset/[id]/page.tsx
+  apps/web/src/app/notifications/layout.tsx
+  apps/web/src/app/notifications/page.tsx
+  apps/web/src/components/dashboard/dashboard-shell.tsx
+  apps/web/src/components/layouts/dashboard.tsx
+  apps/web/src/components/library/asset-card.tsx
+  apps/web/src/components/library/asset-list.tsx
+  apps/web/src/components/library/library-tab.tsx
+  apps/web/src/components/moments/moment-card.tsx
+  apps/web/src/components/moments/moments-tab.tsx
+  apps/web/src/components/notifications/notification-bell.tsx
+  apps/web/src/components/notifications/notification-row.tsx
+  apps/web/src/components/notifications/notifications-page.tsx
+  apps/web/src/components/share/share-dialog.tsx
+  apps/web/src/lib/replicache/context.tsx
+
+`aria-hidden` matches in notification-bell.tsx:79, notification-row.tsx:80,
+share-dialog.tsx:390 are all decorative-icon hides (not interactive control
+hides) — correct usage and orthogonal to the keyboard-visibility concern this
+task targets.
+
+--------------------------------------------------------------------------------
+Issues found and fixed
+--------------------------------------------------------------------------------
+
+None. The single reveal pattern in the branch was already implemented with
+both `group-hover:opacity-100` and `group-focus-within:opacity-100`.
+
+--------------------------------------------------------------------------------
+Issues noted (no fix needed)
+--------------------------------------------------------------------------------
+
+(a) collaborators-section.tsx:29-30 — REVEAL_ON_HOVER_FOCUS is the canonical
+    pattern this task is designed to enforce. Already correct.
+
+(b) The branch added zero other hover/focus visibility toggles. Components
+    that reveal action buttons (asset-card, moment-card, notification-row,
+    share-dialog) instead show their controls unconditionally, which is also
+    fine — keyboard users can reach them at any time.
+
+(c) Existing `opacity-0 group-hover` patterns elsewhere in the repo
+    (e.g. comment-card.tsx:77, thread-sidebar.tsx:224, sidebar.tsx:572) are
+    pre-existing on main; not in branch scope. They each already include
+    `md:group-focus-within:opacity-100` or `group-focus-within/menu-item`.
+
+--------------------------------------------------------------------------------
+Library improvements made
+--------------------------------------------------------------------------------
+
+None. Tailwind v4's `group-focus-within:` modifier is the library primitive;
+it's already used.
+
+--------------------------------------------------------------------------------
+Checklist verification
+--------------------------------------------------------------------------------
+
+Frontend — Accessibility
+  - "Keyboard accessibility. Elements with `opacity-0 group-hover:opacity-100`
+     MUST also have `group-focus-within:opacity-100`":
+       * 1/1 reveal pattern in branch diff has `group-focus-within:opacity-100`.
+  - "Icon-only buttons need `aria-label`":
+       * Remove member Button: aria-label="Remove ${m.name}" (line 224).
+       * Revoke invite Button: aria-label="Revoke invite for ${inv.email}"
+         (line 260).
+  - "Buttons need `type='button'` or `type='submit'`":
+       * Both Buttons declare type="button" (lines 218, 254).
+  - "No color-only indicators":
+       * Both icon Buttons have aria-label fallbacks; the spinner replaces
+         the trash icon during pending state but remains inside an aria-
+         labelled button so SR users still get context. OK.
+
+Common Patterns from prior reviews
+  4. "Keyboard-invisible interactive elements" — CLOSED for this branch. The
+     only reveal pattern carries both group-hover and group-focus-within.
+
+--------------------------------------------------------------------------------
+Build / type-check
+--------------------------------------------------------------------------------
+
+  pnpm check-types: 8/8 green (full turbo cache hit, 63ms). No source change.
+
+--------------------------------------------------------------------------------
+Commit
+--------------------------------------------------------------------------------
+
