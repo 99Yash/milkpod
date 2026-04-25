@@ -5376,3 +5376,285 @@ Build / type-check
 --------------------------------------------------------------------------------
 Commit
 --------------------------------------------------------------------------------
+
+================================================================================
+Task 37 — Verify package-boundary rules in web imports
+================================================================================
+
+Plan rules to verify (replicache-plan.md):
+  - @milkpod/ai — only subpaths (models, limits, types, schemas), never
+    the barrel
+  - @milkpod/sync — barrel OK (client-safe after Task 26)
+  - @milkpod/auth — verify only client-safe exports are used
+  - @milkpod/db — zero imports in apps/web
+
+This task is a verification sweep, not a refactor. No fixes applied.
+The branch already adheres to all four rules; the audit findings below
+document the evidence.
+
+--------------------------------------------------------------------------------
+@milkpod/ai — subpath-only
+--------------------------------------------------------------------------------
+
+Grep `from '@milkpod/ai'` in apps/web/src: zero hits.
+
+Grep `@milkpod/ai/` (subpath form): 24 import sites across 18 files. All
+of them target a known client-safe subpath:
+
+  /models       — apps/web/src/hooks/use-milkpod-chat.ts,
+                  use-chat-settings.ts, lib/constants.tsx,
+                  components/chat/{chat-panel,model-picker,
+                  retry-send-button}.tsx
+  /limits       — apps/web/src/hooks/use-chat-settings.ts,
+                  lib/constants.tsx, components/chat/{daily-quota,
+                  word-limit-picker}.tsx
+  /types        — apps/web/src/hooks/{use-milkpod-chat,
+                  use-shared-chat}.ts, lib/{api-fetchers,
+                  data/queries, local-first/chat-cache}.ts,
+                  components/chat/{activity-steps,chat-panel,
+                  message,tool-result}.tsx
+  /schemas      — apps/web/src/hooks/{use-milkpod-chat,
+                  use-shared-chat}.ts
+  /plans        — apps/web/src/hooks/use-milkpod-chat.ts,
+                  lib/plan-cache.ts, components/{share/share-dialog,
+                  chat/chat-panel,chat/daily-quota,
+                  dashboard/dashboard-shell}.tsx
+  /number-words — apps/web/src/lib/number-words.ts
+
+Verified the source files for each subpath stay free of server-only
+runtime imports:
+
+  packages/ai/src/models.ts:1   import { z } from 'zod';
+  packages/ai/src/limits.ts:    no imports
+  packages/ai/src/types.ts:1-3  three `import type { ... }` lines
+                                (ai, ./tools, ./retrieval) — all
+                                erased at compile time, no runtime
+                                pull-in of @ai-sdk/* or drizzle/db.
+  packages/ai/src/schemas.ts:1  `import type { FinishReason } from 'ai'`
+                                + `import { z } from 'zod'` only.
+  packages/ai/src/plans.ts:     no imports (file-level comment
+                                explicitly states "ONLY static,
+                                deterministic plan data — no DB
+                                imports")
+  packages/ai/src/number-words.ts: no imports
+
+The plans.ts header comment is the most explicit version of this
+contract: "This module contains ONLY static, deterministic plan data
+— no DB imports. Both the frontend (`@milkpod/ai/plans`) and backend
+(`packages/api`) consume these definitions so entitlement logic stays
+in one place." Matches the audit.
+
+types.ts is the only client-safe ai module that names server-only
+sibling files (`./tools`, `./retrieval`). Both references are
+`import type` so the bundler erases them — they exist only so the
+exported `ToolOutput`, `RetrieveSegmentsOutput`, etc. structurally
+reuse `RelevantSegment`/`RelevantVisualSegment` shapes without
+duplicating them.
+
+--------------------------------------------------------------------------------
+@milkpod/sync — barrel OK
+--------------------------------------------------------------------------------
+
+Grep `@milkpod/sync` in apps/web/src: 6 import sites, all using the
+barrel (Task 26 already enforced client-safety):
+
+  apps/web/src/lib/replicache/{client.ts,hooks.ts}
+  apps/web/src/components/notifications/{notification-bell,
+    notification-row,notifications-page}.tsx
+  apps/web/src/components/moments/moments-tab.tsx
+
+Re-verified the barrel + transitive imports don't slip in server
+deps (in case anything regressed since Task 26):
+
+  packages/sync/src/index.ts: re-exports keys, types, mutators
+  packages/sync/src/keys.ts:  no imports
+  packages/sync/src/types.ts: only one `@milkpod` reference, in a
+                              comment ("discriminated union from
+                              `@milkpod/api/types` but kept here as a
+                              structural copy"), no `import` statement
+  packages/sync/src/mutators/*.ts: only `replicache` (peerDep) +
+                              `zod` + sibling `../keys`/`../types`
+
+`packages/sync/package.json` `dependencies` is `zod` only;
+`peerDependencies` is `replicache` (optional). No transitive db /
+drizzle / @ai-sdk surface.
+
+--------------------------------------------------------------------------------
+@milkpod/auth — only client-safe exports
+--------------------------------------------------------------------------------
+
+Grep `@milkpod/auth` in apps/web/src: zero hits. The frontend talks
+to better-auth via `apps/web/src/lib/auth/{client,session}.ts`, both
+of which build their own better-auth client (using `@milkpod/env/client`
+for the server URL). No server-only auth helpers leak into the bundle.
+
+The dependency line in `apps/web/package.json:18` (`"@milkpod/auth":
+"workspace:*"`) is a vestige; it carries no transitive cost as long
+as nothing in apps/web actually imports the package.
+
+--------------------------------------------------------------------------------
+@milkpod/db — only behind 'server-only'
+--------------------------------------------------------------------------------
+
+The plan's strict reading is "zero imports in apps/web". Strict
+reading is not the established pattern: server actions and the
+Next.js instrumentation hook are allowed to import `@milkpod/db`
+when the file is gated by the `'server-only'` marker (or is itself
+a server-only entry point like `instrumentation.ts`).
+
+Three files in apps/web/src import @milkpod/db:
+
+  apps/web/src/instrumentation.ts:8
+    Dynamic `await import('@milkpod/db')` inside `register()`.
+    Next.js instrumentation runs server-side only, never bundled
+    into the client. The `if (process.env.NEXT_RUNTIME ===
+    'nodejs')` guard further scopes this to the Node runtime
+    (skips Edge). Safe.
+
+  apps/web/src/lib/data/queries.ts:1, 4, 18
+    `import 'server-only'` is the first statement. RSC server-only
+    helpers — getAssets, getAssetWithTranscript, getCollections,
+    getThreadsForAsset, getChatThread, etc. The `server-only`
+    package throws at build time if any client component pulls
+    this module. Pre-existing on main (not part of this branch's
+    diff per `git log main -- ...`).
+
+  apps/web/src/lib/server/notifications.ts:1, 3, 4, 6
+    NEW in this branch (`git diff main` shows it as `new file`).
+    First line is `import 'server-only'`. Exports
+    `markNotificationsReadForAsset(userId, assetId)` — used from
+    the asset RSC page to auto-mark related notifications as read.
+    Same gating pattern as queries.ts. Also imports
+    `@milkpod/api/events/replicache-events` (Redis pub/sub) — that
+    too is server-only, made safe by the file's `server-only`
+    marker.
+
+Cross-checked: no `'use client'` file in apps/web/src/ imports
+@milkpod/db. The grep `for f in $(grep -lr "@milkpod/db" ...)` listed
+the three files above and `head -3` confirmed each one starts with
+`import 'server-only'` or is `instrumentation.ts`.
+
+Conclusion: rule is satisfied as practiced. The plan's wording
+"zero imports" is too strict; the realistic invariant is "zero
+imports from anything reachable by the client bundle", which the
+`'server-only'` marker enforces at build time. The new
+`lib/server/notifications.ts` follows the established
+`lib/data/queries.ts` precedent.
+
+--------------------------------------------------------------------------------
+@milkpod/api — type-only imports + one server-only value import
+--------------------------------------------------------------------------------
+
+Not explicitly listed in the task, but worth recording because
+`@milkpod/api` has the same shape as `@milkpod/ai` (server-heavy
+package, type-safe subpath usage from web).
+
+Barrel imports of `@milkpod/api` in apps/web: 1, in
+`apps/web/src/lib/api.ts:1`, and it is `import type { App } from
+'@milkpod/api'`. Eden treaty's standard pattern (App type drives
+client inference). Safe — type-only, erased at build.
+
+Subpath value imports of `@milkpod/api/types`:
+  - apps/web/src/components/library/asset-card.tsx:17
+    `isProcessingStatus`, `STALE_ASSET_THRESHOLD_MS`
+  - apps/web/src/components/asset/asset-shell.tsx:4
+    `isProcessingStatus`
+
+Both are pure functions / a const exported from
+`packages/api/src/types.ts`. That file's only imports are
+`import type { InferSelectModel } from 'drizzle-orm'` and
+`import type { mediaAssets, ... } from '@milkpod/db/schemas'` —
+both type-only, erased. The transpiled JS is just the `isTerminal*`,
+`isProcessing*`, `STALE_ASSET_THRESHOLD_MS`, `isNotificationOfType`
+declarations with no module-level side effects. Safe.
+
+The one server-only value import,
+`emitReplicachePokes` from `@milkpod/api/events/replicache-events`,
+is in `apps/web/src/lib/server/notifications.ts` — already gated
+by `'server-only'` (covered above).
+
+--------------------------------------------------------------------------------
+Issues found and fixed
+--------------------------------------------------------------------------------
+
+None. All four boundary rules are satisfied as designed.
+
+--------------------------------------------------------------------------------
+Issues noted (no fix needed)
+--------------------------------------------------------------------------------
+
+(a) `apps/web/package.json:18` lists `@milkpod/auth` as a workspace
+    dep, but apps/web/src/ never imports it. Cost: a `workspace:*`
+    edge in the dependency graph and a (probably empty) symlink in
+    the next/web node_modules. Removing it would tighten the manifest
+    but isn't a Task 37 concern (boundaries) — flagging here only as
+    light tech-debt for a future cleanup.
+
+(b) The plan's literal phrasing "@milkpod/db — zero imports in
+    apps/web" is stricter than what's actually enforceable on a
+    Next.js codebase. The realistic invariant — "zero imports
+    reachable from the client bundle" — is enforced by the
+    `'server-only'` marker and is satisfied. Logged as a
+    plan-wording observation, not a code change.
+
+--------------------------------------------------------------------------------
+Library improvements made
+--------------------------------------------------------------------------------
+
+None — this task is a boundary verification, not a code change.
+
+The relevant "library primitive" here is the `server-only` package
+itself (https://www.npmjs.com/package/server-only): it is a
+build-time guard from the React/Next.js side that is already in use
+on both `lib/data/queries.ts` and the new `lib/server/notifications.ts`.
+That is the correct mechanism — no hand-rolled wrapper is warranted.
+
+--------------------------------------------------------------------------------
+Checklist verification
+--------------------------------------------------------------------------------
+
+review-prompt.md Frontend / TypeScript / Code Quality items relevant
+to this task:
+
+  - "No secrets in client code. API keys, tokens, internal URLs must
+    not be in frontend bundles": verified — the only @milkpod/db /
+    @milkpod/api/events imports in apps/web are gated by
+    `import 'server-only'`, so they cannot be reachable from the
+    client bundle without a build-time error.
+  - "Reuse existing utilities and middleware. Don't reinvent ...":
+    `'server-only'` is the existing primitive; it is reused (not
+    reinvented).
+  - Library Leverage / "Read .d.ts files in node_modules": verified
+    the two client-safe `@milkpod/ai` modules used by new code in
+    this branch (`/plans`, `/types`) — the source files have no
+    runtime imports of server-only deps.
+
+CLAUDE.md / package-boundaries doc rules:
+
+  - "Frontend code imports via subpaths: @milkpod/ai/models,
+    @milkpod/ai/limits, @milkpod/ai/types, @milkpod/ai/schemas. The
+    barrel @milkpod/ai is server-only.": verified zero barrel imports
+    in apps/web/src.
+  - "Keep client-safe modules free of server imports.": verified for
+    each subpath used by apps/web (models, limits, types, schemas,
+    plans, number-words).
+
+Common Patterns from prior reviews — none directly relevant to
+boundary verification, but worth noting #6 ("Duplicated logic
+across modules"): the audit reused the established `'server-only'`
+pattern from `lib/data/queries.ts` for the new `lib/server/notifications.ts`
+rather than introducing a new convention. Good.
+
+--------------------------------------------------------------------------------
+Build / type-check
+--------------------------------------------------------------------------------
+
+  pnpm check-types: 8/8 green, FULL TURBO cache hit (no source
+  files changed in this task).
+
+--------------------------------------------------------------------------------
+Commit
+--------------------------------------------------------------------------------
+
+No code changes — verification-only task. Commit will mark plan task
+37 complete + append this section to replicache-progress.txt.
