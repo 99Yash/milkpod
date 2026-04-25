@@ -320,7 +320,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 
 - Each match must also carry `group-focus-within:opacity-100` — keyboard users must see hover-revealed controls
 
-### Task 34: Sweep catch blocks for silent error swallowing
+### ~~Task 34: Sweep catch blocks for silent error swallowing~~ ✓
 
 **Files**: all files in the branch diff
 **What**:
