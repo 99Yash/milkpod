@@ -6356,3 +6356,161 @@ Next
 ----
 Task 42 — Remove debug leftovers (rg console.log|debugger|XXX|FIXME
 across changed files).
+
+
+================================================================================
+Task 42 — Remove debug leftovers
+================================================================================
+
+Goal
+----
+Per replicache-plan.md L405-410:
+  rg 'console\.log|debugger|XXX|FIXME' <changed paths>
+  — each hit resolved (removed or promoted to a real TODO with ticket
+  reference)
+
+Method
+------
+1. Scoped the search to the actual branch diff, not a global rg over
+   the repo (which would also flag docs/ai-sdk.md sample code and
+   review-prompt.md / replicache-plan.md self-references — all noise).
+   Used `git diff main --name-only` to derive the changed-files set,
+   filtered out:
+     - packages/db/src/migrations/**           (SQL + JSON snapshots)
+     - **/*.json                               (lockfile, snapshots)
+     - pnpm-lock.yaml
+     - replicache-plan.md, replicache-progress.txt, docs/sync-engine-plan.md
+   to land on 67 .ts/.tsx/.css/.sh source files.
+
+2. Ran word-boundary grep over those 67 files for an expanded set of
+   debug markers (`-w` flag avoids the `wiping`/`wipe` false positive
+   that a non-word match hit on `\\bWIP\\b`):
+     console\\.log | debugger | TODO | HACK | XXX | FIXME | WIP
+
+3. For every hit, ran `git diff main -- <file>` and verified whether
+   the matched LINE was added/modified by this branch or pre-existing
+   on `main`.
+
+4. Cross-check: ran `git diff main | grep -E '^\\+' | grep -E
+   'console\\.log|debugger|XXX|FIXME'` to find any LINE the branch
+   ADDED (vs. just files it modified) that contains a debug marker.
+
+5. Newly-added files only sweep:
+     git diff main --diff-filter=A --name-only \\
+       | grep -E '\\.(ts|tsx|js|jsx)$' \\
+       | xargs grep -nwE 'console\\.log|debugger|TODO|HACK|XXX|FIXME'
+
+Findings
+--------
+Step 2 (word-boundary grep across changed source files) hits:
+  apps/server/src/index.ts:58:  console.log('Server is running on http://localhost:3001');
+  apps/server/src/index.ts:64:  console.log(`\\n${signal} received, shutting down gracefully...`);
+  apps/server/src/index.ts:68:  console.log('Server stopped accepting connections');
+  apps/server/src/index.ts:73:  console.log('BullMQ workers stopped');
+  apps/server/src/index.ts:86:  console.log('Redis connections closed');
+  apps/server/src/index.ts:94:  console.log('Database pool closed');
+
+  All 6 are pre-existing on main. The feat/replicache hunks for
+  apps/server/src/index.ts (verified via `git diff main --
+  apps/server/src/index.ts`) only:
+    - import + call initReplicachePokeBridge / closeReplicachePokeBridge
+    - tighten 4 console.error sites to the safe-extraction pattern
+      (`err instanceof Error ? err.message : String(err)`)
+  None of the 6 console.log lines appear in any +/- hunk. They are
+  intentional lifecycle observability for the operator (server up /
+  signal received / each shutdown stage), not debug leftovers — every
+  one fires once at process startup or shutdown, none in a hot path.
+  Acceptable per review-prompt.md "No console.log left in production
+  code" — that rule targets dev-time println debugging in request /
+  effect / catch paths, not deliberate operator-facing lifecycle
+  notices on a server entrypoint.
+
+Step 4 (lines ADDED by branch with a debug marker) hits — all in
+plan/progress markdown only:
+  - replicache-plan.md L263 / L410: literally the rule itself.
+  - replicache-progress.txt: 13 hits, every one is *report copy*
+    quoting "no console.log added", "no console.log: VERIFIED",
+    "Sweep console.log for full-error-object logging", etc.
+  Zero hits in any .ts / .tsx / .js / .jsx / .css / .sh file
+  introduced by the branch.
+
+Step 5 (new files only): zero hits. Every brand-new file on this
+branch — packages/sync/**, packages/api/src/modules/replicache/**,
+asset-members/**, notifications/**, comments/**, moments/**,
+auth/src/{invite-email,invite-email-template,signup-hooks}.ts,
+apps/web/src/lib/replicache/**, apps/web/src/components/{share,
+notifications}/** — passes the grep with zero output.
+
+False positive sanity check
+---------------------------
+A non-word-boundary `WIP` match (no `-w`) initially flagged:
+  packages/sync/src/mutators/comments.ts:71  // ...callers wiping `existing.body`...
+  packages/sync/src/mutators/moments.ts:76   // ...would wipe `existing.title`...
+Both are actual English words inside a code comment ("wiping" /
+"wipe"), not the `WIP` marker. Re-running with `-w` removes them.
+Confirmed by reading the surrounding lines (71-79 in comments.ts,
+76-84 in moments.ts) — they explain why the mutator gates on
+`args.body === undefined` / `args.title === undefined` rather than
+spread-merging, to avoid wiping the local snapshot when a caller
+passes undefined explicitly. Substantive logic comment, not a TODO.
+
+Issues found and fixed
+----------------------
+None. Zero debug-leftover hits were introduced by feat/replicache.
+
+Issues noted (no fix needed)
+----------------------------
+1. apps/server/src/index.ts L58, L64, L68, L73, L86, L94 — pre-existing
+   lifecycle console.log calls. Not introduced or modified by this
+   branch. They are operator-facing process lifecycle notices (server
+   up, shutdown signal received, each shutdown stage completed), each
+   firing exactly once per process lifetime. Out of scope for Task 42
+   ("each hit resolved" applies to debug leftovers introduced by the
+   branch); leaving alone matches the review-prompt.md spirit
+   ("Remove console.log debug statements" — these are not debug, they
+   are observability).
+
+Library improvements made
+-------------------------
+None — review/sweep task with nothing to fix.
+
+Checklist verification
+----------------------
+review-prompt.md "Frontend / Error Handling & UX" — "No console.log
+left in production code":
+  - Branch introduced ZERO console.log calls. Confirmed via `git diff
+    main | grep -E '^\\+' | grep 'console\\.log'` returning only
+    plan/progress markdown self-references.
+  - All branch-introduced error logging uses console.error with the
+    `err instanceof Error ? err.message : String(err)` extraction
+    pattern (verified across prior tasks 31, 17, etc., and by sampling
+    invite-email.ts, signup-hooks.ts, replicache/*.ts, asset-members
+    service, comments service, moments service, notifications
+    service).
+
+review-prompt.md "Common Patterns Found in Prior Reviews" #1
+("console.error('context', err) logging full error objects") was
+already swept in Task 31 — Task 42 confirms no console.log
+counterpart slipped in afterwards.
+
+replicache-plan.md L405-410 acceptance criteria:
+  - "rg console.log|debugger|XXX|FIXME <changed paths>" → ran
+    (word-boundary form to avoid wiping/wipe false positives), only
+    pre-existing lifecycle logs surfaced.
+  - "each hit resolved (removed or promoted to a real TODO with
+    ticket reference)" → no branch-introduced hits to resolve. The
+    pre-existing lifecycle logs are intentional and out of scope.
+
+Build / type-check
+------------------
+`pnpm check-types` → 8 packages, 8 cached, 0 errors. No source
+changes; cache is correct.
+
+Plan annotation
+---------------
+Marked Task 42 as ✓ (strikethrough) in replicache-plan.md.
+
+Next
+----
+Task 43 — Consider squashing commits for surgical rollback (optional;
+the plan note says "skip if the history is already meaningful enough").
