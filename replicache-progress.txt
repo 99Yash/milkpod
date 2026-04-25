@@ -4659,3 +4659,246 @@ Build / type-check
 Commit
 --------------------------------------------------------------------------------
 
+review(task 33): verify hover-revealed controls also expose on keyboard focus
+
+================================================================================
+Task 34: Sweep catch blocks for silent error swallowing
+================================================================================
+
+Scope: every catch / .catch in the branch diff. Per review-prompt.md: every
+catch must rethrow, log safely, or give the user feedback (toast.error, inline
+error, error boundary). No "handled by global handler" comments without a real
+handler. No empty catch {} that drops information silently.
+
+--------------------------------------------------------------------------------
+Sweep methodology
+--------------------------------------------------------------------------------
+
+  git diff main...HEAD --name-only > /tmp/branch_code_files.txt
+  # restricted to .ts / .tsx / .js / .jsx — 64 files
+
+For each file, ran:
+  grep -nE 'catch[[:space:]]*[\(\{]|\.catch[[:space:]]*\(' "$f"
+
+This produced ~50 catch sites across 24 files. Each site was read in context
+(±20 lines) to classify:
+
+  (i)   logs safely (`err instanceof Error ? err.message : String(err)`) AND
+        either rethrows, returns a typed error, or surfaces to user;
+  (ii)  silently swallows but documents WHY in an inline comment AND the
+        swallow is the right behavior (best-effort cleanup, fire-and-forget,
+        retried by infrastructure);
+  (iii) silently swallows with no justification → BUG, fix.
+
+Also verified there are zero "handled by global handler" comments anywhere in
+the branch (rg -i confirmed: only mentions are in plan/progress markdown, not
+source).
+
+--------------------------------------------------------------------------------
+Issues found and fixed
+--------------------------------------------------------------------------------
+
+1. apps/web/src/components/notifications/notifications-page.tsx:24, 35 —
+   bare `} catch { /* Non-fatal. */ }` on `notificationMarkRead` and
+   `notificationMarkAllRead` Replicache mutator calls. Sister component
+   notification-bell.tsx (lines 38-44, 55-60) had already adopted the right
+   pattern: log a safe message-only string so a deployed failure is debuggable
+   without spamming a user-facing toast.
+
+   Reasoning for "log, don't toast" (over toast.error or rethrow): a Replicache
+   `rep.mutate.X(...)` promise resolves once the local optimistic apply
+   completes. Server-side rejection rebases via the next pull, NOT a thrown
+   error from this call. So a throw here means a *local* apply failure (input
+   shape mismatch, schema crash) — a programmer bug. Toast.error would be
+   misleading because the user did successfully see the read state toggle
+   locally; surfacing an error toast wouldn't match what they observe in the
+   UI. console.error is the right baseline. Verified by reading
+   `node_modules/.pnpm/replicache@*/node_modules/replicache/out/replicache.d.ts`
+   (`mutate` returns Promise<MutatorReturnT>, with optimistic semantics — the
+   docblock on `Replicache.mutate` confirms server reconciliation runs
+   asynchronously via subsequent pulls, not via the mutator promise rejection).
+
+   Fix: replaced both empty catches with the bell-style block
+   (`} catch (err) { console.error('notification mark-{,all-}read failed:', err
+   instanceof Error ? err.message : String(err)); }`).
+
+   Did NOT extract a shared `logMutatorFailure(label, err)` helper. Per
+   prompt's "Three similar lines is better than a premature abstraction" and
+   the only-two-callsites count, the inline duplication is intentional. If a
+   third callsite shows up, lift then.
+
+--------------------------------------------------------------------------------
+Issues noted (no fix needed)
+--------------------------------------------------------------------------------
+
+(a) packages/api/src/events/replicache-events.ts:95 —
+    `catch { /* malformed — drop */ }` on a JSON.parse of a Redis pub/sub
+    payload. Correct: a malformed event from another replica is a no-op for
+    the receiver (the writer would be the source of truth in any case, and
+    pull-on-next-poke recovers). Logging at warn would amplify cascading
+    failures into log spam. Comment explains intent.
+
+(b) packages/api/src/events/replicache-events.ts:115, 187 —
+    `subscriber.unsubscribe(...).catch(() => {})` on shutdown / refcount-drop
+    paths. Best-effort cleanup; the subscriber connection is being torn down
+    anyway. ioredis throws on `unsubscribe` only if the connection is already
+    closed, which is exactly the state we want. No fix.
+
+(c) packages/api/src/events/replicache-events.ts:126 —
+    `publisher.publish(...).catch(() => emitter.emit(eventFor(uid), event))`.
+    On Redis publish failure this falls back to a same-replica local emit so
+    the originating client still gets its poke. Other replicas miss this
+    specific poke, but they catch up via the next regular pull. The fallback
+    is the *handling* — not a swallow.
+
+(d) packages/api/src/modules/replicache/cvr.ts:59 — `catch { return null; }`
+    on `JSON.parse` of a CVRSnapshot. A null return forces the pull pipeline
+    to re-baseline (treat as cache miss). This is the intended behavior: a
+    malformed snapshot must not be treated as authoritative state.
+
+(e) packages/api/src/modules/replicache/index.ts:53 —
+    `catch { /* stream already closed */ }` on `controller.enqueue` of an
+    SSE write. Standard pattern, mirrored from assets/index.ts:57 (pre-
+    existing in main). Correct: enqueue throws after the consumer cancels.
+
+(f) packages/api/src/index.ts:48, 59, 69, 152 — pre-existing on main
+    (verified via `git diff main -- packages/api/src/index.ts`: only adds are
+    new module wires + replicache-poke-bridge re-exports; no catch-block
+    edits). Out of branch scope.
+
+(g) apps/web/src/components/dashboard/dashboard-shell.tsx:486 —
+    `authClient.signOut().catch(() => {})` is pre-existing; the diff only
+    adds the NotificationBell mount. Out of scope.
+
+(h) apps/web/src/lib/replicache/client.ts:42, 49, 72, 75 — error info is
+    returned to Replicache via `httpRequestInfo` (PullerResultV1 / pusher
+    contract). Replicache's retry-with-backoff state machine drives the next
+    action. Not a swallow — the catch maps thrown fetch errors to the SDK's
+    expected error-shape.
+
+(i) apps/web/src/lib/server/notifications.ts:39 —
+    `catch { /* Redis unavailable — heartbeat + next manual pull will
+    reconcile. */ }` on `emitReplicachePokes`. The auto-mark-read DB write
+    already succeeded; the poke is a latency optimization, not a correctness
+    requirement. Comment explains the recovery path.
+
+(j) apps/web/src/lib/server/notifications.ts:43 — outer catch logs safely
+    via console.warn. Correct.
+
+(k) apps/server/src/index.ts:30, 74, 87, 95 — startup + shutdown error
+    paths, all log safely with `err instanceof Error ? err.message :
+    String(err)`. Shutdown continues through subsequent steps to ensure all
+    resources are torn down.
+
+(l) packages/api/src/middleware/rate-limit.ts:144 —
+    `catch { /* Keep IP fallback */ }` on session lookup. Correct: a session
+    DB outage shouldn't prevent rate-limiting (we just rate-limit by IP for
+    that request). Comment explains.
+
+(m) packages/api/src/modules/asset-members/service.ts:103, 278, 354 — all
+    log safely via console.warn. The pokeMembers / invite-email-lookup /
+    revocation-poke paths are best-effort latency optimizations; the source-
+    of-truth DB writes already committed.
+
+(n) packages/api/src/modules/assets/index.ts:57, 158, 206-209, 214, 221, 227
+    — pre-existing on main except the import-fix at line 108 (getById →
+    getByIdAsMember). Catches all log safely.
+
+(o) packages/api/src/modules/comments/index.ts:46 — logs safely AND returns
+    a typed 500 to the client. Textbook pattern.
+
+(p) packages/api/src/modules/notifications/service.ts:86 — logs safely
+    via console.warn. Best-effort poke fan-out, transaction already committed.
+
+(q) packages/api/src/modules/podcasts/episode-pipeline.ts:127 — logs safely
+    AND updates asset status to 'failed' so the user sees the failure in the
+    library (no silent swallow — the asset row is the user-visible signal).
+
+(r) packages/api/src/modules/replicache/push.ts:165, 215 — both log safely.
+    The 165 catch distinguishes ACL rejection (warn) from mutator crash
+    (error) and advances LMID either way to avoid client retry loops; the 215
+    catch wraps the post-commit user-poke fan-out.
+
+(s) packages/auth/src/index.ts:71 — logs safely AND rethrows so betterAuth
+    fails the OTP request properly (calling code surface needs the throw).
+
+(t) packages/auth/src/invite-email.ts:58 — logs safely. Fire-and-forget by
+    design (per the function's docblock: a Resend outage must not block the
+    invite mutation).
+
+(u) packages/auth/src/signup-hooks.ts:102 — logs safely. Per the file's top
+    docblock, signup must not fail because invite-claim hit a transient
+    error; worst case is the invite stays pending.
+
+(v) Frontend toast.error catches: asset-card.tsx:136, moment-card.tsx:61,
+    moments-tab.tsx:110, share-dialog.tsx:193/227/244, collaborators-section
+    .tsx:81/100/121, notification-bell.tsx:38/55. All call toast.error with
+    a readable message — user gets feedback. Acceptable.
+
+--------------------------------------------------------------------------------
+Library improvements made
+--------------------------------------------------------------------------------
+
+None. The fix is a straight match-the-existing-pattern swap. There is no
+library primitive ("safe error logger") that would simplify these two lines
+beyond the project-internal `err instanceof Error ? err.message : String(err)`
+idiom already used 30+ times across the diff.
+
+Considered: importing `getErrorMessage(err)` from a shared util. Searched
+packages/api/src/utils.ts and apps/web/src/lib/utils.ts — neither exposes
+such a helper, and the inline ternary is already the canonical pattern in
+this codebase per CLAUDE.md / prior review cycles. Adding it now would be a
+cross-cutting refactor outside Task 34's scope.
+
+--------------------------------------------------------------------------------
+Checklist verification
+--------------------------------------------------------------------------------
+
+Frontend — Error Handling & UX
+  - "Proper error handling beyond console.log. Every API call's `.catch()`
+     or error branch must give the user feedback (toast, inline error, error
+     boundary). NEVER silently swallow errors with empty catch blocks or
+     'Error handled by global handler' comments when no global handler
+     exists.":
+       * Notifications-page mutator catches NOW log via console.error with
+         safe message extraction. The choice over toast.error is justified
+         above (Replicache optimistic-apply semantics — toast would
+         contradict the visible UI state).
+       * All other UI catches in the branch already call toast.error,
+         except the few documented infrastructure swallows (cases (a)-(e),
+         (i), (l)) where the swallow is the correct behavior with an
+         inline comment explaining why.
+  - "No console.log left in production code":
+       * `git diff main...HEAD | grep -E '^\+.*console\.log'` — verified
+         no new console.log statements added in branch.
+
+Backend — Code Quality
+  - "Proper error handling with meaningful error messages for debugging
+     but no sensitive information leaked to clients.":
+       * Every backend catch in the branch uses `err instanceof Error ?
+         err.message : String(err)` for log output. Raw `err` objects are
+         never logged or returned to the client. /api/comments POST returns
+         a generic 500 with safe message ("Comment generation failed.
+         Please try again later."). Replicache push surfaces 403 / 413
+         only, never the raw mutator error.
+
+Common Patterns from prior reviews
+  1. "console.error('context', err) logging full error objects" — verified
+     CLOSED for the branch in Task 31.
+  5. "Silent error swallowing in frontend" — CLOSED for the branch by this
+     task. The notifications-page catches were the only remaining silent
+     swallows; both now log safely.
+
+--------------------------------------------------------------------------------
+Build / type-check
+--------------------------------------------------------------------------------
+
+  pnpm check-types: 8/8 green (2.494s, 7 cache hits + 1 cache miss on web —
+  the only package with a source change). No type errors. The
+  `console.error(string, string)` invocation typechecks against the standard
+  `Console.error(...data: unknown[]): void` signature.
+
+--------------------------------------------------------------------------------
+Commit
+--------------------------------------------------------------------------------
+
