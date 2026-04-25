@@ -6061,3 +6061,134 @@ Next
 
 Task 40 — Decide the fate of sync-engine-plan.md (root-level plan
 hygiene; move to docs/ or delete).
+
+================================================================================
+Task 40 — Decide the fate of sync-engine-plan.md
+================================================================================
+
+Decision: MOVE to docs/sync-engine-plan.md (kept as reference).
+
+Rationale
+---------
+The plan task gives two options: move to docs/ if still useful reference, or
+delete if fully realized in code + README. Reading the doc against the
+finished implementation:
+
+  - The "what ships in v1" section (lines 41-79) is now realized in code.
+    Tasks 1-39 of replicache-plan.md verified each piece end-to-end. So in
+    that narrow sense it's redundant.
+
+  - But the doc carries content that is NOT in code or README:
+      * The decision tree (lines 17-38) — why Replicache, why not
+        microservices, why not Zero, why not full offline mode. This is
+        load-bearing context for any future maintainer asking "why isn't
+        this offline-capable?" or "should we migrate to Zero?".
+      * The mutator contract (lines 215-248) — invariants like "no
+        Date.now in mutators" and "auth is an input, not a side-read"
+        that govern how new mutators must be written. This is style
+        guidance, not implementation, and is the kind of thing that
+        decays silently if not in docs/.
+      * Open questions (lines 300-306) — items 1-5 are still genuine
+        product decisions for v2 (invitee-must-be-user UX, soft vs hard
+        delete semantics, asset-owner-leaving). Worth retaining.
+      * v2 roadmap (lines 71-78) — chat Q&A on shared assets, presence
+        layer, offline mode, public collab links, collections sync,
+        storage/compute split quota. None of these are tickets in code
+        yet; the doc is the only place they're captured.
+      * Interview talking points (lines 310-329) — domain-specific to
+        the original purpose (the project as portfolio piece) but
+        harmless to keep.
+
+  - README.md is a product/setup intro (lines 1-30 only). It doesn't
+    cover sync-engine architecture or rationale. The choice is
+    move-or-delete, not "the README absorbs it" — README would have to
+    be substantially rewritten to do that, and that's not in this
+    task's scope.
+
+Action taken
+------------
+1. `git mv sync-engine-plan.md docs/sync-engine-plan.md`
+   - Lands alongside the other plan/ref docs in docs/ (architecture.md,
+     package-boundaries.md, ai-sdk-v6-patterns.md, etc.) per existing
+     convention.
+
+2. Updated relative path references inside the moved file:
+   - `../../oss/replicache-cvr` → `../../../oss/replicache-cvr`
+     (one extra `..` since the doc is now one directory deeper).
+   - `docs/architecture.md` → `architecture.md` (sibling now).
+   - `docs/package-boundaries.md` → `package-boundaries.md` (sibling).
+   - `docs/database.md` → `database.md` (sibling).
+   - `packages/api/src/events/asset-events.ts` →
+     `../packages/api/src/events/replicache-events.ts` (corrected
+     filename — file was renamed during implementation; original docs
+     name is preserved as a parenthetical so old greps still resolve).
+
+3. Updated `replicache-plan.md` line 3 reference from
+   `sync-engine-plan.md` to `docs/sync-engine-plan.md` so the plan doc
+   itself stays internally consistent.
+
+Issues found and fixed
+----------------------
+None — this task is repository hygiene, not a code review of running
+behavior. The single content-correctness fix made en route was the
+stale path reference to `asset-events.ts` (renamed to
+`replicache-events.ts` during Phase 2 of the implementation; verified
+by `git log --follow packages/api/src/events/`). Updated in the moved
+doc's References section.
+
+Issues noted (no fix needed)
+----------------------------
+1. The mutator example in sync-engine-plan.md (lines 227-248) uses a
+   `momentCreate` shape that differs from the actual implementation in
+   `packages/sync/src/mutators/moments.ts`. The doc's snippet is
+   illustrative rather than current — keeping it is fine for showing
+   the *contract* shape (zod args, dual client/server, ID/clock as
+   args), but a future reader could be misled into thinking it's the
+   live API. Not fixing — would require either deleting the snippet
+   (loses the contract illustration) or maintaining a live-code mirror
+   in two places (drift trap). The doc's "this plan describes design
+   intent, not literal current code" framing covers it.
+
+2. The "Total: ~5 days of focused work" estimate in the implementation
+   plan section is a historical artifact (the work landed and is now
+   merge-pending). Could be deleted, but losing it loses the "this was
+   a sized side-project, not a months-long rewrite" interview
+   framing. Keeping. Out of scope for the move.
+
+3. References section still points at `../../../oss/replicache-cvr`
+   which is outside this repo (a sibling working tree the original
+   author had locally). It will not resolve for anyone else cloning
+   this repo. Not fixing — converting to a public link would require
+   choosing a stable upstream (e.g. a permalink to the rocicorp/mono
+   tree at a specific commit), which goes beyond a relocation task.
+   Flagged here for a future docs sweep.
+
+Library improvements made
+-------------------------
+None — pure file-relocation task; no library API touched.
+
+Checklist verification
+----------------------
+review-prompt.md doesn't have a "documentation hygiene" section. The
+only relevant nudge is composability/library-leverage (lines 162-168)
+which is about runtime code, not docs. So strictly: no checklist item
+applies. Confirmed by re-reading the prompt.
+
+The task ITSELF (replicache-plan.md L389-395) is the spec, and it has
+two acceptance criteria:
+  - "Either move to docs/ ... or delete"  → moved to docs/. ✓
+  - "Do not leave it at root unchanged"   → no longer at root. ✓
+
+Build / type-check
+------------------
+`pnpm check-types` → 8 packages, 8 cached, 0 errors. FULL TURBO.
+No source files changed, so the cache is correct.
+
+Plan annotation
+---------------
+Marked Task 40 as ✓ (strikethrough) in replicache-plan.md.
+
+Next
+----
+Task 41 — Review pnpm-lock.yaml diff (verify only legitimate
+new-dependency adds; flag drive-by version bumps).

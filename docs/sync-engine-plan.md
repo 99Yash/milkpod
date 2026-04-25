@@ -332,9 +332,9 @@ When asked *"tell me about this project"*:
 
 ## References
 
-- `../../oss/replicache-cvr` — local reference implementation mirroring this plan's CVR + pokes pattern. Direct inspiration.
+- `../../../oss/replicache-cvr` — local reference implementation mirroring this plan's CVR + pokes pattern. Direct inspiration.
 - `https://github.com/rocicorp/mono/tree/main/packages/replicache` — upstream Replicache source.
-- `docs/architecture.md` (this repo) — workspace layout and data flow.
-- `docs/package-boundaries.md` — subpath import rules, used as the template for `@milkpod/sync` hygiene.
-- `docs/database.md` — migration workflow; relevant for the three schema changes in Phase 1–2.
-- `packages/api/src/events/asset-events.ts` — the Redis pub/sub bridge being reused for pokes.
+- `architecture.md` (sibling) — workspace layout and data flow.
+- `package-boundaries.md` (sibling) — subpath import rules, used as the template for `@milkpod/sync` hygiene.
+- `database.md` (sibling) — migration workflow; relevant for the three schema changes in Phase 1–2.
+- `../packages/api/src/events/replicache-events.ts` — the Redis pub/sub bridge being reused for pokes (file was originally `asset-events.ts`; renamed during implementation).
