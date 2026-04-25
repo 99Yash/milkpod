@@ -4290,3 +4290,223 @@ Commit
 
 review(task 31): close raw-err leak in shutdown + best-effort poke logs
 
+
+================================================================================
+Task 32 — Sweep fetch() and AI SDK calls for missing timeouts
+================================================================================
+
+Goal: every fetch / AI SDK / third-party SDK call in branch-touched files
+carries a timeout (AbortSignal.timeout for native fetch, Promise.race for
+SDKs that don't expose abort).
+
+--------------------------------------------------------------------------------
+Sweep methodology
+--------------------------------------------------------------------------------
+
+  git diff main...HEAD --name-only -- '*.ts' '*.tsx' > /tmp/changed_files.txt
+  while read f; do
+    grep -nE '\bfetch\s*\(' "$f"      # native fetch
+    grep -nE '\b(generateText|streamText|generateObject|streamObject|
+              embed|embedMany)\s*\(' "$f"   # AI SDK
+    grep -nE 'resend|emails\.send|axios|got\(|http\.|https\.' "$f"  # SDKs
+    grep -nE 'EventSource|publish\(|subscribe\(' "$f"               # streaming
+  done < /tmp/changed_files.txt
+
+86 changed files. Hits across all four searches were:
+
+  fetch():
+    - apps/web/src/lib/replicache/client.ts:31, 60   (new)
+    - packages/api/src/index.ts:94                   (pre-existing line)
+
+  AI SDK (generateText/streamText/etc):
+    - none in any branch-touched file.
+
+  Third-party SDK calls (Resend, etc):
+    - packages/auth/src/index.ts:43           (resend.emails.send — pre-existing line)
+    - packages/auth/src/invite-email.ts:39    (resend.emails.send — new)
+
+  Streaming / pub-sub:
+    - apps/web/src/lib/replicache/context.tsx:47   (EventSource — long-lived SSE)
+    - packages/api/src/events/replicache-events.ts:115, 126, 172, 187
+        (ioredis pub/sub — connection-managed, not request-scoped)
+
+--------------------------------------------------------------------------------
+Issues found and fixed
+--------------------------------------------------------------------------------
+
+(1) packages/auth/src/index.ts:43 — resend.emails.send() inside the
+    betterAuth `sendVerificationOTP` callback had no timeout. Verified by
+    reading node_modules/.pnpm/resend@6.9.3/.../dist/index.d.mts: the
+    `PostOptions` interface only exposes `{ query?, headers? }` — no
+    AbortSignal field on emails.send.
+
+    Risk: this call sits on the *critical path* of OAuth-less sign-in and
+    sign-up. A hung Resend request (TCP wedge, upstream incident) would
+    keep the betterAuth handler pending until the front-end fetch / proxy
+    times out. Worse than the invite-email path (which is fire-and-forget
+    via `void`): the OTP send is awaited synchronously and rethrows on
+    failure, so a stall blocks the whole login flow.
+
+    Fix: wrap the send in the same `Promise.race(send, setTimeout-reject)`
+    pattern that Task 17 introduced for invite-email.ts. 30-second cap
+    matches the fetch / invite-email convention. Timer is cleared in a
+    `finally` so the timeout reject can never leak after a successful
+    send.
+
+    Code:
+        const OTP_EMAIL_TIMEOUT_MS = 30_000;
+        ...
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            resend.emails.send({ ... }),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () => reject(new Error(`OTP email send timed out after ${OTP_EMAIL_TIMEOUT_MS}ms`)),
+                OTP_EMAIL_TIMEOUT_MS,
+              );
+            }),
+          ]);
+        } catch (error) {
+          // existing log + rethrow
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+
+    Note: although the resend.emails.send line itself was on main before
+    this branch, packages/auth/src/index.ts IS in the diff (added the
+    `claimPendingInvitesOnSignup` after-hook). Task 32's stated scope is
+    "all files in the branch diff", so the file is in scope; the fix
+    closes the same hung-Resend risk class that Task 17 closed for the
+    invite path.
+
+--------------------------------------------------------------------------------
+Issues noted (no fix needed)
+--------------------------------------------------------------------------------
+
+(a) apps/web/src/lib/replicache/client.ts:31, 60 — both fetch sites
+    already carry `signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)` where
+    REQUEST_TIMEOUT_MS = 30_000. Generous for a pull/push payload, and
+    Replicache's retry backoff only kicks in once a request settles, so
+    a missing timeout would freeze the whole sync pipeline. Verified by
+    reading client.ts top-to-bottom.
+
+(b) packages/api/src/index.ts:94 — the social-redirect fetch already has
+    `signal: AbortSignal.timeout(30_000)`. Pre-existing on main; not a
+    branch change. Confirmed via git diff.
+
+(c) packages/auth/src/invite-email.ts:39 — resend.emails.send() already
+    wrapped with the same Promise.race pattern (introduced by Task 17).
+    INVITE_EMAIL_TIMEOUT_MS = 30_000.
+
+(d) apps/web/src/lib/replicache/context.tsx:47 — EventSource is a
+    long-lived server-sent-events connection, not an RPC. The browser
+    auto-reconnects on transient errors and the server emits a 30-second
+    heartbeat (modules/replicache/index.ts:67). Adding a request-level
+    timeout would actively break the sync pipeline (the SSE channel is
+    intended to stay open). Out of scope for Task 32.
+
+(e) packages/api/src/events/replicache-events.ts:115, 126, 172, 187 —
+    ioredis pub/sub calls. ioredis manages connection-level reconnection
+    + per-command retry policy via constructor options
+    (createRedisConnection: `maxRetriesPerRequest: null` for BullMQ
+    compatibility). publisher.publish / subscriber.subscribe are not
+    request-shaped: they're either fire-and-forget (.catch acceptable
+    fallback) or persistent subscriptions. AbortSignal-style timeouts
+    don't apply to long-lived pub/sub.
+
+(f) Eden Treaty calls in apps/web/src/lib/api-fetchers.ts and component
+    files (e.g. moments-tab.tsx, asset-card.tsx, collaborators-section
+    .tsx) — these go to our own backend through the Treaty client. The
+    underlying transport is browser fetch but Treaty does not surface
+    `signal` at the call site in this version (1.4.6); adding per-call
+    timeouts would require either patching the Treaty client or wrapping
+    every Treaty call. Same-origin + own-backend means the network
+    failure mode is bounded by browser fetch defaults, not a remote
+    third-party outage. Not a Task 32 finding.
+
+(g) packages/api/src/modules/replicache/{push,pull,cvr,server-mutators}.ts
+    — these are all-database / all-Redis / all-in-memory; no fetch / AI
+    SDK / external HTTP. Verified by re-reading each file end-to-end.
+
+(h) packages/api/src/modules/asset-members/service.ts — internal db()
+    queries + emitReplicachePokes (synchronous local emit) + the
+    sendInviteEmail call which already has its own timeout (case (c)).
+
+(i) packages/api/src/modules/notifications/service.ts and the sync
+    mutators in packages/sync/src/mutators/* — pure DB / pure Replicache-
+    tx. No external calls.
+
+(j) apps/server/src/index.ts — the new init/close calls are local
+    (initReplicachePokeBridge, closeReplicachePokeBridge); they wrap
+    EventEmitter + ioredis. No new fetch.
+
+(k) packages/api/src/modules/podcasts/episode-pipeline.ts — the Task 28
+    diff added an `assetMembers` insert seed. The pre-existing fetch /
+    AI SDK calls live further down the pipeline (transcribeAudio,
+    embedSegments) which are pre-existing on main and out of branch
+    scope.
+
+--------------------------------------------------------------------------------
+Library improvements made
+--------------------------------------------------------------------------------
+
+None. The Resend SDK lacks an AbortSignal hook (verified via .d.mts), so
+the only viable wrapper is Promise.race + setTimeout. AbortSignal.timeout
+exists for fetch but doesn't help with SDKs that don't accept signals;
+the Resend wrapper is the same pattern used at invite-email.ts:38.
+
+Considered: extracting a `sendEmailWithTimeout(send: () => Promise<T>,
+ms: number, label: string)` helper to dedupe the 12-line wrapper now
+present in two files in the auth package. Rejected on prompt guidance
+("Three similar lines is better than a premature abstraction") and
+because the two call sites' error-handling tail diverges (invite-email
+swallows + logs; OTP rethrows after logging — the betterAuth contract
+requires the throw to fail the request). A shared helper would either
+need to expose both behaviors or end up as a near-trivial wrapper around
+Promise.race that doesn't earn its abstraction cost.
+
+--------------------------------------------------------------------------------
+Checklist verification
+--------------------------------------------------------------------------------
+
+Backend — Resilience
+  - "Timeouts on ALL external API calls and LLM invocations":
+      * Native fetch: 2/2 sites in branch-touched files have
+        AbortSignal.timeout(30_000) (replicache/client.ts pull + push).
+      * Resend SDK: 2/2 sites now wrapped in Promise.race against a
+        30-second setTimeout (invite-email.ts and the OTP send, latter
+        added by this task).
+      * AI SDK: no new generateText / streamText calls in the branch
+        diff.
+      * EventSource / pub-sub: long-lived; request-scoped timeouts not
+        applicable.
+  - "30s for APIs": all four SDK + fetch sites use 30_000 ms.
+  - "60s streaming, 300s long AI/transcription": N/A (no streaming /
+    long AI calls added).
+
+Backend — Code Quality
+  - "Reuse existing utilities": invite-email.ts and the new OTP wrapper
+    intentionally share the exact pattern (verbatim modulo constant
+    name) so a future helper extraction is mechanical.
+
+Common Patterns from prior reviews
+  2. "Missing timeouts on fetch() and LLM calls" — CLOSED for this
+     branch. The remaining gap (OTP send) is now wrapped.
+  All other items: out of Task 32 scope (handled in their own tasks).
+
+--------------------------------------------------------------------------------
+Build / type-check
+--------------------------------------------------------------------------------
+
+  pnpm check-types: 8/8 green (3.9s).
+    - 4 cache hits (env, db, sync, ai) — no source changes.
+    - 4 cache misses (auth, api, server, web) — auth changed; downstream
+      packages re-checked because @milkpod/auth is a dep boundary.
+    - No type errors. Promise.race / setTimeout types resolve cleanly.
+
+--------------------------------------------------------------------------------
+Commit
+--------------------------------------------------------------------------------
+
+review(task 32): cap OTP email send so a hung Resend request can't wedge sign-in

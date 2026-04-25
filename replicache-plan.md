@@ -305,7 +305,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - `git diff main...HEAD --name-only | xargs rg 'console\.error'` — each `console.error('ctx', err)` → `console.error('ctx', err instanceof Error ? err.message : String(err))`
 - Raw `err` can contain connection strings, SQL state, stack traces
 
-### Task 32: Sweep `fetch()` and AI SDK calls for missing timeouts
+### ~~Task 32: Sweep `fetch()` and AI SDK calls for missing timeouts~~ ✓
 
 **Files**: all files in the branch diff
 **What**:

@@ -10,6 +10,13 @@ import { claimPendingInvitesOnSignup } from './signup-hooks';
 
 let _auth: ReturnType<typeof betterAuth<BetterAuthOptions>> | undefined;
 
+// Resend's SDK doesn't expose AbortSignal on emails.send (see
+// resend@6.9.3/dist/index.d.mts: PostOptions = { query?, headers? } only).
+// OTP send sits on the critical path of sign-in/sign-up — without a cap, a
+// hung Resend request would keep the betterAuth handler pending until the
+// upstream HTTP request times out (or forever, if the client never gives up).
+const OTP_EMAIL_TIMEOUT_MS = 30_000;
+
 export function auth() {
   if (_auth) return _auth;
   const env = serverEnv();
@@ -39,14 +46,28 @@ export function auth() {
         sendVerificationOTP: async ({ email, otp, type }) => {
           const safeOtp = String(otp).replace(/[^0-9]/g, '');
           const template = buildOtpEmail(type, safeOtp);
+          let timer: ReturnType<typeof setTimeout> | undefined;
           try {
-            await resend.emails.send({
-              from: env.AUTH_FROM_EMAIL,
-              to: email,
-              subject: template.subject,
-              html: template.html,
-              text: template.text,
-            });
+            await Promise.race([
+              resend.emails.send({
+                from: env.AUTH_FROM_EMAIL,
+                to: email,
+                subject: template.subject,
+                html: template.html,
+                text: template.text,
+              }),
+              new Promise<never>((_, reject) => {
+                timer = setTimeout(
+                  () =>
+                    reject(
+                      new Error(
+                        `OTP email send timed out after ${OTP_EMAIL_TIMEOUT_MS}ms`,
+                      ),
+                    ),
+                  OTP_EMAIL_TIMEOUT_MS,
+                );
+              }),
+            ]);
           } catch (error) {
             const errorMessage =
               error instanceof Error ? error.message : String(error);
@@ -55,6 +76,8 @@ export function auth() {
               errorMessage,
             });
             throw error;
+          } finally {
+            if (timer) clearTimeout(timer);
           }
         },
       }),
