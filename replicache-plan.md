@@ -345,7 +345,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Each `as T` is justified (e.g. Eden treaty inference) or replaced with a type guard (`is T`)
 - No `as any`, `as unknown as T`
 
-### Task 37: Verify package-boundary rules in web imports
+### ~~Task 37: Verify package-boundary rules in web imports~~ ✓
 
 **Files**: `apps/web/src/**/*.ts{,x}`
 **What**:
