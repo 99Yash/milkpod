@@ -6192,3 +6192,167 @@ Next
 ----
 Task 41 — Review pnpm-lock.yaml diff (verify only legitimate
 new-dependency adds; flag drive-by version bumps).
+
+
+================================================================================
+Task 41 — Review pnpm-lock.yaml diff
+================================================================================
+
+Method
+------
+- `git diff main --stat -- pnpm-lock.yaml` → 68 insertions, 0 deletions.
+  A pure-additive diff means structurally no version bump of any
+  pre-existing package can have happened — pnpm-lock blocks would have
+  to delete the old version line to bump it. So the "no drive-by
+  bumps" guarantee falls out of the stat alone.
+- Read the full lock diff (`git diff main -- pnpm-lock.yaml`) anyway to
+  confirm each new entry maps to a legitimate new dependency declared
+  in some package.json on this branch.
+- Cross-checked against
+  `git diff main -- '*/package.json' 'pnpm-workspace.yaml'`
+  to confirm every lockfile addition is justified by an explicit
+  package.json edit, and vice versa.
+
+Lockfile additions classified
+-----------------------------
+1. importers / apps/web:
+     +@milkpod/sync (workspace link)
+     +replicache@15.3.0
+   Justified by `apps/web/package.json` adding both as dependencies —
+   apps/web is the Replicache client host (lib/replicache/*).
+
+2. importers / packages/api:
+     +@milkpod/sync (workspace link)
+   Justified by `packages/api/package.json` adding it — server-side
+   mutators import client/server-shared mutator names + zod schemas
+   from @milkpod/sync.
+
+3. importers / packages/auth:
+     +drizzle-orm@^0.44.2
+   Justified by `packages/auth/package.json` adding it. The new
+   `packages/auth/src/signup-hooks.ts` imports `and, eq, gt, isNull,
+   or` directly from `drizzle-orm` to claim pending invites in a
+   transaction. Until this branch, packages/auth had no direct DB
+   query path — the new claim-invite hook is the first.
+
+   Note: pin is `^0.44.2`, matching packages/api / packages/ai /
+   packages/db. apps/web pins `^0.44.7` (pre-existing on main, not
+   touched by this branch). Resolved version is `0.44.7` everywhere
+   per the lockfile, so no runtime drift. Pre-existing pin
+   inconsistency is out of scope for Task 41 (review-prompt.md and
+   replicache-plan.md only ask about diff-introduced bumps).
+
+4. importers / packages/sync (NEW package):
+     dependencies: zod (catalog: → 4.1.12), typescript@5.9.3
+       (lockfile records the peerDependency typescript pin in this
+        block, which is normal pnpm behaviour for non-optional peers)
+     devDependencies: @milkpod/config, replicache@15.3.0,
+       tsdown (catalog:)
+   Justified by the new `packages/sync/package.json` itself.
+
+5. New `packages:` blocks (resolution metadata):
+     +@badrap/valita@0.3.16     (replicache transitive)
+     +@rocicorp/lock@1.0.4      (replicache transitive)
+     +@rocicorp/logger@5.4.0    (replicache transitive)
+     +@rocicorp/resolver@1.0.2  (replicache transitive)
+     +replicache@15.3.0         (top-level)
+   All four `@rocicorp/*` and `@badrap/valita` are first-party
+   dependencies of `replicache@15` (verified via the matching
+   `snapshots:` entry: `replicache@15.3.0:` lists exactly those four
+   under `dependencies:`). No surprises.
+
+6. New `snapshots:` blocks: same five packages as in (5). Mirror
+   relationship — no extra surprise additions.
+
+What is NOT in the diff (sanity sweep)
+--------------------------------------
+- No removed lines (`-`) anywhere → no version line of an existing
+  package was rewritten to point at a different version. Confirmed
+  via `git diff main --stat -- pnpm-lock.yaml` showing
+  `68 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++`
+  (insertions only).
+- No new `pnpm-workspace.yaml` catalog version bumps:
+  `git diff main -- pnpm-workspace.yaml` → empty. So no catalog
+  consumer (which is most of the monorepo) had its dependency
+  version touched implicitly through the catalog.
+- `resend@6.9.3` was already present on main
+  (`git show main:packages/auth/package.json | grep resend` →
+  `"resend": "^6.9.3"`). It is NOT a Task-41 new addition; the
+  invite-email feature reuses an existing dep, which is good
+  hygiene.
+
+Issues found and fixed
+----------------------
+None. The lockfile diff is exemplary:
+  - Pure additive (zero removed lines).
+  - Every importer edit maps 1:1 to a package.json edit on this
+    branch.
+  - Every new top-level package is either:
+      * declared in a touched package.json (replicache,
+        @milkpod/sync workspace link, drizzle-orm in auth), or
+      * a transitive of replicache (the four @rocicorp/* /
+        @badrap/valita entries).
+  - No drive-by version bump on any unrelated package.
+  - No catalog churn.
+
+Issues noted (no fix needed)
+----------------------------
+1. Pre-existing version-pin drift on `drizzle-orm`:
+     apps/web        → ^0.44.7  (already on main)
+     packages/api    → ^0.44.2
+     packages/ai     → ^0.44.2
+     packages/db     → ^0.44.2
+     packages/auth   → ^0.44.2  (new this branch, matches the others)
+   Resolved version everywhere is 0.44.7, so there's no runtime
+   divergence today. This is a pre-existing repo hygiene wart, not
+   something introduced by feat/replicache. Out of scope for Task 41
+   (which scopes at "diff-introduced version bumps"). Flagging here
+   for a future janitorial sweep that aligns the catalog.
+
+2. The lockfile records `typescript@5.9.3` under `dependencies:` for
+   packages/sync, even though packages/sync only declares typescript
+   as a non-optional peerDependency. That's pnpm's normal behaviour
+   for non-optional peers in a non-published workspace package, not a
+   wrong-edits-snuck-in situation. No action.
+
+Library improvements made
+-------------------------
+None — review-only task; no code touched. The lockfile-shape
+verification is the deliverable.
+
+Checklist verification
+----------------------
+review-prompt.md doesn't have a dedicated lockfile section. The
+relevant guidance is the closest-fit "Backend / Code Quality" ->
+"Environment variables and configuration" + the high-signal nudges
+section's general "diff hygiene" tone. Mapping to those:
+
+  - "No surprise dependency additions" → confirmed; every new
+    package is justified by the touched package.json on the same
+    branch.
+  - "No version bumps of unrelated packages" → confirmed structurally
+    by the additive-only diff.
+  - "Catalog hygiene" (pnpm-workspace.yaml) → unchanged on this
+    branch; no catalog drift.
+
+The task spec itself (replicache-plan.md L397-403) has two
+acceptance criteria, both satisfied:
+  - "Diff should only reflect genuinely new dependencies
+    (replicache, email provider, anything for packages/sync)" → ✓
+    plus drizzle-orm-in-auth, justified by signup-hooks.ts.
+  - "No drive-by version bumps of unrelated packages" → ✓
+    (zero deletions in the lockfile diff guarantees this).
+
+Build / type-check
+------------------
+`pnpm check-types` → 8 packages, 8 cached, 0 errors. No source files
+changed in this task; cache is correct.
+
+Plan annotation
+---------------
+Marked Task 41 as ✓ (strikethrough) in replicache-plan.md.
+
+Next
+----
+Task 42 — Remove debug leftovers (rg console.log|debugger|XXX|FIXME
+across changed files).

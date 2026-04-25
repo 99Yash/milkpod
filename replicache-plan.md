@@ -394,7 +394,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - Root-level plan files rot. Either move to `docs/` (if still useful reference) or delete (if fully realized in code + README)
 - Do not leave it at root unchanged
 
-### Task 41: Review pnpm-lock.yaml diff
+### ~~Task 41: Review pnpm-lock.yaml diff~~ ✓
 
 **Files**: `pnpm-lock.yaml`
 **What**:
