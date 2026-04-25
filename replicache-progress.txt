@@ -4902,3 +4902,185 @@ Build / type-check
 Commit
 --------------------------------------------------------------------------------
 
+
+  Branch tip after Task 34: b2cf4d3 review(task 34): log notification
+  mark-read failures instead of swallowing.
+
+================================================================================
+Task 35: Sweep `switch` statements on union types for exhaustiveness — DONE
+================================================================================
+
+Scope: every `.ts`/`.tsx` file in the branch diff. Goal: confirm every switch
+on a union/enum has `default: { const _: never = x; throw new Error(...); }`
+(or `x satisfies never;`) so adding a variant forces a TS error.
+
+--------------------------------------------------------------------------------
+Inventory
+--------------------------------------------------------------------------------
+
+`git diff main --name-only | grep -E '\.(ts|tsx)$' | xargs grep -Hn 'switch ('`
+yields 6 hits across 4 files:
+
+  apps/web/src/components/notifications/notification-row.tsx:14
+  apps/web/src/components/share/share-dialog.tsx:70
+  packages/api/src/modules/asset-members/index.ts:24
+  packages/api/src/modules/asset-members/index.ts:55
+  packages/api/src/modules/asset-members/index.ts:79
+  packages/api/src/modules/notifications/service.ts:136
+
+Of these, 5 were added by this branch (verified via
+`git diff main | grep -E '^\+.*switch'`). The 6th — share-dialog.tsx:70 —
+predates the branch (the diff for that file is purely a tabbed-UI
+restructure; the inner `switch (value)` block is untouched).
+
+--------------------------------------------------------------------------------
+Per-switch verification
+--------------------------------------------------------------------------------
+
+(1) packages/api/src/modules/asset-members/index.ts:24
+    Discriminant: `result.kind` of `InviteResult` (service.ts:47-52),
+    a 5-variant union ('member' | 'invite' | 'already_member' |
+    'already_invited' | 'forbidden'). All five cases are matched. The
+    default branch:
+
+        default: {
+          const _exhaustive: never = result;
+          throw new Error(`Unhandled invite result: ${JSON.stringify(_exhaustive)}`);
+        }
+
+    Adding a 6th InviteResult variant forces a TS error here. ✓
+
+(2) packages/api/src/modules/asset-members/index.ts:55
+    Discriminant: `result.reason` on the failure branch of
+    `RemoveMemberResult` (service.ts:54-56), a 3-variant union
+    ('owner_protected' | 'not_found' | 'forbidden'). All three matched.
+    Default uses `const _exhaustive: never = result.reason;`. ✓
+
+(3) packages/api/src/modules/asset-members/index.ts:79
+    Discriminant: `result.reason` on the failure branch of
+    `RevokeInviteResult` (service.ts:58-60), a 2-variant union
+    ('not_found' | 'forbidden'). Both matched. Default uses
+    `const _exhaustive: never = result.reason;`. ✓
+
+(4) packages/api/src/modules/notifications/service.ts:136
+    Discriminant: `row.type` of `NotificationType` (db schema), a
+    3-variant union. All three matched. Default uses
+
+        row.type satisfies never;
+        return null;
+
+    Note this differs from cases 1–3 in that the runtime path returns
+    null (forward-compat: a row written by a newer server is skipped
+    rather than crashed on). The compile-time check is still strict —
+    `satisfies never` errors if a 4th variant is added without a case.
+    The inline comment explains the asymmetric strategy. ✓
+
+(5) apps/web/src/components/notifications/notification-row.tsx:14
+    Discriminant: `n.type` on `SyncedNotification` (mirror of the server
+    `Notification` discriminated union from packages/api/src/types.ts:124).
+    All three variants matched. Default uses
+
+        const _exhaustive: never = n;
+        throw new Error(...);
+
+    Note: the assertion is on `n` (not `n.type`) — equivalent for
+    exhaustiveness since the union is fully discriminated by `type`,
+    and asserting the wider object as `never` correctly errors when a
+    new variant is added. ✓
+
+(6) apps/web/src/components/share/share-dialog.tsx:70
+    `function getExpiryDate(value: string)`. Pre-existing on main —
+    `git diff main -- apps/web/src/components/share/share-dialog.tsx`
+    shows zero changes inside this function. The discriminant is a
+    plain `string`, not a union (the Select component's value isn't
+    narrowed at the boundary), so exhaustiveness is undefined for this
+    case — `default: return undefined` is the correct shape for a
+    permissive parser. Out of branch scope; not a Task 35 concern.
+
+--------------------------------------------------------------------------------
+Issues found and fixed
+--------------------------------------------------------------------------------
+
+None. Every switch added in the branch already follows the
+`never`-default pattern. Task 22 (notification-row exhaustive switch)
+and Task 15 (asset-members router switches) explicitly built this
+guarantee in; this task confirms no later change regressed it.
+
+Cross-check: removed the `case 'asset.member.added':` line from
+notification-row.tsx in a scratch buffer and re-ran tsc —
+`Type 'SyncedNotification' is not assignable to type 'never'.` errors
+on the default branch as expected. (Reverted; no actual change to the
+file.)
+
+--------------------------------------------------------------------------------
+Issues noted (no fix needed)
+--------------------------------------------------------------------------------
+
+(a) share-dialog.tsx:70 — pre-existing, string-typed discriminant.
+    Could be tightened to a union by typing the local `expiry` state
+    as the literal-union derived from `EXPIRY_OPTIONS` (`as const` is
+    already in place), but that's an unrelated TS-quality refactor
+    outside Task 35. The function's `default: return undefined` is
+    correct given the current `string` parameter type.
+
+(b) No if/else dispatch chains over discriminated unions were added by
+    the branch. Verified by reading the diff for each module that
+    introduces a discriminated union (notifications router, comments
+    router, share-dialog handlers) — every union is consumed via the
+    above switches or via direct property reads on already-narrowed
+    members.
+
+--------------------------------------------------------------------------------
+Library improvements made
+--------------------------------------------------------------------------------
+
+None applicable. The "library primitive" for exhaustiveness in
+TypeScript is the `never`-default pattern itself; there is no
+framework helper that does it better. Considered importing a shared
+`assertNever(x: never): never` helper to deduplicate the four
+near-identical default blocks in asset-members/index.ts and
+notification-row.tsx, but:
+
+  - The four sites use slightly different error messages
+    ("Unhandled invite result", "Unhandled remove reason", etc.) which
+    aid debugging when one fires.
+  - Per the prompt's "Three similar lines is better than a premature
+    abstraction", the 4-line block × 4 sites doesn't yet cross the
+    threshold.
+  - No such helper exists in `packages/api/src/utils.ts` today, so
+    introducing it would be a cross-cutting refactor.
+
+If a 5th call site shows up, lift then.
+
+--------------------------------------------------------------------------------
+Checklist verification
+--------------------------------------------------------------------------------
+
+Backend — Code Quality
+  - "Exhaustive switch statements with `default: { const _exhaustive:
+     never = x; throw new Error(...); }` on discriminated unions and
+     enum-like types.":
+       * 5/5 branch-introduced switches comply. Verified by reading
+         each block and by mutation-testing one (removed a case,
+         re-ran tsc, observed the expected `not assignable to never`
+         error, then reverted).
+
+TypeScript
+  - "Exhaustive switch statements with `never` checks on discriminated
+     unions.": same 5/5. ✓
+
+Common Patterns from prior reviews
+  7. "Missing exhaustive switch checks — Switch statements on union
+     types that silently return undefined if the union is extended.":
+     CLOSED for the branch.
+
+--------------------------------------------------------------------------------
+Build / type-check
+--------------------------------------------------------------------------------
+
+  pnpm check-types: 8/8 green (75ms, full turbo cache hit). No source
+  changes were made in this task — verification only.
+
+--------------------------------------------------------------------------------
+Commit
+--------------------------------------------------------------------------------

@@ -329,7 +329,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 - No "handled by global handler" comments without a real global handler
 - No empty `catch {}`
 
-### Task 35: Sweep `switch` statements on union types for exhaustiveness
+### ~~Task 35: Sweep `switch` statements on union types for exhaustiveness~~ ✓
 
 **Files**: all files in the branch diff
 **What**:
