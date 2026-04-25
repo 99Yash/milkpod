@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Bookmark, Play, X } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Moment } from '@milkpod/api/types';
 import { formatTime } from '~/lib/format';
 import { useTimestampAction } from '~/components/chat/use-timestamp-action';
@@ -57,6 +58,12 @@ export function MomentCard({
     try {
       if (action === 'save') await onSave(moment.id);
       else await onDismiss(moment.id);
+    } catch {
+      toast.error(
+        action === 'save'
+          ? 'Could not save moment. Please try again.'
+          : 'Could not dismiss moment. Please try again.',
+      );
     } finally {
       setActionLoading(null);
     }
