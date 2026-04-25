@@ -5084,3 +5084,295 @@ Build / type-check
 --------------------------------------------------------------------------------
 Commit
 --------------------------------------------------------------------------------
+
+
+  Branch tip after Task 35: 7d384d1 review(task 35): verify exhaustive
+  switch statements on union types.
+
+================================================================================
+Task 36: Sweep `as` assertions — DONE
+================================================================================
+
+Scope: every `as`-form type assertion added by this branch. Goal: each is
+either justified (Eden treaty inference, Replicache JSON value friction,
+documented framework idiom) or replaced with a proper type guard / `in`
+narrowing / inferred type. No new `as any` or `as unknown as T`.
+
+--------------------------------------------------------------------------------
+Inventory
+--------------------------------------------------------------------------------
+
+Ran a per-file diff sweep:
+
+  for f in $(git diff main --name-only | grep -E '\.(ts|tsx)$'); do
+    git diff main -- "$f" | grep -E '^\+' | grep -vE '^\+\+\+' \
+      | grep -E '\bas [A-Za-z<({]|\bas const'
+  done
+
+Filtered out import aliases (`as userTable`), HTML in template literals
+("added as <strong>"), and `as const` literals (acceptable — preserves
+literal types). The remaining branch-introduced cast sites were:
+
+  Replaceable
+  -----------
+  apps/web/src/components/share/collaborators-section.tsx:156
+    `setRole(v as InviteRole)` — Select onValueChange gives `string`.
+  packages/api/src/events/replicache-events.ts:90
+    `JSON.parse(raw) as ReplicachePoke` — JSON.parse returns `any`.
+  packages/api/src/modules/notifications/service.ts:67
+    `type: input.type as NotificationType` — input.type already matches.
+  packages/api/src/modules/notifications/service.ts:141,147
+    `body: row.body as { ... }` — could narrow with `in`.
+  packages/api/src/modules/replicache/push.ts:193
+    `(parsed.data as { assetId: string }).assetId` — narrow with `in`.
+  packages/api/src/modules/replicache/index.ts:89
+    `}) as Response` — initially flagged; restored after compile failure.
+
+  Justified (left as-is)
+  ----------------------
+  apps/web/src/lib/api-fetchers.ts:167
+    `page.items as AssetWithAccess[]` — Eden treaty doesn't strip
+    `status()` error branches from the data union; documented at line 174.
+  apps/web/src/lib/replicache/hooks.ts:33
+    `(await tx.scan({ prefix }).toArray()) as T[]` — canonical Replicache
+    subscribe pattern. Trust-the-prefix design contract; runtime parsing
+    inside subscribe would be a wholesale architecture change.
+  packages/api/src/modules/replicache/cvr.ts:58
+    `JSON.parse(raw) as CVRSnapshot` — value is data WE wrote to Redis;
+    the surrounding try/catch returns null on parse failure. A schema
+    guard would be belt-and-suspenders for an internal cache; not worth
+    the boilerplate in a 12h-TTL Redis store.
+  packages/api/src/modules/replicache/push.ts:157
+    `serverMutators[mutatorName] as (tx, args: unknown, ctx) => ...` —
+    the per-name correlation between mutator name and args type isn't
+    expressible in TypeScript without distributive function-signature
+    types. Comment at lines 154-156 documents this. `parsed.data` shape
+    is validated against `mutatorArgsSchemas[mutatorName]` immediately
+    above, so the runtime args do match the target mutator.
+  packages/api/src/modules/replicache/index.ts:89 (final)
+    `}) as Response` — short-circuits Elysia's response-type inference,
+    which otherwise produces TS2742 ("inferred type cannot be named
+    without reference to .pnpm/undici-types"). Same idiom as
+    assets/index.ts:98 (pre-existing on main). Restored with comment
+    after a quick experimental removal failed @milkpod/api type-check.
+  packages/sync/src/mutators/{comments,moments,notifications}.ts
+    `value as unknown as ReadonlyJSONValue` and
+    `(await tx.get(key)) as SyncedXxx | undefined` — well-known
+    Replicache typing friction. `ReadonlyJSONValue` is recursive and
+    structurally rejects user-typed records even when the runtime values
+    are valid JSON; the `as unknown as` chain is the documented escape
+    hatch (see Replicache examples). `tx.get` returns `ReadonlyJSONValue
+    | undefined` and we trust the prefix convention to give us the right
+    shape — same architectural choice as the subscribe path. Replacing
+    this would require a per-key Zod schema runtime parse on every read,
+    which is a different design.
+
+  Trivially OK
+  ------------
+  apps/web/src/lib/query-keys.ts — `as const` on tuples for React Query
+    key stability. Standard.
+  packages/sync/src/keys.ts — `SYNC_ENTITIES = [...] as const` for
+    literal narrowing.
+  packages/api/src/modules/replicache/server-mutators.ts — final
+    `} as const` on the mutators map enables `keyof typeof` derivation
+    of `ServerMutatorName`. Standard pattern from
+    docs/typescript-patterns.md.
+  packages/api/src/modules/notifications/service.ts:121 —
+    `'asset' as const` to match the literal in `BaseNotification`.
+
+--------------------------------------------------------------------------------
+Issues found and fixed
+--------------------------------------------------------------------------------
+
+(1) packages/api/src/events/replicache-events.ts:90
+    `JSON.parse(raw) as ReplicachePoke` is a blind cast — JSON.parse
+    returns `any`, and a malformed publish would silently coerce
+    garbage through the per-user emitter. Replaced with a `isReplicachePoke`
+    type guard (defined at the module's top) that checks `typeof
+    userId === 'string' && typeof assetId === 'string'`. The existing
+    `try { ... } catch { /* malformed — drop */ }` already handles
+    JSON.parse throwing; the new guard handles "valid JSON, wrong shape"
+    — which the cast hid. Catch comment updated to "malformed JSON".
+
+(2) packages/api/src/modules/notifications/service.ts:67
+    `type: input.type as NotificationType` was redundant. `input` is the
+    `RecordInput` discriminated union whose `type` discriminants are
+    exactly `NotificationType`'s three literals. Removed the cast;
+    Drizzle's `.values()` accepts `input.type` directly under
+    `text('type').$type<NotificationType>()`.
+
+(3) packages/api/src/modules/notifications/service.ts:99-162
+    `serialize(row: { ... body: unknown })` discarded the
+    `NotificationBody` type info that the schema's `$type<>()` carries
+    on `notifications.body`. Tightened the parameter to `body:
+    NotificationBody` (imported the new type from
+    @milkpod/db/schemas), then replaced the per-branch
+    `row.body as { role: ... }` casts with `in` narrowing:
+
+        if (!('role' in row.body)) return null;
+        body: { role: row.body.role },
+
+    `NotifiableRole` (`'editor' | 'viewer'`) and `Exclude<AssetRole,
+    'owner'>` are structurally identical, so the assignment compiles
+    without further casts. The narrowing also adds runtime
+    defense-in-depth: a row whose `body` shape doesn't match its `type`
+    (which would only happen if the writer put inconsistent data into
+    the jsonb column) returns `null` rather than producing a bogus
+    `Notification` for the client.
+
+(4) packages/api/src/modules/replicache/push.ts:193
+    `(parsed.data as { assetId: string }).assetId` was leveraging the
+    runtime branch (`if (USER_SCOPED_MUTATORS.has(mutatorName)) ...
+    else ...`) to assert that the parsed args have an `assetId`.
+    Replaced with `else if ('assetId' in parsed.data)`, which gives the
+    compiler the same narrowing without a cast: the union of all
+    args types narrows to the moment/comment branches (which all have
+    `assetId: string` per their zod schemas). Verified by grepping
+    `assetId` in @milkpod/sync/src/mutators/*.ts — present in all six
+    moment+comment schemas and absent from both notification ones.
+
+(5) apps/web/src/components/share/collaborators-section.tsx:156
+    `onValueChange={(v) => setRole(v as InviteRole)}` blindly trusted
+    the Select to only emit `'editor' | 'viewer'`. Replaced with a
+    typed guard:
+
+        const INVITE_ROLES: readonly InviteRole[] = ['editor', 'viewer'];
+        function isInviteRole(value: string): value is InviteRole {
+          return (INVITE_ROLES as readonly string[]).includes(value);
+        }
+        ...
+        onValueChange={(v) => {
+          if (isInviteRole(v)) setRole(v);
+        }}
+
+    The narrowing `as readonly string[]` inside `isInviteRole` is the
+    standard `.includes` widening (TS doesn't infer that
+    `readonly InviteRole[]` is iterable over arbitrary `string`); kept
+    isolated to a one-line internal cast and not surfaced.
+
+--------------------------------------------------------------------------------
+Issues noted (no fix needed)
+--------------------------------------------------------------------------------
+
+(a) packages/api/src/modules/replicache/index.ts:89 (`as Response`) —
+    initially attempted to remove. Compile failed with TS2742:
+    "The inferred type of 'replicache' cannot be named without a
+    reference to '.pnpm/undici-types@6.21.0/node_modules/undici-types'.
+    This is likely not portable." This is the same reason
+    apps/server/src/index.ts:41 has `app: Elysia<...>` typed manually
+    and assets/index.ts:98 has `as Response` (pre-existing).
+
+    Restored the cast with an inline comment explaining the
+    portability issue and pointing at the assets/index.ts precedent.
+    The cast is a known Elysia + undici-types interaction pain point,
+    not a code-quality smell.
+
+(b) `type DbTx = any;` in three modules
+    (notifications/service.ts:20, replicache/push.ts:36,
+    replicache/server-mutators.ts:29). Out of scope for Task 36 — these
+    are type aliases, not `as` assertions. Each carries an
+    eslint-disable comment with a written justification: Drizzle's
+    `PgTransaction<TQueryResult, TFullSchema, TSchema>` is parameterized
+    over the driver's HKT and the schema config; producing a single
+    portable narrow type would either force the api package to import
+    every concrete driver type or expose Drizzle internals across the
+    module boundary. Confirmed in
+    node_modules/.../drizzle-orm/pg-core/db.d.ts:281, where
+    `transaction()` resolves the tx type via three generic parameters
+    on the parent `PgDatabase` instance.
+
+    Tracked as a tech-debt item for a future session; not introduced by
+    this branch (the same `DbTx = any` pattern lives on main, e.g. in
+    podcasts/episode-pipeline). Doesn't affect the Task 36 conclusion.
+
+(c) Replicache mutator `as unknown as ReadonlyJSONValue` casts in
+    packages/sync/src/mutators/{comments,moments,notifications}.ts.
+    `WriteTransaction.set(key, value: ReadonlyJSONValue)` (verified at
+    node_modules/.pnpm/replicache@15.3.0/.../chunk-C1TWiB5U.d.ts:1000)
+    requires the recursive structural `ReadonlyJSONValue` type, which
+    rejects user-typed records like `SyncedComment` (TypeScript's
+    variance over recursive structural types is the issue, not the
+    runtime values — these ARE valid JSON). Documented Replicache
+    idiom; matches the pattern in their own examples
+    (rocicorp/replicache).
+
+(d) `(await tx.get(key)) as SyncedXxx | undefined` in the same mutator
+    files. `WriteTransaction.get` returns `ReadonlyJSONValue | undefined`
+    (chunk-C1TWiB5U.d.ts:548). The trust-the-prefix design — verified
+    in apps/web/src/lib/replicache/hooks.ts:33's identical
+    `(await tx.scan({ prefix }).toArray()) as T[]` — is the same pattern
+    used across the codebase; this isn't a Task 36 inconsistency to fix.
+
+--------------------------------------------------------------------------------
+Library improvements made
+--------------------------------------------------------------------------------
+
+The TS-pattern improvements in this task (in narrowing, type guards,
+schema-derived input types) are the "library primitives" for
+exhaustiveness here — see docs/typescript-patterns.md sections on
+discriminated unions and type guards. No additional framework helper
+applies.
+
+  - Drizzle's $type<NotificationBody>() on notifications.body is now
+    propagated through NotificationService.serialize's parameter type,
+    so the call site in pull.ts (passing the prepared statement's row
+    directly) gets full structural type-checking instead of the type
+    being widened to `unknown` at the boundary. This is exactly the
+    "let library inference flow" pattern the review-prompt encourages
+    under "Eden Treaty" / "Drizzle".
+
+  - Replaced `as`-correlated runtime branches with TypeScript's `in`
+    operator for narrowing (push.ts:193). This is a built-in language
+    primitive that doesn't need a hand-rolled type guard helper.
+
+--------------------------------------------------------------------------------
+Checklist verification
+--------------------------------------------------------------------------------
+
+TypeScript
+  - "No `any` types": no new `any` introduced. Three pre-existing
+    `DbTx = any` aliases noted (b).
+  - "No unjustified non-null assertions (`!`)": no `!` added in this
+    task.
+  - "Prefer type guards and discriminated unions over type assertions.
+     Use `isToolOutput(x)` not `x as ToolOutput`": addressed in fixes
+    (1) and (5). Fix (3) uses `in` narrowing — the more idiomatic
+    primitive when the union members are structurally distinct.
+  - "Each `as T` is justified or replaced with a type guard": every
+    branch-introduced cast either remained with a written justification
+    (Eden inference, Replicache JSON friction, undici-types portability)
+    or got replaced. No `as any`, no `as unknown as T` introduced.
+
+Code Quality
+  - "Don't add error handling, fallbacks, or validation for scenarios
+     that can't happen": fix (3)'s `if (!('role' in row.body)) return
+     null;` is a real boundary check — `row.body` is jsonb, externally
+     writable in principle (e.g. via direct DB access), so guarding
+     against shape drift is genuine resilience, not over-validation.
+  - Same applies to fix (1) — JSON pub/sub is a system boundary; a
+     guard there is the correct defensive shape.
+
+Common Patterns from prior reviews
+  - #7 (missing exhaustive switches) — unchanged; serialize's switch
+    still has `row.type satisfies never` default. The new `in` checks
+    are inside cases, not the discriminant.
+  - #1 (full-error logging) — no new `console.error` added; the catch
+    in replicache-events.ts already used a tight comment-only swallow,
+    appropriate for a pub/sub message-deserializer race.
+
+--------------------------------------------------------------------------------
+Build / type-check
+--------------------------------------------------------------------------------
+
+  pnpm check-types: 8/8 green. @milkpod/api re-ran (cache miss from the
+  notifications/service.ts + replicache/push.ts + replicache-events.ts
+  changes); web + server re-ran downstream (cache miss from
+  collaborators-section.tsx). All others cache-hit.
+
+  Iteration: removed `as Response` first, hit TS2742 from undici-types,
+  restored with explanatory comment. Net change in this file is the
+  comment, no code shape change.
+
+--------------------------------------------------------------------------------
+Commit
+--------------------------------------------------------------------------------

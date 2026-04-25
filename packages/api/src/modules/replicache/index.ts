@@ -80,6 +80,9 @@ export const replicache = new Elysia({ prefix: '/api/replicache' })
           },
         });
 
+        // `as Response` short-circuits Elysia's response-type inference, which
+        // otherwise tries to portably name `Response` and fails because the
+        // global is augmented by undici-types. Same idiom as assets/index.ts.
         return new Response(stream, {
           headers: {
             'Content-Type': 'text/event-stream',

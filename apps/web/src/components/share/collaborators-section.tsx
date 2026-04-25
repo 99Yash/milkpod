@@ -26,6 +26,12 @@ interface CollaboratorsSectionProps {
 
 type InviteRole = 'editor' | 'viewer';
 
+const INVITE_ROLES: readonly InviteRole[] = ['editor', 'viewer'];
+
+function isInviteRole(value: string): value is InviteRole {
+  return (INVITE_ROLES as readonly string[]).includes(value);
+}
+
 const REVEAL_ON_HOVER_FOCUS =
   'opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100';
 
@@ -153,7 +159,9 @@ export function CollaboratorsSection({ assetId }: CollaboratorsSectionProps) {
           />
           <Select
             value={role}
-            onValueChange={(v) => setRole(v as InviteRole)}
+            onValueChange={(v) => {
+              if (isInviteRole(v)) setRole(v);
+            }}
             disabled={inviting}
           >
             <SelectTrigger
