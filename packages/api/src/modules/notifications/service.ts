@@ -86,7 +86,7 @@ export abstract class NotificationService {
     } catch (err) {
       console.warn(
         '[notifications] poke failed:',
-        err instanceof Error ? err.message : err,
+        err instanceof Error ? err.message : String(err),
       );
     }
   }

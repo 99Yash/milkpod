@@ -297,7 +297,7 @@ Ordered task list for getting `feat/replicache` to merge quality. Work through t
 
 ## Phase 7: Diff-wide sweeps
 
-### Task 31: Sweep `console.error` for full-error-object logging
+### ~~Task 31: Sweep `console.error` for full-error-object logging~~ ✓
 
 **Files**: all files in the branch diff
 **What**:

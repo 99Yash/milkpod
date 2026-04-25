@@ -101,7 +101,7 @@ export async function initReplicachePokeBridge(): Promise<void> {
   } catch (err) {
     console.warn(
       '[replicache-events] Redis pub/sub bridge disabled:',
-      err instanceof Error ? err.message : err,
+      err instanceof Error ? err.message : String(err),
     );
     publisher = undefined;
     subscriber = undefined;
@@ -173,7 +173,7 @@ export function subscribeUserPokes(
       console.warn(
         '[replicache-events] subscribe failed for user',
         userId,
-        err instanceof Error ? err.message : err,
+        err instanceof Error ? err.message : String(err),
       );
     });
   }
