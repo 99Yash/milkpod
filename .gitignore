@@ -41,6 +41,9 @@ lerna-debug.log*
 # Better-T-Stack
 .alchemy
 
+# Codex CLI local config (may contain secrets)
+.codex/
+
 # Testing
 coverage
 .nyc_output
