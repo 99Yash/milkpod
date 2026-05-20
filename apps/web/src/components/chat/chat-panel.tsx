@@ -374,6 +374,7 @@ function ChatPanelContent({
 
     titleSyncInFlightRef.current.add(chatThreadId);
     let cancelled = false;
+    let pendingTimer: ReturnType<typeof setTimeout> | undefined;
 
     void (async () => {
       const MAX_ATTEMPTS = 4;
@@ -395,9 +396,10 @@ function ChatPanelContent({
         }
 
         if (attempt < MAX_ATTEMPTS - 1) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, 1200 * (attempt + 1)),
-          );
+          await new Promise<void>((resolve) => {
+            pendingTimer = setTimeout(resolve, 1200 * (attempt + 1));
+          });
+          pendingTimer = undefined;
         }
       }
 
@@ -406,6 +408,7 @@ function ChatPanelContent({
 
     return () => {
       cancelled = true;
+      if (pendingTimer !== undefined) clearTimeout(pendingTimer);
     };
   }, [chatThreadId, status, threadListCtx]);
 
