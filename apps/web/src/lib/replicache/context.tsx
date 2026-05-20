@@ -48,15 +48,17 @@ export function ReplicacheProvider({
       withCredentials: true,
     });
 
-    es.addEventListener('poke', () => {
+    const handlePoke = () => {
       void rep.pull();
-    });
+    };
+    es.addEventListener('poke', handlePoke);
     es.onerror = () => {
       // EventSource auto-reconnects on transient errors. If the server is
       // permanently unreachable the browser will keep retrying with backoff.
     };
 
     return () => {
+      es.removeEventListener('poke', handlePoke);
       es.close();
     };
   }, [rep]);
