@@ -78,7 +78,7 @@ const plans: PlanDef[] = [
 
 export function PricingGrid() {
   const router = useRouter();
-  const [interval, setInterval] = useState<Interval>('month');
+  const [billingInterval, setBillingInterval] = useState<Interval>('month');
   const [loadingPlan, setLoadingPlan] = useState<PlanId | null>(null);
   const [currentPlan, setCurrentPlan] = useState<PlanId | null>(null);
 
@@ -100,7 +100,7 @@ export function PricingGrid() {
     try {
       const { data, error } = await api.api.billing.checkout.post({
         planId,
-        interval,
+        interval: billingInterval,
       });
       if (error) {
         const errVal = error.value as { code?: string; message?: string } | undefined;
@@ -130,11 +130,11 @@ export function PricingGrid() {
         <button
           type="button"
           role="radio"
-          aria-checked={interval === 'month'}
-          onClick={() => setInterval('month')}
+          aria-checked={billingInterval === 'month'}
+          onClick={() => setBillingInterval('month')}
           className={cn(
             'rounded-sm px-4 py-1.5 text-sm font-medium transition-colors',
-            interval === 'month'
+            billingInterval === 'month'
               ? 'bg-background text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground',
           )}
@@ -144,11 +144,11 @@ export function PricingGrid() {
         <button
           type="button"
           role="radio"
-          aria-checked={interval === 'year'}
-          onClick={() => setInterval('year')}
+          aria-checked={billingInterval === 'year'}
+          onClick={() => setBillingInterval('year')}
           className={cn(
             'rounded-sm px-4 py-1.5 text-sm font-medium transition-colors',
-            interval === 'year'
+            billingInterval === 'year'
               ? 'bg-background text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground',
           )}
@@ -164,7 +164,7 @@ export function PricingGrid() {
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {plans.map((plan) => {
           const isCurrent = currentPlan === plan.id;
-          const price = interval === 'month' ? plan.monthlyPrice : plan.yearlyPrice;
+          const price = billingInterval === 'month' ? plan.monthlyPrice : plan.yearlyPrice;
 
           return (
             <div
@@ -193,7 +193,7 @@ export function PricingGrid() {
                 </span>
                 {plan.monthlyPrice > 0 && (
                   <span className="text-sm text-muted-foreground">
-                    /{interval === 'month' ? 'mo' : 'yr'}
+                    /{billingInterval === 'month' ? 'mo' : 'yr'}
                   </span>
                 )}
               </div>

@@ -4,6 +4,7 @@ import { cache } from 'react';
 import { db } from '@milkpod/db';
 import {
   mediaAssets,
+  assetMembers,
   collections,
   collectionItems,
   transcripts,
@@ -37,11 +38,22 @@ export async function getAssetWithTranscript(
   id: string,
   userId: string
 ): Promise<AssetWithTranscript | null> {
+  // Membership-based access: the asset is visible to its owner and every
+  // collaborator granted via `asset_member`. The owner path still works
+  // because the owner-backfill migration seeds an asset_member row for every
+  // pre-existing owner.
   const [assetRows, transcriptRows] = await Promise.all([
     db()
-      .select()
+      .select({ asset: mediaAssets })
       .from(mediaAssets)
-      .where(and(eq(mediaAssets.id, id), eq(mediaAssets.userId, userId))),
+      .innerJoin(
+        assetMembers,
+        and(
+          eq(assetMembers.assetId, mediaAssets.id),
+          eq(assetMembers.userId, userId),
+        ),
+      )
+      .where(eq(mediaAssets.id, id)),
     db()
       .select()
       .from(transcripts)
@@ -49,7 +61,7 @@ export async function getAssetWithTranscript(
       .orderBy(desc(transcripts.createdAt)),
   ]);
 
-  const asset = assetRows[0];
+  const asset = assetRows[0]?.asset;
   if (!asset) return null;
 
   const safe = sanitizeAsset(asset);
@@ -140,6 +152,7 @@ export async function getMoments(
         eq(assetMoments.userId, userId),
         eq(assetMoments.preset, preset as (typeof momentPresetEnum.enumValues)[number]),
         isNull(assetMoments.dismissedAt),
+        isNull(assetMoments.deletedAt),
       ),
     )
     .orderBy(desc(assetMoments.score));
@@ -157,6 +170,7 @@ export async function getComments(
         eq(assetComments.assetId, assetId),
         eq(assetComments.userId, userId),
         isNull(assetComments.dismissedAt),
+        isNull(assetComments.deletedAt),
       ),
     )
     .orderBy(asc(assetComments.startTime));

@@ -7,6 +7,7 @@ import {
 import { and, desc, eq, isNull, type SQL } from 'drizzle-orm';
 import type { Moment, MomentFeedback } from '../../types';
 import type { MomentModel } from './model';
+import { AssetMemberService } from '../asset-members/service';
 
 type PresetValue = (typeof momentPresetEnum.enumValues)[number];
 
@@ -20,6 +21,9 @@ export abstract class MomentService {
       eq(assetMoments.assetId, assetId),
       eq(assetMoments.userId, userId),
       isNull(assetMoments.dismissedAt),
+      // Sync mutators use `deletedAt` for soft-delete; keep parity so REST
+      // SSR payloads don't briefly show rows that Replicache has removed.
+      isNull(assetMoments.deletedAt),
     ];
 
     if (preset) {
@@ -60,6 +64,7 @@ export abstract class MomentService {
           eq(assetMoments.preset, preset),
         ),
       );
+    await AssetMemberService.pokeMembers(assetId);
   }
 
   static async insertMany(
@@ -77,7 +82,12 @@ export abstract class MomentService {
     }>,
   ): Promise<Moment[]> {
     if (rows.length === 0) return [];
-    return db().insert(assetMoments).values(rows).returning();
+    const inserted = await db().insert(assetMoments).values(rows).returning();
+    const assetIds = new Set(inserted.map((r) => r.assetId));
+    for (const assetId of assetIds) {
+      await AssetMemberService.pokeMembers(assetId);
+    }
+    return inserted;
   }
 
   static async saveMoment(
@@ -91,6 +101,7 @@ export abstract class MomentService {
         and(eq(assetMoments.id, momentId), eq(assetMoments.userId, userId)),
       )
       .returning();
+    if (updated) await AssetMemberService.pokeMembers(updated.assetId);
     return updated ?? null;
   }
 
@@ -105,6 +116,7 @@ export abstract class MomentService {
         and(eq(assetMoments.id, momentId), eq(assetMoments.userId, userId)),
       )
       .returning();
+    if (updated) await AssetMemberService.pokeMembers(updated.assetId);
     return updated ?? null;
   }
 

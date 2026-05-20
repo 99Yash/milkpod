@@ -1,5 +1,5 @@
 import { db } from '@milkpod/db';
-import { mediaAssets, podcastEpisodes } from '@milkpod/db/schemas';
+import { assetMembers, mediaAssets, podcastEpisodes } from '@milkpod/db/schemas';
 import { eq } from 'drizzle-orm';
 import { transcribeAudio } from '../ingest/assemblyai';
 import { groupWordsIntoSegments } from '../ingest/segments';
@@ -59,6 +59,13 @@ export async function orchestrateEpisodePipeline(
         if (!asset) {
           throw new Error('Failed to create media asset for episode');
         }
+
+        // Seed owner membership so the membership-based authz (RSC + sync)
+        // works from day one for assets produced by the podcast pipeline.
+        await tx
+          .insert(assetMembers)
+          .values({ assetId: asset.id, userId, role: 'owner' })
+          .onConflictDoNothing();
 
         await tx
           .update(podcastEpisodes)

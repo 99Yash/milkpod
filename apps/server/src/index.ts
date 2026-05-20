@@ -7,6 +7,8 @@ import {
   IngestService,
   initEventBridge,
   closeEventBridge,
+  initReplicachePokeBridge,
+  closeReplicachePokeBridge,
   startWorkers,
   stopWorkers,
   closeQueues,
@@ -26,11 +28,12 @@ await warmPool();
 try {
   await IngestService.recoverStaleAssets();
 } catch (err) {
-  console.error('[startup] Failed to recover stale assets:', err instanceof Error ? err.message : err);
+  console.error('[startup] Failed to recover stale assets:', err instanceof Error ? err.message : String(err));
 }
 
 // Initialize Redis pub/sub bridge for cross-replica SSE events.
 await initEventBridge();
+await initReplicachePokeBridge();
 
 // Start BullMQ workers for durable job processing.
 await startWorkers();
@@ -69,19 +72,20 @@ async function shutdown(signal: string) {
     await stopWorkers();
     console.log('BullMQ workers stopped');
   } catch (err) {
-    console.error('Error stopping workers:', err);
+    console.error('Error stopping workers:', err instanceof Error ? err.message : String(err));
   }
 
   try {
     // 2. Close Redis event bridge
     await closeEventBridge();
+    await closeReplicachePokeBridge();
     // 3. Close BullMQ queue connections
     await closeQueues();
     // 4. Close remaining Redis connections
     await closeRedis();
     console.log('Redis connections closed');
   } catch (err) {
-    console.error('Error closing Redis:', err);
+    console.error('Error closing Redis:', err instanceof Error ? err.message : String(err));
   }
 
   try {
@@ -89,7 +93,7 @@ async function shutdown(signal: string) {
     await closeConnections();
     console.log('Database pool closed');
   } catch (err) {
-    console.error('Error closing database pool:', err);
+    console.error('Error closing database pool:', err instanceof Error ? err.message : String(err));
   }
 
   process.exit(0);

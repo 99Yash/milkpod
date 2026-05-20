@@ -17,6 +17,7 @@ export const queryKeys = {
   },
   shareLinks: (params: { assetId?: string; collectionId?: string }) =>
     ['share-links', params] as const,
+  assetMembers: (assetId: string) => ['asset-members', assetId] as const,
   sharedResource: (token: string) => ['shared-resource', token] as const,
   transcriptSearch: (assetId: string, query: string) =>
     ['transcript-search', assetId, query] as const,

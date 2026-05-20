@@ -5,6 +5,10 @@ export { closeConnections, warmPool } from '@milkpod/db';
 export { IngestService } from './modules/ingest/service';
 export { startWorkers, stopWorkers } from './queue/workers';
 export { initEventBridge, closeEventBridge } from './events/asset-events';
+export {
+  initReplicachePokeBridge,
+  closeReplicachePokeBridge,
+} from './events/replicache-events';
 export { closeRedis } from './queue/connection';
 export { closeQueues } from './queue/ingest-queue';
 import { serverEnv } from '@milkpod/env/server';
@@ -19,6 +23,7 @@ import {
 } from './middleware/session-cache';
 import { chat } from './modules/chat';
 import { assets } from './modules/assets';
+import { assetMembers } from './modules/asset-members';
 import { collections } from './modules/collections';
 import { threads } from './modules/threads';
 import { ingest } from './modules/ingest';
@@ -27,6 +32,7 @@ import { podcasts } from './modules/podcasts';
 import { usage } from './modules/usage';
 import { moments } from './modules/moments';
 import { comments } from './modules/comments';
+import { replicache } from './modules/replicache';
 import { retention } from './modules/retention';
 import { visualParity } from './modules/visual-parity';
 import { quota, quotaAdmin } from './modules/quota';
@@ -162,6 +168,7 @@ export const app = new Elysia({ name: 'api' })
   .mount(auth().handler)
   .use(chat)
   .use(assets)
+  .use(assetMembers)
   .use(collections)
   .use(threads)
   .use(ingest)
@@ -170,6 +177,7 @@ export const app = new Elysia({ name: 'api' })
   .use(usage)
   .use(moments)
   .use(comments)
+  .use(replicache)
   .use(retention)
   .use(visualParity)
   .use(quota)

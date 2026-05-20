@@ -20,6 +20,8 @@ interface AssetListProps {
   onSelectAsset?: (assetId: string) => void;
   refreshKey?: number;
   filters?: AssetFilters;
+  /** Restrict to assets the caller does not own. */
+  scope?: 'all' | 'shared';
 }
 
 /** Per-asset progress info from SSE events */
@@ -30,7 +32,7 @@ interface AssetProgress {
 
 const PAGE_SIZE = 12;
 
-export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps) {
+export function AssetList({ onSelectAsset, refreshKey, filters, scope = 'all' }: AssetListProps) {
   const queryClient = useQueryClient();
   const [progressMap, setProgressMap] = useState<Record<string, AssetProgress>>({});
 
@@ -39,8 +41,9 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
     if (filters?.q) q.q = filters.q;
     if (filters?.status) q.status = filters.status;
     if (filters?.sourceType) q.sourceType = filters.sourceType;
+    if (scope === 'shared') q.scope = 'shared';
     return q;
-  }, [filters?.q, filters?.status, filters?.sourceType]);
+  }, [filters?.q, filters?.status, filters?.sourceType, scope]);
 
   const {
     data,
@@ -61,6 +64,7 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
         sourceType: query.sourceType,
         cursor: pageParam,
         limit: PAGE_SIZE,
+        scope,
       }),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
@@ -225,7 +229,9 @@ export function AssetList({ onSelectAsset, refreshKey, filters }: AssetListProps
   if (assets.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
-        No media yet. Paste a URL above or upload a file to get started.
+        {scope === 'shared'
+          ? 'Nothing shared with you yet. When a teammate adds you to an asset, it’ll show up here.'
+          : 'No media yet. Paste a URL above or upload a file to get started.'}
       </p>
     );
   }

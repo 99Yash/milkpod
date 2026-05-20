@@ -211,6 +211,69 @@
       "when": 1774189299581,
       "tag": "0029_stale-asset-recovery-index",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1776846312010,
+      "tag": "0030_boring_mach_iv",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1776846323055,
+      "tag": "0031_backfill_asset_member_owners",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1776851611800,
+      "tag": "0032_violet_wendell_vaughn",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1776851723876,
+      "tag": "0033_sync_row_version_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1776866713941,
+      "tag": "0034_asset_invite_role_not_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1776867555730,
+      "tag": "0035_backfill_orphan_asset_member_owners",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1777017958468,
+      "tag": "0036_nasty_tony_stark",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1777017972551,
+      "tag": "0037_notification_row_version_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1777622400000,
+      "tag": "0038_sync_row_version_distinctness_guard",
+      "breakpoints": true
     }
   ]
 }

@@ -370,6 +370,28 @@
     }
   }
 
+  /* Just-synced pulse — brief highlight when a row arrives or updates via sync. */
+  @keyframes sync-pulse {
+    0% {
+      box-shadow: 0 0 0 2px rgb(168 85 247 / 0.35);
+      background-color: rgb(168 85 247 / 0.08);
+    }
+    100% {
+      box-shadow: 0 0 0 2px rgb(168 85 247 / 0);
+      background-color: transparent;
+    }
+  }
+
+  .sync-pulse {
+    animation: sync-pulse 1200ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sync-pulse {
+      animation: none;
+    }
+  }
+
   /* Landing page entrance animations — presentation-style staggered reveal */
   @keyframes hero-enter {
     from {

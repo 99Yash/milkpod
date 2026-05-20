@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { Button } from '~/components/ui/button';
@@ -34,6 +34,7 @@ interface AssetComboboxProps {
 export function AssetCombobox({ assets, value, onChange }: AssetComboboxProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const listboxId = useId();
 
   const query = useMemo(
     () => ({ status: 'ready', ...(search ? { q: search } : {}) }),
@@ -80,6 +81,8 @@ export function AssetCombobox({ assets, value, onChange }: AssetComboboxProps) {
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-controls={listboxId}
+          aria-haspopup="listbox"
           className="h-8 max-w-[320px] justify-between gap-2 border-ring/20 bg-background px-3 text-xs font-normal hover:bg-accent/18"
         >
           <span className="truncate">
@@ -101,6 +104,7 @@ export function AssetCombobox({ assets, value, onChange }: AssetComboboxProps) {
             onValueChange={setSearch}
           />
           <CommandList
+            id={listboxId}
             onScroll={(event) => {
               const target = event.currentTarget;
               if (!target) return;
