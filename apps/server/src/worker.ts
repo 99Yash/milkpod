@@ -1,4 +1,4 @@
-import { app } from '@milkpod/api';
+import { app, setEdgeDatabaseUrl } from '@milkpod/api';
 
 // Cloudflare Workers tracer entry (issue #29, Alchemy-managed).
 // Reuses the same Elysia `app` as Node, but without `@elysiajs/node` adapter.
@@ -21,8 +21,8 @@ interface WorkerEnv {
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const hyperdriveConn = env.HYPERDRIVE?.connectionString;
-    if (hyperdriveConn && !process.env.DATABASE_URL) {
-      process.env.DATABASE_URL = hyperdriveConn;
+    if (hyperdriveConn) {
+      setEdgeDatabaseUrl(hyperdriveConn);
     }
     return app.handle(request);
   },
