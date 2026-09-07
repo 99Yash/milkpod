@@ -41,6 +41,10 @@ lerna-debug.log*
 # Better-T-Stack
 .alchemy
 
+# Alchemy + OpenNext Cloudflare outputs (generated, see alchemy.run.ts)
+.open-next/
+wrangler.jsonc
+
 # Codex CLI local config (may contain secrets)
 .codex/
 
