@@ -11,7 +11,16 @@ import * as Redacted from "effect/Redacted";
 // Required deploy-time secrets (never committed):
 //   DATABASE_URL      – Neon pooled connection string (used to derive host/db/user)
 //   NEON_DB_PASSWORD  – Neon password (write-only, Hyperdrive origin)
-//   NEXT_PUBLIC_SERVER_URL – public API Worker URL for the web build
+//   NEXT_PUBLIC_SERVER_URL – public API URL for the web build
+//                        (defaults to https://api.croisillies.xyz)
+//
+// Custom domains (issue #35): set CF_CUSTOM_DOMAINS=1 once the
+// croisillies.xyz zone exists in this Cloudflare account (dashboard →
+// Add domain → switch Namecheap NS to Cloudflare). Until then deploys
+// stay on workers.dev URLs so `cf:deploy` works before the cutover.
+// After the NS switch, Alchemy manages DNS records + edge certs
+// automatically; re-add Resend SPF/DKIM + DMARC in the CF zone.
+const CUSTOM_DOMAINS_ENABLED = process.env.CF_CUSTOM_DOMAINS === "1";
 
 function parsePostgresUrl(url: string) {
   const u = new URL(url);
@@ -54,6 +63,10 @@ export const Api = Cloudflare.Worker("milkpod-server", {
     HYPERDRIVE: NeonHyperdrive,
     NODE_ENV: "production",
   },
+  // Replaces Namecheap `CNAME api → *.up.railway.app`. Requires the zone.
+  ...(CUSTOM_DOMAINS_ENABLED
+    ? { domain: "api.croisillies.xyz" }
+    : {}),
 });
 
 export const Website = Cloudflare.Website.Nextjs("milkpod-web", {
@@ -61,6 +74,16 @@ export const Website = Cloudflare.Website.Nextjs("milkpod-web", {
   env: {
     UPLOAD_BUCKET: Uploads,
   },
+  // Replaces Namecheap `CNAME @` + `CNAME www → *.up.railway.app`.
+  // Apex is canonical; www serves the same site. Requires the zone.
+  ...(CUSTOM_DOMAINS_ENABLED
+    ? {
+        domain: {
+          name: "croisillies.xyz",
+          aliases: ["www.croisillies.xyz"],
+        },
+      }
+    : {}),
 });
 
 export type ApiEnv = Cloudflare.InferEnv<typeof Api>;
