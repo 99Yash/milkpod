@@ -10,6 +10,22 @@ const POOL_HEARTBEAT_INTERVAL_MS = 20_000;
 let _db: ReturnType<typeof drizzle> | undefined;
 let _pool: pg.Pool | undefined;
 let _heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+// Edge mode (Cloudflare Workers via Hyperdrive, issue #30). Set by
+// `setEdgeDatabaseUrl()` from the Worker entry. Uses a single-connection
+// pool since Hyperdrive pools server-side; keeps transactions + pgvector
+// working without per-request refactor.
+let _edgeUrl: string | undefined;
+
+export function setEdgeDatabaseUrl(url: string) {
+	_edgeUrl = url;
+	// Reset singleton so the next db() call builds the edge pool.
+	_db = undefined;
+	_pool = undefined;
+}
+
+function isEdgeRuntime(): boolean {
+	return !!_edgeUrl;
+}
 
 function startPoolHeartbeat() {
 	if (_heartbeatTimer || !_pool) return;
@@ -33,6 +49,20 @@ function startPoolHeartbeat() {
 
 export function db() {
 	if (!_db) {
+		if (isEdgeRuntime()) {
+			_pool = new pg.Pool({
+				connectionString: _edgeUrl,
+				min: 0,
+				max: 1,
+				idleTimeoutMillis: 10_000,
+				connectionTimeoutMillis: 10_000,
+			});
+			_pool.on("error", (err) => {
+				console.warn("[db] Edge pool client error:", err.message);
+			});
+			_db = drizzle(_pool);
+			return _db;
+		}
 		if (!process.env.DATABASE_URL) {
 			throw new Error("DATABASE_URL environment variable is not set");
 		}
@@ -60,6 +90,7 @@ export function db() {
  * Call once at server startup — best-effort, failures are non-fatal.
  */
 export async function warmPool() {
+	if (isEdgeRuntime()) return; // Hyperdrive pools server-side; no pre-warm.
 	db(); // ensure pool is created
 	if (_pool) {
 		try {

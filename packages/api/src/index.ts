@@ -1,7 +1,7 @@
 import { auth } from '@milkpod/auth';
 import { db } from '@milkpod/db';
 import { isQueueEnabled, createUntrackedRedisConnection } from './queue/connection';
-export { closeConnections, warmPool } from '@milkpod/db';
+export { closeConnections, warmPool, setEdgeDatabaseUrl } from '@milkpod/db';
 export { IngestService } from './modules/ingest/service';
 export { startWorkers, stopWorkers } from './queue/workers';
 export { initEventBridge, closeEventBridge } from './events/asset-events';
