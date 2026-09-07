@@ -84,6 +84,7 @@
   },
   "devDependencies": {
     "@milkpod/config": "workspace:*",
+    "@opennextjs/cloudflare": "^1.20.6",
     "@tailwindcss/postcss": "^4.1.10",
     "@tanstack/react-query-devtools": "^5.85.5",
     "@types/node": "catalog:",

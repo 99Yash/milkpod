@@ -36,8 +36,9 @@ const serverEnvSchema = z
     OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
     ANTHROPIC_API_KEY: z.string().min(1, 'ANTHROPIC_API_KEY is required'),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1, 'GOOGLE_GENERATIVE_AI_API_KEY is required'),
-    // Redis — required for BullMQ job queue + Redis pub/sub SSE
-    REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
+    // Redis — optional on Cloudflare Workers tracer (Queues replace BullMQ).
+    // When unset, ingest falls back to fire-and-forget and /ready skips redis.
+    REDIS_URL: z.string().optional().default(''),
     // Billing provider — set to 'polar' to enable billing routes
     BILLING_PROVIDER: z.enum(['polar', 'razorpay']).optional(),
     // Polar provider credentials (required when BILLING_PROVIDER=polar)

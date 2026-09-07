@@ -16,11 +16,18 @@
     "db:push": "turbo run db:push --filter=@milkpod/db",
     "db:studio": "turbo run db:studio --filter=@milkpod/db",
     "db:generate": "turbo run db:generate --filter=@milkpod/db",
-    "db:migrate": "turbo run db:migrate --filter=@milkpod/db"
+    "db:migrate": "turbo run db:migrate --filter=@milkpod/db",
+    "cf:deploy": "alchemy deploy",
+    "cf:dev": "alchemy dev",
+    "cf:destroy": "alchemy destroy"
   },
   "devDependencies": {
+    "@alchemy.run/frontend-frameworks": "2.0.0-beta.76",
     "@types/node": "^22.13.11",
+    "alchemy": "2.0.0-beta.76",
+    "effect": "^3.22.1",
     "tsdown": "^0.15.5",
+    "tsx": "^4.23.13",
     "turbo": "^2.8.10"
   },
   "packageManager": "pnpm@10.20.0",
