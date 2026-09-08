@@ -9,7 +9,7 @@ import {
   transcriptSegments,
   user,
 } from '@milkpod/db/schemas';
-import { and, desc, eq, ilike, inArray, lt, ne, or, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, inArray, lt, ne, or, type SQL } from 'drizzle-orm';
 import type {
   Asset,
   AssetRole,
@@ -405,17 +405,16 @@ export abstract class AssetService {
     return !!row;
   }
 
-  /** Check whether embeddings have already been generated for this asset's transcript. */
-  static async hasEmbeddings(assetId: string): Promise<boolean> {
+  /** Count embeddings for an asset's transcript (completeness check for retries). */
+  static async countEmbeddingsForAsset(assetId: string): Promise<number> {
     const [row] = await db()
-      .select({ id: embeddings.id })
+      .select({ value: count() })
       .from(embeddings)
       .innerJoin(transcriptSegments, eq(embeddings.segmentId, transcriptSegments.id))
       .innerJoin(transcripts, eq(transcriptSegments.transcriptId, transcripts.id))
-      .where(eq(transcripts.assetId, assetId))
-      .limit(1);
+      .where(eq(transcripts.assetId, assetId));
 
-    return !!row;
+    return row?.value ?? 0;
   }
 
   /** Delete all embeddings for an asset's transcript (used to clear partial state on retry). */
