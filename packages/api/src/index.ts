@@ -118,20 +118,19 @@ export const app = new Elysia({ name: 'api', aot: false })
       const env = serverEnv();
       const { provider, callbackURL } = query;
 
-      // Make a real HTTP request to the auth endpoint so it goes through the
-      // full Elysia lifecycle (CORS, mount, etc.) instead of calling the
-      // handler directly which can hang in the Node adapter.
-      const res = await fetch(
-        `${env.BETTER_AUTH_URL}/api/auth/sign-in/social`,
-        {
+      // Invoke the Better Auth handler in-process (same call the
+      // `/api/auth/*` mount below makes). A real HTTP self-fetch to
+      // BETTER_AUTH_URL 522s from inside workerd after the Cloudflare
+      // cutover, which broke OAuth initiation on prod.
+      const res = await auth().handler(
+        new Request(`${env.BETTER_AUTH_URL}/api/auth/sign-in/social`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Origin: env.CORS_ORIGIN,
           },
           body: JSON.stringify({ provider, callbackURL }),
-          signal: AbortSignal.timeout(30_000),
-        },
+        }),
       );
 
       const data = (await res.json()) as {
