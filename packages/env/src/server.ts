@@ -36,6 +36,13 @@ const serverEnvSchema = z
     OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
     ANTHROPIC_API_KEY: z.string().min(1, 'ANTHROPIC_API_KEY is required'),
     GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1, 'GOOGLE_GENERATIVE_AI_API_KEY is required'),
+    // Cloudflare AI Gateway (Unified Billing) for Gemini calls. When all
+    // three are set, @milkpod/ai routes via gateway.ai.cloudflare.com and
+    // the Google provider key above goes unused. Optional so local dev
+    // keeps working with the direct key.
+    CF_AI_GATEWAY_ACCOUNT_ID: z.string().optional().default(''),
+    CF_AI_GATEWAY_ID: z.string().optional().default(''),
+    CF_AI_GATEWAY_TOKEN: z.string().optional().default(''),
     // Redis — optional on Cloudflare Workers tracer (Queues replace BullMQ).
     // When unset, ingest falls back to fire-and-forget and /ready skips redis.
     REDIS_URL: z.string().optional().default(''),
