@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index 96b2e91872785f98a610c6d39701095e66ce4070..f8e420a71a905a0c85dadecea1ed0ddb0a8cf131 100644
+--- a/package.json
++++ b/package.json
+@@ -15,7 +15,7 @@
+         "import": "./esm/index.mjs",
+         "require": "./dist/index.js"
+       },
+-      "default": "./dist/empty.js"
++      "default": "./dist/index.js"
+     }
+   },
+   "scripts": {

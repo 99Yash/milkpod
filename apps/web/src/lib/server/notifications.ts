@@ -4,6 +4,7 @@ import { db } from '@milkpod/db';
 import { notifications } from '@milkpod/db/schemas';
 import { and, eq, isNull } from 'drizzle-orm';
 import { emitReplicachePokes } from '@milkpod/api/events/replicache-events';
+import { ensureEdgeDb } from '~/lib/db-edge';
 
 /**
  * Server-side helper: mark all unread notifications a user has about a given
@@ -19,6 +20,7 @@ export async function markNotificationsReadForAsset(
   userId: string,
   assetId: string,
 ): Promise<void> {
+  await ensureEdgeDb();
   try {
     const rows = await db()
       .update(notifications)
