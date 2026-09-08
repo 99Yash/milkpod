@@ -1,4 +1,5 @@
 import { cors } from '@elysiajs/cors';
+import { trustedAppOrigins } from '@milkpod/auth';
 import { node } from '@elysiajs/node';
 import {
   app,
@@ -41,7 +42,7 @@ await startWorkers();
 const server = new Elysia({ adapter: node() })
   .use(
     cors({
-      origin: serverEnv().CORS_ORIGIN,
+      origin: trustedAppOrigins(serverEnv().CORS_ORIGIN),
       methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       exposeHeaders: ['X-Thread-Id', 'X-Plan', 'X-Words-Remaining', 'X-Is-Admin', 'X-RateLimit-Remaining'],

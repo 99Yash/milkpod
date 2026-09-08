@@ -112,6 +112,9 @@ importers:
       '@milkpod/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@milkpod/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@milkpod/env':
         specifier: workspace:*
         version: link:../../packages/env
@@ -427,6 +430,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.1004.0
         version: 3.1004.0
+      '@elysiajs/cors':
+        specifier: 'catalog:'
+        version: 1.4.1(elysia@1.4.22(@sinclair/typebox@0.34.41)(exact-mirror@0.2.3(@sinclair/typebox@0.34.41))(file-type@21.1.0)(openapi-types@12.1.3)(typescript@5.9.3))
       '@milkpod/ai':
         specifier: workspace:*
         version: link:../ai

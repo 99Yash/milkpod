@@ -35,6 +35,7 @@
     "@milkpod/env": "workspace:*",
     "@milkpod/sync": "workspace:*",
     "ai": "catalog:",
+    "@elysiajs/cors": "catalog:",
     "drizzle-orm": "^0.44.2",
     "elysia": "catalog:",
     "zod": "catalog:"

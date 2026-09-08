@@ -3,6 +3,7 @@ import * as schema from '@milkpod/db/schema/auth';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { z } from 'zod';
+import { trustedAppOrigins } from './origins';
 
 /**
  * Minimal env validation — only the vars needed to verify a session.
@@ -45,7 +46,7 @@ export function sessionAuth() {
   _sessionAuth = betterAuth({
     baseURL: env.BETTER_AUTH_URL,
     database: drizzleAdapter(db(), { provider: 'pg', schema }),
-    trustedOrigins: [env.CORS_ORIGIN],
+    trustedOrigins: trustedAppOrigins(env.CORS_ORIGIN),
     advanced: {
       defaultCookieAttributes: {
         sameSite: 'lax',
