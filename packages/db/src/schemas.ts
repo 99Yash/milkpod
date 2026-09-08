@@ -22,3 +22,4 @@ export * from './schema/billing';
 export * from './schema/asset-members';
 export * from './schema/notifications';
 export * from './schema/replicache';
+export * from './schema/realtime-events';

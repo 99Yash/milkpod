@@ -55,7 +55,7 @@ These are read directly by the SDKs, not validated centrally.
 
 ## Infrastructure
 
-- `REDIS_URL` — Redis connection string for the BullMQ durable job queue and Redis pub/sub SSE events.
+- `REDIS_URL` — Redis connection string for the BullMQ durable job queue and Redis pub/sub SSE events (Node only). On Cloudflare Workers the DB `realtime_event` outbox replaces Redis pub/sub — no new env needed.
 
 ## Billing (optional)
 
