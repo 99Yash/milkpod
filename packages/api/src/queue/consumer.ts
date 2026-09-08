@@ -6,15 +6,17 @@ import type { IngestJobData, VisualJobData } from './ingest-queue';
 // CF Queues consumer (issue #32).
 //
 // The Worker `queue()` handler parses each batch message into a
-// QueueMessage and runs it here. Checkpoint guards inside the runners
-// (hasTranscriptSegments / hasEmbeddings) make at-least-once redelivery
-// safe. Messages run sequentially so a throw fails the batch fast and
-// Cloudflare redelivers the remainder.
+// QueueMessage and dispatches it to a Workflow (or runs it inline when
+// no workflow binding is present, e.g. alchemy dev). Checkpoint guards
+// inside the runners (hasTranscriptSegments / embedding row counts) make
+// at-least-once redelivery safe. Messages run sequentially so a throw
+// fails the batch fast and Cloudflare redelivers the remainder.
 //
-// NOTE: attemptsMade starts at 0 because the batch envelope carries no
-// retry counter — the first failure persists a "failed" status while a
-// redelivery may still succeed (checkpoints resume it). The Workflows
-// follow-up will carry proper step-retry counts.
+// NOTE: the inline path calls runIngestJob with attemptsMade 0 because
+// the batch envelope carries no retry counter — the first failure persists
+// a "failed" status while a redelivery may still succeed (checkpoints
+// resume it). The Workflow path persists failure only after step retries
+// are exhausted.
 // ---------------------------------------------------------------------------
 
 export type QueueMessage =

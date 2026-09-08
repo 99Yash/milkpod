@@ -61,10 +61,10 @@ export const Uploads = Cloudflare.R2.Bucket("milkpod-uploads", {
   name: "milkpod-uploads",
 });
 
-// Durable enqueue for the ingest pipeline (issue #32). The consumer
-// attachment + CF_QUEUE_PRODUCER=1 flip land once Workflows pin the
-// long-job runtime; until then the in-process fallback runs and these
-// queues stay empty.
+// Durable enqueue for the ingest pipeline (issues #32, #42). Queue
+// consumers (declared in the stack below) dispatch each message to a
+// Workflow for the long transcription/embedding runtime; CF_QUEUE_PRODUCER
+// is on because the consumers are attached in the same deploy.
 export const IngestQueue = Cloudflare.Queues.Queue("milkpod-ingest", {
   name: "milkpod-ingest",
 });
@@ -100,6 +100,19 @@ export const Api = Cloudflare.Worker("milkpod-server", {
     HYPERDRIVE: NeonHyperdrive,
     INGEST_QUEUE: IngestQueue,
     VISUAL_QUEUE: VisualQueue,
+    // Durable step-retry runtime for long jobs (issue #42). The classes
+    // are exported from the worker entry; WorkerAsyncBindings emits the
+    // `workflow` bindings and drives putWorkflow for the local host.
+    // className must match the exports in apps/server/src/workflows.ts.
+    INGEST_WORKFLOW: Cloudflare.Workflow("milkpod-ingest-workflow", {
+      className: "IngestWorkflow",
+    }),
+    VISUAL_WORKFLOW: Cloudflare.Workflow("milkpod-visual-workflow", {
+      className: "VisualWorkflow",
+    }),
+    // Producer flip (issue #42): consumers are attached in the same
+    // deploy, so fetch-triggered enqueues go to CF Queues durably.
+    CF_QUEUE_PRODUCER: "1",
     NODE_ENV: "production",
     // Production server env (issue #35). Secrets resolve from the deploy
     // shell via Redacted.make (→ secret_text bindings); URL-ish values
@@ -168,6 +181,37 @@ export default Alchemy.Stack(
     const ingestQueue = yield* IngestQueue;
     const visualQueue = yield* VisualQueue;
     const api = yield* Api;
+    // Queue consumers (issue #42): attach the Api worker's `queue()`
+    // handler to both queues. Dispatch is fast (one Workflow `create`
+    // per message), so small batches with platform redelivery on retry().
+    // Settings mirror the BullMQ budgets: ingest 3 attempts / 30s
+    // backoff, visual 2 attempts / 15s backoff.
+    const ingestConsumer = yield* Cloudflare.Queues.Consumer(
+      "milkpod-ingest-consumer",
+      {
+        queueId: ingestQueue.queueId,
+        scriptName: api.workerName,
+        settings: {
+          batchSize: 10,
+          maxRetries: 3,
+          maxWaitTimeMs: 5000,
+          retryDelay: 30,
+        },
+      },
+    );
+    const visualConsumer = yield* Cloudflare.Queues.Consumer(
+      "milkpod-visual-consumer",
+      {
+        queueId: visualQueue.queueId,
+        scriptName: api.workerName,
+        settings: {
+          batchSize: 10,
+          maxRetries: 2,
+          maxWaitTimeMs: 5000,
+          retryDelay: 15,
+        },
+      },
+    );
     const website = yield* Website;
     return {
       apiUrl: api.url,
@@ -176,6 +220,8 @@ export default Alchemy.Stack(
       hyperdriveId: hyperdrive.hyperdriveId,
       ingestQueue: ingestQueue.queueName,
       visualQueue: visualQueue.queueName,
+      ingestConsumerId: ingestConsumer.consumerId,
+      visualConsumerId: visualConsumer.consumerId,
     };
   }),
 );

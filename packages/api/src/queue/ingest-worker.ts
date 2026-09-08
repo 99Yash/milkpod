@@ -127,7 +127,7 @@ async function transcribeAsset(
 // Runner — backend-agnostic ingest pipeline over plain job data.
 // BullMQ, CF Queues/Workflows, and tests all enter here; only the BullMQ
 // adapter below knows about `Job`. Checkpoint guards (hasTranscriptSegments,
-// hasEmbeddings) make re-delivery safe on every backend.
+// embedding row-count comparison) make re-delivery safe on every backend.
 // ---------------------------------------------------------------------------
 
 export async function runIngestJob(
@@ -137,7 +137,7 @@ export async function runIngestJob(
   const attemptsMade = opts?.attemptsMade ?? 0;
   const maxAttempts = opts?.maxAttempts ?? INGEST_MAX_ATTEMPTS;
   try {
-    await runIngestStages(data, attemptsMade);
+    await runIngestStages(data);
   } catch (error) {
     // Persist failure to DB only on the last attempt so intermediate
     // retries don't flash a false "failed" status to the user.
@@ -158,7 +158,18 @@ export async function processIngestJob(job: Job<IngestJobData>): Promise<void> {
   });
 }
 
-async function runIngestStages(data: IngestJobData, attemptsMade: number): Promise<void> {
+/**
+ * Backend-agnostic stage runner WITHOUT failure persistence.
+ * BullMQ (`runIngestJob`), CF Queues inline fallback, and Workflows all
+ * enter here. Each stage is checkpoint-gated so at-least-once delivery
+ * (queue redelivery, workflow step retry) resumes instead of duplicating:
+ * - Transcription is skipped when segments exist (storeTranscript is
+ *   transactional, so partial transcripts cannot linger).
+ * - Embedding compares row counts: a complete set is skipped, partial
+ *   rows are deleted and re-embedded. No attempt counter needed, so
+ *   platform-managed retries (which carry no counter) stay correct.
+ */
+export async function runIngestStages(data: IngestJobData): Promise<void> {
   const { assetId, userId, sourceType, mediaType } = data;
   const retry = makeRetry(assetId);
   const heartbeat = makeHeartbeat(assetId);
@@ -204,37 +215,45 @@ async function runIngestStages(data: IngestJobData, attemptsMade: number): Promi
   }
 
   // ── Stage 2: Embedding (checkpoint-gated) ───────────────────────────
-  // On retry, partial embeddings may remain from a failed batch insert.
-  // Delete them so the stage is fully idempotent.
-  const hasEmb = await AssetService.hasEmbeddings(assetId);
+  // Compare row counts instead of trusting an attempt counter: a complete
+  // set is skipped, partial rows from a failed batch insert are deleted
+  // so the stage is fully idempotent on every backend.
+  const storedSegments = await AssetService.getStoredSegmentsForEmbedding(assetId);
 
-  if (!hasEmb || attemptsMade > 0) {
-    if (hasEmb) {
-      await AssetService.deleteEmbeddingsForAsset(assetId);
-    }
-    await IngestService.updateStatus(assetId, 'embedding');
-    emitAssetStatus(userId, assetId, 'embedding');
-
-    const storedSegments = await AssetService.getStoredSegmentsForEmbedding(assetId);
-
-    if (storedSegments.length === 0) {
+  if (storedSegments.length === 0) {
+    const embCount = await AssetService.countEmbeddingsForAsset(assetId);
+    if (embCount === 0) {
       throw new Error('No stored segments found for embedding — transcript may be missing');
     }
+    // Embeddings exist without segments (stale rows) — fall through to
+    // finalize so a redelivery cannot stall here.
+  } else {
+    const embCount = await AssetService.countEmbeddingsForAsset(assetId);
+    if (embCount < storedSegments.length) {
+      if (embCount > 0) {
+        await AssetService.deleteEmbeddingsForAsset(assetId);
+      }
+      await IngestService.updateStatus(assetId, 'embedding');
+      emitAssetStatus(userId, assetId, 'embedding');
 
-    // Compute lastSegmentEndTime from stored data if we skipped transcription
-    if (lastSegmentEndTime === 0) {
+      // Compute lastSegmentEndTime from stored data if we skipped transcription
+      if (lastSegmentEndTime === 0) {
+        const last = storedSegments[storedSegments.length - 1];
+        if (last) lastSegmentEndTime = last.endTime;
+      }
+
+      await embedSegments({
+        entityId: assetId,
+        userId,
+        assetId,
+        storedSegments,
+        retry,
+        onHeartbeat: heartbeat,
+      });
+    } else if (lastSegmentEndTime === 0) {
       const last = storedSegments[storedSegments.length - 1];
       if (last) lastSegmentEndTime = last.endTime;
     }
-
-    await embedSegments({
-      entityId: assetId,
-      userId,
-      assetId,
-      storedSegments,
-      retry,
-      onHeartbeat: heartbeat,
-    });
   }
 
   // ── Stage 3: Finalize ───────────────────────────────────────────────

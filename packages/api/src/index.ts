@@ -3,8 +3,12 @@ import { db } from '@milkpod/db';
 import { isQueueEnabled, createUntrackedRedisConnection } from './queue/connection';
 export { closeConnections, warmPool, setEdgeDatabaseUrl } from '@milkpod/db';
 export { IngestService } from './modules/ingest/service';
+export { handlePipelineError } from './modules/ingest/pipeline';
+export { AssetService } from './modules/assets/service';
 export { startWorkers, stopWorkers } from './queue/workers';
-export { runIngestJob, processIngestJob } from './queue/ingest-worker';
+export { runIngestJob, runIngestStages, processIngestJob } from './queue/ingest-worker';
+export type { IngestJobData, VisualJobData } from './queue/ingest-queue';
+export { INGEST_MAX_ATTEMPTS, VISUAL_MAX_ATTEMPTS } from './queue/ingest-queue';
 export { runVisualJob, processVisualJob } from './queue/visual-worker';
 export {
   handleQueueBatch,
