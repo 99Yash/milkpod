@@ -274,6 +274,13 @@
       "when": 1777622400000,
       "tag": "0038_sync_row_version_distinctness_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1788837114125,
+      "tag": "0039_pale_big_bertha",
+      "breakpoints": true
     }
   ]
 }

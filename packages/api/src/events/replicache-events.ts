@@ -35,6 +35,7 @@
  */
 import { EventEmitter } from 'node:events';
 import type IORedis from 'ioredis';
+import { publishOutboxEvent } from './realtime-outbox';
 
 export interface ReplicachePoke {
   /** User whose client group should re-pull. */
@@ -129,6 +130,8 @@ export async function closeReplicachePokeBridge(): Promise<void> {
 
 function publish(event: ReplicachePoke): void {
   const channel = channelFor(event.userId);
+  // Edge (Worker) fan-out — no-op on Node (see realtime-outbox).
+  publishOutboxEvent(event.userId, 'poke', { assetId: event.assetId });
   if (publisher) {
     publisher.publish(channel, JSON.stringify(event)).catch(() => {
       // Redis publish failed — emit locally so this replica still works.

@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type { AssetStatus } from '../types';
 import type IORedis from 'ioredis';
+import { publishOutboxEvent } from './realtime-outbox';
 
 export interface AssetStatusEvent {
   assetId: string;
@@ -91,6 +92,15 @@ export async function closeEventBridge(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function publish(event: AssetStatusEvent): void {
+  // Edge (Worker) fan-out: DB outbox row for the SSE poll loop. No-op on
+  // Node — Redis/local delivery below owns that path. Local emit still
+  // fires so same-isolate delivery stays instant.
+  publishOutboxEvent(event.userId, 'asset-status', {
+    assetId: event.assetId,
+    status: event.status,
+    ...(event.message !== undefined ? { message: event.message } : {}),
+    ...(event.progress !== undefined ? { progress: event.progress } : {}),
+  });
   if (publisher) {
     publisher.publish(CHANNEL, JSON.stringify(event)).catch(() => {
       // Redis unavailable — emit locally so this replica still works

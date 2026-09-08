@@ -10,6 +10,7 @@ import {
   orchestrateUploadPipeline,
 } from '../ingest/pipeline';
 import { assetEvents, emitAssetStatus, type AssetStatusEvent } from '../../events/asset-events';
+import { fetchOutboxEvents, isEdgeRealtimeAvailable } from '../../events/realtime-outbox';
 import { deleteStoredUpload } from '../ingest/upload-storage';
 import { isProcessingStatus, STALE_ASSET_THRESHOLD_MS } from '../../types';
 import { isQueueEnabled } from '../../queue/connection';
@@ -58,6 +59,47 @@ export const assets = new Elysia({ prefix: '/api/assets' })
             // stream already closed
           }
         };
+
+        // Send initial comment so client knows connection is alive
+        write(': connected\n\n');
+
+        // Edge (Worker) path: isolates share no memory and Redis is
+        // absent, so poll the DB outbox (issue #33). The poll is the
+        // sole delivery path here — no local subscription, so events
+        // are never delivered twice.
+        if (isEdgeRealtimeAvailable()) {
+          let afterId = 0;
+          let stopped = false;
+          const poll = async () => {
+            if (stopped) return;
+            try {
+              const rows = await fetchOutboxEvents(userId, afterId);
+              for (const row of rows) {
+                // Cursor advances over every row (including pokes, which
+                // this stream ignores) — the replicache stream keeps its
+                // own cursor over the same table.
+                afterId = Math.max(afterId, row.id);
+                if (row.kind !== 'asset-status') continue;
+                write(`data: ${JSON.stringify(row.payload)}\n\n`);
+              }
+            } catch {
+              // transient DB error — keep the stream open; the next
+              // tick retries and the client polls as a last resort
+            }
+          };
+          const poller = setInterval(() => void poll(), 1000);
+          void poll();
+          const heartbeat = setInterval(() => {
+            write(': heartbeat\n\n');
+          }, 30_000);
+
+          cleanup = () => {
+            stopped = true;
+            clearInterval(poller);
+            clearInterval(heartbeat);
+          };
+          return;
+        }
 
         const listener = (event: AssetStatusEvent) => {
           if (event.userId !== userId) return;

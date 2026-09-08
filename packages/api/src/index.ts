@@ -22,6 +22,16 @@ export type {
 } from './queue/edge-context';
 export { initEventBridge, closeEventBridge } from './events/asset-events';
 export {
+  fetchOutboxEvents,
+  isEdgeRealtimeAvailable,
+  publishOutboxEvent,
+} from './events/realtime-outbox';
+export type {
+  OutboxAssetStatusPayload,
+  OutboxEvent,
+  OutboxPokePayload,
+} from './events/realtime-outbox';
+export {
   initReplicachePokeBridge,
   closeReplicachePokeBridge,
 } from './events/replicache-events';
