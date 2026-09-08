@@ -36,6 +36,18 @@ export const Uploads = Cloudflare.R2.Bucket("milkpod-uploads", {
   name: "milkpod-uploads",
 });
 
+// Durable enqueue for the ingest pipeline (issue #32). The consumer
+// attachment + CF_QUEUE_PRODUCER=1 flip land once Workflows pin the
+// long-job runtime; until then the in-process fallback runs and these
+// queues stay empty.
+export const IngestQueue = Cloudflare.Queues.Queue("milkpod-ingest", {
+  name: "milkpod-ingest",
+});
+
+export const VisualQueue = Cloudflare.Queues.Queue("milkpod-visual", {
+  name: "milkpod-visual",
+});
+
 export const NeonHyperdrive = Effect.gen(function* () {
   const databaseUrl = Redacted.value(yield* Config.redacted("DATABASE_URL"));
   const { host, port, database, user } = parsePostgresUrl(databaseUrl);
@@ -61,6 +73,8 @@ export const Api = Cloudflare.Worker("milkpod-server", {
   env: {
     UPLOAD_BUCKET: Uploads,
     HYPERDRIVE: NeonHyperdrive,
+    INGEST_QUEUE: IngestQueue,
+    VISUAL_QUEUE: VisualQueue,
     NODE_ENV: "production",
   },
   // Replaces Namecheap `CNAME api → *.up.railway.app`. Requires the zone.
@@ -98,6 +112,8 @@ export default Alchemy.Stack(
   Effect.gen(function* () {
     const uploads = yield* Uploads;
     const hyperdrive = yield* NeonHyperdrive;
+    const ingestQueue = yield* IngestQueue;
+    const visualQueue = yield* VisualQueue;
     const api = yield* Api;
     const website = yield* Website;
     return {
@@ -105,6 +121,8 @@ export default Alchemy.Stack(
       websiteUrl: website.url,
       uploadsBucket: uploads.bucketName,
       hyperdriveId: hyperdrive.hyperdriveId,
+      ingestQueue: ingestQueue.queueName,
+      visualQueue: visualQueue.queueName,
     };
   }),
 );

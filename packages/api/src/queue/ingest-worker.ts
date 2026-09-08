@@ -1,5 +1,6 @@
 import type { Job } from 'bullmq';
 import type { IngestJobData } from './ingest-queue';
+import { INGEST_MAX_ATTEMPTS } from './ingest-queue';
 import { enqueueVisualJob } from './ingest-queue';
 import { IngestService } from '../modules/ingest/service';
 import { AssetService } from '../modules/assets/service';
@@ -9,6 +10,7 @@ import { embedSegments } from '../modules/ingest/embed';
 import { emitAssetStatus } from '../events/asset-events';
 import { QuotaService } from '../modules/quota/service';
 import {
+  handlePipelineError,
   makeRetry,
   makeHeartbeat,
   transcribeViaAudio,
@@ -44,9 +46,9 @@ interface TranscriptionResult {
 // ---------------------------------------------------------------------------
 
 async function transcribeAsset(
-  job: Job<IngestJobData>,
+  data: IngestJobData,
 ): Promise<TranscriptionResult> {
-  const { assetId, sourceUrl, sourceType, transcriptionStrategy } = job.data;
+  const { assetId, sourceUrl, sourceType, transcriptionStrategy } = data;
   const strategy = transcriptionStrategy ?? 'audio-first';
   const retry = makeRetry(assetId);
   const heartbeat = makeHeartbeat(assetId);
@@ -101,7 +103,7 @@ async function transcribeAsset(
     console.warn(
       `[queue] Audio transcription failed for ${assetId}, falling back to captions: ${audioError}`,
     );
-    emitAssetStatus(job.data.userId, assetId, 'transcribing', 'Falling back to captions...');
+    emitAssetStatus(data.userId, assetId, 'transcribing', 'Falling back to captions...');
 
     try {
       const { language, segments, provider } = await transcribeCaptionsFn(sourceUrl, retry);
@@ -122,11 +124,42 @@ async function transcribeAsset(
 }
 
 // ---------------------------------------------------------------------------
-// Main processor — called by BullMQ Worker for each ingest job
+// Runner — backend-agnostic ingest pipeline over plain job data.
+// BullMQ, CF Queues/Workflows, and tests all enter here; only the BullMQ
+// adapter below knows about `Job`. Checkpoint guards (hasTranscriptSegments,
+// hasEmbeddings) make re-delivery safe on every backend.
 // ---------------------------------------------------------------------------
 
+export async function runIngestJob(
+  data: IngestJobData,
+  opts?: { attemptsMade?: number; maxAttempts?: number },
+): Promise<void> {
+  const attemptsMade = opts?.attemptsMade ?? 0;
+  const maxAttempts = opts?.maxAttempts ?? INGEST_MAX_ATTEMPTS;
+  try {
+    await runIngestStages(data, attemptsMade);
+  } catch (error) {
+    // Persist failure to DB only on the last attempt so intermediate
+    // retries don't flash a false "failed" status to the user.
+    if (attemptsMade + 1 >= maxAttempts) {
+      await handlePipelineError(data.assetId, data.userId, error);
+    }
+    throw error; // re-throw so the backend marks the job as failed / retries
+  }
+}
+
+/**
+ * BullMQ processor adapter — unwraps the Job and delegates to runIngestJob.
+ */
 export async function processIngestJob(job: Job<IngestJobData>): Promise<void> {
-  const { assetId, userId, sourceType, mediaType } = job.data;
+  await runIngestJob(job.data, {
+    attemptsMade: job.attemptsMade,
+    maxAttempts: job.opts.attempts ?? INGEST_MAX_ATTEMPTS,
+  });
+}
+
+async function runIngestStages(data: IngestJobData, attemptsMade: number): Promise<void> {
+  const { assetId, userId, sourceType, mediaType } = data;
   const retry = makeRetry(assetId);
   const heartbeat = makeHeartbeat(assetId);
 
@@ -139,7 +172,7 @@ export async function processIngestJob(job: Job<IngestJobData>): Promise<void> {
     await IngestService.updateStatus(assetId, 'transcribing');
     emitAssetStatus(userId, assetId, 'transcribing');
 
-    const result = await transcribeAsset(job);
+    const result = await transcribeAsset(data);
 
     if (result.segments.length === 0) {
       throw new Error('Transcription produced no segments');
@@ -175,7 +208,7 @@ export async function processIngestJob(job: Job<IngestJobData>): Promise<void> {
   // Delete them so the stage is fully idempotent.
   const hasEmb = await AssetService.hasEmbeddings(assetId);
 
-  if (!hasEmb || job.attemptsMade > 0) {
+  if (!hasEmb || attemptsMade > 0) {
     if (hasEmb) {
       await AssetService.deleteEmbeddingsForAsset(assetId);
     }
@@ -226,15 +259,15 @@ export async function processIngestJob(job: Job<IngestJobData>): Promise<void> {
     const shouldExtractVisual =
       sourceType === 'youtube' ||
       (mediaType === 'video' && sourceType === 'upload') ||
-      (mediaType === 'video' && sourceType === 'external' && isDirectVideoFileUrl(job.data.sourceUrl));
+      (mediaType === 'video' && sourceType === 'external' && isDirectVideoFileUrl(data.sourceUrl));
 
     if (shouldExtractVisual) {
-      let visualUrl = job.data.sourceUrl;
+      let visualUrl = data.sourceUrl;
 
       // Upload assets need a signed URL for visual extraction
       if (sourceType === 'upload') {
         try {
-          visualUrl = await createUploadDownloadUrl(job.data.sourceUrl, {
+          visualUrl = await createUploadDownloadUrl(data.sourceUrl, {
             expiresInSeconds: 3600,
           });
         } catch {

@@ -4,6 +4,22 @@ import { isQueueEnabled, createUntrackedRedisConnection } from './queue/connecti
 export { closeConnections, warmPool, setEdgeDatabaseUrl } from '@milkpod/db';
 export { IngestService } from './modules/ingest/service';
 export { startWorkers, stopWorkers } from './queue/workers';
+export { runIngestJob, processIngestJob } from './queue/ingest-worker';
+export { runVisualJob, processVisualJob } from './queue/visual-worker';
+export {
+  handleQueueBatch,
+  handleQueueMessage,
+  isQueueMessage,
+} from './queue/consumer';
+export type { QueueMessage } from './queue/consumer';
+export {
+  runWithEdgeQueueContext,
+  getEdgeQueueContext,
+} from './queue/edge-context';
+export type {
+  EdgeQueueContext,
+  QueueProducerBinding,
+} from './queue/edge-context';
 export { initEventBridge, closeEventBridge } from './events/asset-events';
 export {
   initReplicachePokeBridge,

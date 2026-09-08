@@ -3,7 +3,6 @@ import { createRedisConnection, isQueueEnabled } from './connection';
 import { processIngestJob } from './ingest-worker';
 import { processVisualJob } from './visual-worker';
 import type { IngestJobData, VisualJobData } from './ingest-queue';
-import { handlePipelineError } from '../modules/ingest/pipeline';
 
 let ingestWorker: Worker<IngestJobData> | undefined;
 let visualWorker: Worker<VisualJobData> | undefined;
@@ -17,21 +16,10 @@ export async function startWorkers(): Promise<void> {
 
   ingestWorker = new Worker<IngestJobData>(
     'ingest-pipeline',
+    // Final-attempt failure persistence lives in runIngestJob; re-throw
+    // here so BullMQ marks the job as failed / retries.
     async (job) => {
-      try {
-        await processIngestJob(job);
-      } catch (error) {
-        const isFinalAttempt =
-          job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
-
-        if (isFinalAttempt) {
-          // Persist failure to DB only on the last attempt so intermediate
-          // retries don't flash a false "failed" status to the user.
-          await handlePipelineError(job.data.assetId, job.data.userId, error);
-        }
-
-        throw error; // re-throw so BullMQ marks the job as failed / retries
-      }
+      await processIngestJob(job);
     },
     {
       connection: createRedisConnection(),
