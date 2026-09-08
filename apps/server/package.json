@@ -17,6 +17,7 @@
     "@elysiajs/cors": "catalog:",
     "@elysiajs/node": "catalog:",
     "@milkpod/api": "workspace:*",
+    "@milkpod/auth": "workspace:*",
     "@milkpod/env": "workspace:*"
   },
   "devDependencies": {

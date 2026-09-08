@@ -6,7 +6,10 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { emailOTP } from 'better-auth/plugins/email-otp';
 import { Resend } from 'resend';
 import { buildOtpEmail } from './otp-email-template';
+import { trustedAppOrigins } from './origins';
 import { claimPendingInvitesOnSignup } from './signup-hooks';
+
+export { trustedAppOrigins } from './origins';
 
 let _auth: ReturnType<typeof betterAuth<BetterAuthOptions>> | undefined;
 
@@ -27,7 +30,7 @@ export function auth() {
       provider: 'pg',
       schema,
     }),
-    trustedOrigins: [env.CORS_ORIGIN],
+    trustedOrigins: trustedAppOrigins(env.CORS_ORIGIN),
     socialProviders: {
       google: {
         display: 'popup',

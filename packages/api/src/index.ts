@@ -1,5 +1,6 @@
-import { auth } from '@milkpod/auth';
+import { auth, trustedAppOrigins } from '@milkpod/auth';
 import { db } from '@milkpod/db';
+import { cors } from '@elysiajs/cors';
 import { isQueueEnabled, createUntrackedRedisConnection } from './queue/connection';
 export { closeConnections, warmPool, setEdgeDatabaseUrl } from '@milkpod/db';
 export { IngestService } from './modules/ingest/service';
@@ -71,6 +72,28 @@ import { billing } from './modules/billing';
 export const app = new Elysia({ name: 'api', aot: false })
   .use(errorHandler)
   .use(requestLogger)
+  // CORS lives on the shared app (not just the Node entry) so the Worker
+  // runtime enforces the same policy. Origins mirror Better Auth's
+  // trustedOrigins (apex + www); evaluated per request so no env is read
+  // at module scope on the edge.
+  .use(
+    cors({
+      origin: (request: Request) =>
+        trustedAppOrigins(serverEnv().CORS_ORIGIN).includes(
+          request.headers.get('origin') ?? '',
+        ),
+      methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+      exposeHeaders: [
+        'X-Thread-Id',
+        'X-Plan',
+        'X-Words-Remaining',
+        'X-Is-Admin',
+        'X-RateLimit-Remaining',
+      ],
+      credentials: true,
+    }),
+  )
   .get('/health', async ({ set }) => {
     try {
       await db().execute(sql`SELECT 1`);
