@@ -64,7 +64,7 @@ import { visualParity } from './modules/visual-parity';
 import { quota, quotaAdmin } from './modules/quota';
 import { billing } from './modules/billing';
 
-export const app = new Elysia({ name: 'api' })
+export const app = new Elysia({ name: 'api', aot: false })
   .use(errorHandler)
   .use(requestLogger)
   .get('/health', async ({ set }) => {

@@ -22,6 +22,31 @@ import * as Redacted from "effect/Redacted";
 // automatically; re-add Resend SPF/DKIM + DMARC in the CF zone.
 const CUSTOM_DOMAINS_ENABLED = process.env.CF_CUSTOM_DOMAINS === "1";
 
+// Production server env (issue #35). Resolved from the deploy shell and
+// bound as secret_text. Fails fast at plan time when a value is missing.
+const DEPLOY_SECRETS = [
+  "DATABASE_URL",
+  "BETTER_AUTH_SECRET",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "ASSEMBLYAI_API_KEY",
+  "RESEND_API_KEY",
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GOOGLE_GENERATIVE_AI_API_KEY",
+] as const;
+
+for (const key of DEPLOY_SECRETS) {
+  if (!process.env[key]) {
+    throw new Error(
+      `deploy: missing ${key} in environment — export prod values before pnpm cf:deploy`,
+    );
+  }
+}
+
+const secret = (key: (typeof DEPLOY_SECRETS)[number]) =>
+  Redacted.make(process.env[key] as string);
+
 function parsePostgresUrl(url: string) {
   const u = new URL(url);
   return {
@@ -76,6 +101,27 @@ export const Api = Cloudflare.Worker("milkpod-server", {
     INGEST_QUEUE: IngestQueue,
     VISUAL_QUEUE: VisualQueue,
     NODE_ENV: "production",
+    // Production server env (issue #35). Secrets resolve from the deploy
+    // shell via Redacted.make (→ secret_text bindings); URL-ish values
+    // are literals (→ plain_text). Deploy with prod values exported —
+    // see apps/server/.env.example. COOKIE_DOMAIN is required because
+    // NODE_ENV=production (see @milkpod/env serverEnv superRefine).
+    DATABASE_URL: secret("DATABASE_URL"),
+    BETTER_AUTH_SECRET: secret("BETTER_AUTH_SECRET"),
+    GOOGLE_CLIENT_ID: secret("GOOGLE_CLIENT_ID"),
+    GOOGLE_CLIENT_SECRET: secret("GOOGLE_CLIENT_SECRET"),
+    ASSEMBLYAI_API_KEY: secret("ASSEMBLYAI_API_KEY"),
+    RESEND_API_KEY: secret("RESEND_API_KEY"),
+    OPENAI_API_KEY: secret("OPENAI_API_KEY"),
+    ANTHROPIC_API_KEY: secret("ANTHROPIC_API_KEY"),
+    GOOGLE_GENERATIVE_AI_API_KEY: secret("GOOGLE_GENERATIVE_AI_API_KEY"),
+    CORS_ORIGIN: process.env.CORS_ORIGIN ?? "https://croisillies.xyz",
+    BETTER_AUTH_URL:
+      process.env.BETTER_AUTH_URL ?? "https://api.croisillies.xyz",
+    COOKIE_DOMAIN: process.env.COOKIE_DOMAIN ?? ".croisillies.xyz",
+    AUTH_FROM_EMAIL:
+      process.env.AUTH_FROM_EMAIL ?? "Milkpod <noreply@croisillies.xyz>",
+    ADMIN_EMAILS: process.env.ADMIN_EMAILS ?? "",
   },
   // Replaces Namecheap `CNAME api → *.up.railway.app`. Requires the zone.
   ...(CUSTOM_DOMAINS_ENABLED
@@ -87,6 +133,13 @@ export const Website = Cloudflare.Website.Nextjs("milkpod-web", {
   rootDir: "./apps/web",
   env: {
     UPLOAD_BUCKET: Uploads,
+    // RSC direct-db reads (apps/web/src/lib/data/queries.ts) go through
+    // @milkpod/db, which uses this binding on the edge (issue #40 core).
+    HYPERDRIVE: NeonHyperdrive,
+    // Baked into the client build. Final value now — the site's API
+    // calls 404 until the custom-domain deploy, then work with no rebuild.
+    NEXT_PUBLIC_SERVER_URL:
+      process.env.NEXT_PUBLIC_SERVER_URL ?? "https://api.croisillies.xyz",
   },
   // Replaces Namecheap `CNAME @` + `CNAME www → *.up.railway.app`.
   // Apex is canonical; www serves the same site. Requires the zone.

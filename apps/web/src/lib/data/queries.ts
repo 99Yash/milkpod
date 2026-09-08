@@ -19,6 +19,7 @@ import {
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Asset, AssetWithTranscript, Collection, CollectionWithItems, Comment, Moment } from '@milkpod/api/types';
 import type { MilkpodMessage } from '@milkpod/ai/types';
+import { ensureEdgeDb } from '~/lib/db-edge';
 
 /** Strip internal-only fields. `lastError` is kept (already sanitized at write time). */
 function sanitizeAsset<T extends { visualLastError?: unknown }>(row: T): T {
@@ -26,6 +27,7 @@ function sanitizeAsset<T extends { visualLastError?: unknown }>(row: T): T {
 }
 
 export async function getAssets(userId: string): Promise<Asset[]> {
+  await ensureEdgeDb();
   const rows = await db()
     .select()
     .from(mediaAssets)
@@ -38,6 +40,7 @@ export async function getAssetWithTranscript(
   id: string,
   userId: string
 ): Promise<AssetWithTranscript | null> {
+  await ensureEdgeDb();
   // Membership-based access: the asset is visible to its owner and every
   // collaborator granted via `asset_member`. The owner path still works
   // because the owner-backfill migration seeds an asset_member row for every
@@ -90,6 +93,7 @@ export async function getAssetWithTranscript(
 }
 
 export async function getCollections(userId: string): Promise<Collection[]> {
+  await ensureEdgeDb();
   return db()
     .select()
     .from(collections)
@@ -101,6 +105,7 @@ export async function getCollectionWithItems(
   id: string,
   userId: string,
 ): Promise<CollectionWithItems | null> {
+  await ensureEdgeDb();
   const [collectionRows, items] = await Promise.all([
     db()
       .select()
@@ -143,6 +148,7 @@ export async function getMoments(
   userId: string,
   preset: string = 'default',
 ): Promise<Moment[]> {
+  await ensureEdgeDb();
   return db()
     .select()
     .from(assetMoments)
@@ -162,6 +168,7 @@ export async function getComments(
   assetId: string,
   userId: string,
 ): Promise<Comment[]> {
+  await ensureEdgeDb();
   return db()
     .select()
     .from(assetComments)
@@ -184,6 +191,7 @@ export const getThreadsForAsset = cache(
     assetId: string,
     userId: string,
   ): Promise<{ id: string; title: string | null; createdAt: Date }[]> => {
+    await ensureEdgeDb();
     return db()
       .select({
         id: qaThreads.id,
@@ -277,6 +285,7 @@ export async function getChatThread(
   threadId: string,
   userId: string,
 ): Promise<{ threadId: string; messages: MilkpodMessage[]; translations: TranslationsMap } | null> {
+  await ensureEdgeDb();
   const messagesSq = db()
     .select({ id: qaMessages.id })
     .from(qaMessages)
@@ -310,6 +319,7 @@ export async function getLatestChatThread(
   assetId: string,
   userId: string,
 ): Promise<{ threadId: string; messages: MilkpodMessage[]; translations: TranslationsMap } | null> {
+  await ensureEdgeDb();
   // Subquery for the latest thread — inlined into messages/parts queries so
   // all 3 fire in a single parallel batch (1 round trip instead of 3).
   const latestThreadSq = db()
