@@ -110,26 +110,78 @@ export function UrlInputForm({ onSuccess }: UrlInputFormProps) {
 
     setIsSubmitting(true);
     try {
-      const { data, error } = await api.api.ingest.upload.post({ file });
-      if (error) {
-        if (handleUpgradeError(error)) return;
-        const errVal = error.value;
-        toast.error(
-          typeof errVal === 'object' && errVal && 'message' in errVal
-            ? String(errVal.message)
-            : 'Failed to upload file'
-        );
-        return;
-      }
-      const title = data && 'title' in data ? data.title : 'file';
-      toast.success(`Added "${title}"`);
-      setFile(null);
-      onSuccess();
+      // Direct-to-storage flow first: the file never passes through the
+      // server, so Workers request-body limits don't apply (R2 path).
+      // Falls back to multipart /upload when the server predates it.
+      if (await tryDirectUpload(file)) return;
+      await submitMultipartUpload(file);
     } catch {
       toast.error('Failed to upload file');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const tryDirectUpload = async (f: File): Promise<boolean> => {
+    let presigned: { uploadUrl: string; key: string } | null = null;
+    try {
+      const { data, error } = await api.api.ingest['upload-url'].post({
+        fileName: f.name,
+        contentType: f.type,
+        fileSize: f.size,
+      });
+      if (error || !data) return false;
+      presigned = data as { uploadUrl: string; key: string };
+    } catch {
+      return false;
+    }
+
+    const putRes = await fetch(presigned.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': f.type },
+      body: f,
+    }).catch(() => null);
+    if (!putRes || !putRes.ok) {
+      toast.error('Failed to upload file');
+      return true;
+    }
+
+    const { data, error } = await api.api.ingest['upload-complete'].post({
+      key: presigned.key,
+    });
+    if (error) {
+      if (handleUpgradeError(error)) return true;
+      const errVal = error.value;
+      toast.error(
+        typeof errVal === 'object' && errVal && 'message' in errVal
+          ? String(errVal.message)
+          : 'Failed to upload file'
+      );
+      return true;
+    }
+    const title = data && 'title' in data ? data.title : 'file';
+    toast.success(`Added "${title}"`);
+    setFile(null);
+    onSuccess();
+    return true;
+  };
+
+  const submitMultipartUpload = async (f: File) => {
+    const { data, error } = await api.api.ingest.upload.post({ file: f });
+    if (error) {
+      if (handleUpgradeError(error)) return;
+      const errVal = error.value;
+      toast.error(
+        typeof errVal === 'object' && errVal && 'message' in errVal
+          ? String(errVal.message)
+          : 'Failed to upload file'
+      );
+      return;
+    }
+    const title = data && 'title' in data ? data.title : 'file';
+    toast.success(`Added "${title}"`);
+    setFile(null);
+    onSuccess();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

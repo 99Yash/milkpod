@@ -1,6 +1,7 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -29,6 +30,38 @@ type StoreUploadInput = {
   file: File;
   userId: string;
 };
+
+export type PresignedPutInput = {
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+  userId: string;
+};
+
+const ACCEPTED_UPLOAD_MIME_PREFIXES = ['audio/', 'video/'] as const;
+
+/** 2 GB — must stay in sync with MAX_UPLOAD_SIZE / MAX_FILE_SIZE callers. */
+export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+
+/**
+ * Shared validation for both upload flows (multipart + presigned PUT).
+ * Returns an error message, or null when the file is acceptable.
+ */
+export function validateUploadFile(input: {
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+}): string | null {
+  if (
+    !ACCEPTED_UPLOAD_MIME_PREFIXES.some((p) => input.contentType.startsWith(p))
+  ) {
+    return 'Unsupported file type. Please upload an audio or video file.';
+  }
+  if (input.fileSize > MAX_UPLOAD_BYTES) {
+    return `File too large. Maximum size is ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB.`;
+  }
+  return null;
+}
 
 let s3Client: S3Client | undefined;
 
@@ -115,6 +148,19 @@ function toStorageUrl(bucket: string, key: string): string {
   return `${STORAGE_URI_SCHEME}${bucket}/${key}`;
 }
 
+function buildStorageKey(userId: string, fileName: string): string {
+  const safeName = sanitizeFileName(fileName);
+  return `uploads/${userId}/${Date.now()}-${randomUUID()}-${safeName}`;
+}
+
+/**
+ * Whether a storage key belongs to the given user. Guards the
+ * presigned-PUT complete flow against key swapping across users.
+ */
+export function isKeyOwnedByUser(key: string, userId: string): boolean {
+  return key.startsWith(`uploads/${userId}/`);
+}
+
 export function isUploadStorageConfigured(): boolean {
   return parseStorageConfig() !== null;
 }
@@ -126,17 +172,18 @@ export async function storeUploadedMedia({
   const config = getStorageConfig();
   const client = getS3Client(config);
 
-  const safeName = sanitizeFileName(file.name);
-  const key = `uploads/${userId}/${Date.now()}-${randomUUID()}-${safeName}`;
+  const key = buildStorageKey(userId, file.name);
   const contentType = normalizeOptional(file.type) ?? 'application/octet-stream';
-  const body = Buffer.from(await file.arrayBuffer());
-
+  // Pass the Blob through instead of buffering: Workers isolates have ~128 MB
+  // memory, so a full Buffer.from() breaks on large media. The SDK streams it
+  // with the explicit ContentLength in both Node and edge runtimes.
   await client.send(
     new PutObjectCommand({
       Bucket: config.bucket,
       Key: key,
-      Body: body,
+      Body: file,
       ContentType: contentType,
+      ContentLength: file.size,
     })
   );
 
@@ -144,6 +191,84 @@ export async function storeUploadedMedia({
     canonicalUrl: toStorageUrl(config.bucket, key),
     key,
   };
+}
+
+/**
+ * Direct-to-storage upload flow (R2/Workers path, issue #31).
+ * The browser PUTs the file straight to this URL so multi-GB media never
+ * passes through a Worker (request body limits) or server memory. Works
+ * against any S3-compatible endpoint, including R2 — only the endpoint +
+ * credentials in env change. The caller then POSTs `/upload-complete`
+ * with the returned key to create the asset and start the pipeline.
+ */
+export async function createUploadPresignedPutUrl(
+  input: PresignedPutInput,
+  opts?: { expiresInSeconds?: number }
+): Promise<{ uploadUrl: string; canonicalUrl: string; key: string }> {
+  const validationError = validateUploadFile({
+    fileName: input.fileName,
+    contentType: input.contentType,
+    fileSize: input.fileSize,
+  });
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  const config = getStorageConfig();
+  const client = getS3Client(config);
+  const key = buildStorageKey(input.userId, input.fileName);
+
+  const uploadUrl = await getSignedUrl(
+    client,
+    new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+      ContentType: input.contentType,
+      ContentLength: input.fileSize,
+    }),
+    {
+      expiresIn: opts?.expiresInSeconds ?? config.signedUrlTtlSeconds,
+    }
+  );
+
+  return {
+    uploadUrl,
+    canonicalUrl: toStorageUrl(config.bucket, key),
+    key,
+  };
+}
+
+/**
+ * Canonical `s3://bucket/key` URL for a raw key in the configured bucket.
+ * Keeps bucket authority server-side — the complete flow never trusts a
+ * client-supplied storage URL.
+ */
+export function toCanonicalUploadUrl(key: string): string {
+  const config = getStorageConfig();
+  return toStorageUrl(config.bucket, key);
+}
+
+/**
+ * Verify a directly-uploaded object exists and report its real
+ * size/content-type. Returns null when missing or unreadable so the
+ * complete flow can reject phantom keys.
+ */
+export async function headStoredUpload(
+  key: string
+): Promise<{ size: number; contentType: string } | null> {
+  const config = getStorageConfig();
+  const client = getS3Client(config);
+  try {
+    const out = await client.send(
+      new HeadObjectCommand({ Bucket: config.bucket, Key: key })
+    );
+    return {
+      size: out.ContentLength ?? 0,
+      contentType: out.ContentType ?? 'application/octet-stream',
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function createUploadDownloadUrl(
