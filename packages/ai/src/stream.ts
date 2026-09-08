@@ -9,7 +9,7 @@ import {
 import type { LanguageModel } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { openai } from '@ai-sdk/openai';
-import { google } from '@ai-sdk/google';
+import { googleProvider } from './provider';
 import type { MilkpodMessage } from './types';
 import { createQAToolSet } from './tools';
 import { buildSystemPrompt } from './system-prompt';
@@ -30,7 +30,7 @@ function resolveModel(id: ModelId): LanguageModel {
     case 'openai':
       return openai(model);
     case 'google':
-      return google(model);
+      return googleProvider(model);
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }

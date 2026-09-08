@@ -34,6 +34,7 @@ const DEPLOY_SECRETS = [
   "OPENAI_API_KEY",
   "ANTHROPIC_API_KEY",
   "GOOGLE_GENERATIVE_AI_API_KEY",
+  "CF_AI_GATEWAY_TOKEN",
 ] as const;
 
 for (const key of DEPLOY_SECRETS) {
@@ -128,6 +129,12 @@ export const Api = Cloudflare.Worker("milkpod-server", {
     OPENAI_API_KEY: secret("OPENAI_API_KEY"),
     ANTHROPIC_API_KEY: secret("ANTHROPIC_API_KEY"),
     GOOGLE_GENERATIVE_AI_API_KEY: secret("GOOGLE_GENERATIVE_AI_API_KEY"),
+    // Gemini via Cloudflare AI Gateway Unified Billing (replaces direct
+    // Google key billing when set; see @milkpod/ai provider.ts).
+    CF_AI_GATEWAY_TOKEN: secret("CF_AI_GATEWAY_TOKEN"),
+    CF_AI_GATEWAY_ID: process.env.CF_AI_GATEWAY_ID ?? "milkpod",
+    CF_AI_GATEWAY_ACCOUNT_ID:
+      process.env.CF_AI_GATEWAY_ACCOUNT_ID ?? "920c83e48f41f4abe2ab33c0f767625e",
     CORS_ORIGIN: process.env.CORS_ORIGIN ?? "https://croisillies.xyz",
     BETTER_AUTH_URL:
       process.env.BETTER_AUTH_URL ?? "https://api.croisillies.xyz",
