@@ -165,7 +165,11 @@ export const app = new Elysia({ name: 'api' })
       invalidateSessionToken(request.headers);
     }
   })
-  .mount(auth().handler)
+  // Resolve auth() per request, not at import: auth() captures db(),
+  // which on Workers is only configured once the HYPERDRIVE binding
+  // arrives (see apps/server/src/worker.ts). Eager evaluation here
+  // would throw at module load on the edge (issue #34).
+  .mount((request: Request) => auth().handler(request))
   .use(chat)
   .use(assets)
   .use(assetMembers)

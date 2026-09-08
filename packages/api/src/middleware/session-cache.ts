@@ -25,14 +25,21 @@ const MAX_TOKEN_CACHE_SIZE = 1_000;
 const tokenCache = new Map<string, { session: Session; expiresAt: number }>();
 const tokenInflight = new Map<string, Promise<Session>>();
 
-const sweepTimer = setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of tokenCache) {
-    if (entry.expiresAt <= now) tokenCache.delete(key);
-  }
-}, 60_000);
-// Don't keep the process alive just for cache cleanup (e.g. in tests)
-if (typeof sweepTimer === 'object' && 'unref' in sweepTimer) sweepTimer.unref();
+let sweepStarted = false;
+function ensureSweepTimer(): void {
+  // Start lazily on first cache write: module-level intervals keep
+  // Workers isolates alive and never fire usefully between requests.
+  if (sweepStarted) return;
+  sweepStarted = true;
+  const sweepTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of tokenCache) {
+      if (entry.expiresAt <= now) tokenCache.delete(key);
+    }
+  }, 60_000);
+  // Don't keep the process alive just for cache cleanup (e.g. in tests)
+  if (typeof sweepTimer === 'object' && 'unref' in sweepTimer) sweepTimer.unref();
+}
 
 const SESSION_COOKIE_NAMES = new Set([
   'better-auth.session_token',
@@ -123,6 +130,7 @@ export function getSessionCached(request: Request): Promise<Session> {
           const oldest = tokenCache.keys().next().value;
           if (oldest) tokenCache.delete(oldest);
         }
+        ensureSweepTimer();
         tokenCache.set(token, {
           session,
           expiresAt: Date.now() + TOKEN_TTL_MS,
@@ -135,7 +143,6 @@ export function getSessionCached(request: Request): Promise<Session> {
     });
 
   if (token) tokenInflight.set(token, promise);
-
   perRequest.set(request, promise);
   return promise;
 }

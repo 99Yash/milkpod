@@ -21,19 +21,29 @@ const buckets = new Map<string, Bucket>();
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const BUCKET_TTL_MS = 10 * 60 * 1000;
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, bucket] of buckets) {
-    if (now - bucket.lastRefill > BUCKET_TTL_MS) {
-      buckets.delete(key);
+let cleanupStarted = false;
+function ensureCleanupTimer(): void {
+  // Start lazily on first use: module-level intervals keep Workers
+  // isolates alive and never fire usefully between requests.
+  if (cleanupStarted) return;
+  cleanupStarted = true;
+  const cleanupTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [key, bucket] of buckets) {
+      if (now - bucket.lastRefill > BUCKET_TTL_MS) {
+        buckets.delete(key);
+      }
     }
-  }
-}, CLEANUP_INTERVAL_MS);
+  }, CLEANUP_INTERVAL_MS);
+  if (typeof cleanupTimer === 'object' && 'unref' in cleanupTimer)
+    cleanupTimer.unref();
+}
 
 function consume(
   key: string,
   config: BucketConfig,
 ): { allowed: boolean; retryAfterSecs: number } {
+  ensureCleanupTimer();
   const now = Date.now();
   let bucket = buckets.get(key);
 
