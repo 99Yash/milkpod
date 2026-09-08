@@ -1,9 +1,8 @@
 import 'server-only';
 
 import { db } from '@milkpod/db';
-import { notifications } from '@milkpod/db/schemas';
+import { notifications, realtimeEvents } from '@milkpod/db/schemas';
 import { and, eq, isNull } from 'drizzle-orm';
-import { emitReplicachePokes } from '@milkpod/api/events/replicache-events';
 import { ensureEdgeDb } from '~/lib/db-edge';
 
 /**
@@ -13,8 +12,10 @@ import { ensureEdgeDb } from '~/lib/db-edge';
  * (direct URL, library click, share link, etc.).
  *
  * Fires a Replicache poke on the user channel so every open session pulls
- * the new read state. Fully fire-and-forget; failures are logged and do not
- * bubble up.
+ * the new read state. The poke is a durable outbox row (same transport the
+ * API edge SSE loops poll), so it reaches all clients — unlike a local
+ * emitter, which would be isolate-local on the edge. Fully fire-and-forget;
+ * failures are logged and do not bubble up.
  */
 export async function markNotificationsReadForAsset(
   userId: string,
@@ -36,11 +37,12 @@ export async function markNotificationsReadForAsset(
       .returning({ id: notifications.id });
 
     if (rows.length > 0) {
-      try {
-        emitReplicachePokes([userId], assetId);
-      } catch {
-        // Redis unavailable — heartbeat + next manual pull will reconcile.
-      }
+      // Durable poke AFTER the update committed (see the post-commit
+      // contract on emitReplicachePokes): the API edge SSE loops poll the
+      // outbox per user and forward `poke` rows to every connected client.
+      await db()
+        .insert(realtimeEvents)
+        .values({ userId, kind: 'poke', payload: { assetId } });
     }
   } catch (err) {
     console.warn(
